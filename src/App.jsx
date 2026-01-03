@@ -1,0 +1,182 @@
+
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { RoleProvider, useRole } from '@/context/RoleContext';
+import { ThemeProvider } from '@/context/ThemeContext';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import Layout from './components/Layout';
+import Auth from './pages/Auth';
+import UpdatePassword from './pages/UpdatePassword';
+
+// Public Pages
+import HomePage from './pages/HomePage';
+import SignupMentor from './pages/SignupMentor';
+import SignupDisciple from './pages/SignupDisciple';
+
+// Dashboard imports
+import MentorDashboard from './pages/dashboards/MentorDashboard';
+import DiscipleDashboard from './pages/dashboards/DiscipleDashboard';
+import AdminDashboard from './pages/dashboards/AdminDashboard';
+import DashboardHome from './pages/DashboardHome';
+
+// Feature Pages
+import Circles from './pages/Circles';
+import Disciples from './pages/Disciples';
+import DiscipleDetail from './pages/DiscipleDetail';
+import PrayerList from './pages/PrayerList';
+import SendReport from './pages/SendReport';
+import Statistics from './pages/Statistics'; // Import Statistics Page
+import Evangelization from './pages/Evangelization';
+import Ebooks from './pages/Ebooks';
+import TeachingVideos from './pages/TeachingVideos';
+import TestimonialVideos from './pages/TestimonialVideos';
+import WordMeditation from './pages/WordMeditation';
+import BooksToRead from './pages/BooksToRead';
+import BookReader from './pages/BookReader';
+import Profile from './pages/Profile';
+import Settings from './pages/Settings';
+import Menu from './pages/Menu';
+import ImpactX from './pages/ImpactX';
+import ImpactXVideo from './pages/ImpactXVideo';
+import SearchPage from './pages/SearchPage';
+import HelpFAQ from './pages/HelpFAQ';
+import FeedbackForm from './pages/FeedbackForm';
+import NotificationCenter from './pages/NotificationCenter';
+import MeetingScheduler from './pages/MeetingScheduler';
+import MySummaries from './pages/MySummaries';
+import AttendanceTracking from './pages/AttendanceTracking';
+
+// New Feature Pages
+import AppointmentsList from './pages/AppointmentsList';
+import PrayerSessionsList from './pages/PrayerSessionsList';
+import HistoryLog from './pages/HistoryLog';
+
+// Admin imports
+import AdminReportsView from './pages/AdminReportsView';
+import AdminTestimonyModeration from './pages/AdminTestimonyModeration';
+import AdminAccessCodeManager from './pages/AdminAccessCodeManager';
+import AdminActivityLog from './pages/AdminActivityLog';
+import AdminFeedback from './pages/AdminFeedback';
+
+import { Helmet } from 'react-helmet';
+import { Toaster } from "@/components/ui/toaster";
+
+// Dashboard Router Component
+const DashboardRouter = () => {
+    const { role, canHaveDisciples, loading } = useRole();
+    
+    if (loading) return <div className="flex items-center justify-center h-screen text-white">Chargement...</div>;
+    
+    if (role === 'admin') return <AdminDashboard />;
+    if (role === 'mentor' || canHaveDisciples) return <MentorDashboard />;
+    return <DiscipleDashboard />;
+};
+
+function AppRoutes() {
+  const { user } = useAuth();
+
+  return (
+    <Routes>
+      {/* Public Routes */}
+      <Route path="/" element={!user ? <HomePage /> : <Navigate to="/home" replace />} />
+      <Route path="/auth" element={<Auth />} />
+      <Route path="/signup/mentor" element={<SignupMentor />} />
+      <Route path="/signup/disciple" element={<SignupDisciple />} />
+      <Route path="/update-password" element={<UpdatePassword />} />
+      
+      {/* Protected Routes */}
+      <Route path="/" element={
+        <ProtectedRoute>
+          <Layout />
+        </ProtectedRoute>
+      }>
+        {/* New Home for Logged In Users */}
+        <Route path="home" element={<DashboardHome />} />
+
+        {/* Smart Dashboard Routing */}
+        <Route path="dashboard" element={<DashboardRouter />} />
+        
+        {/* Explicit Routes */}
+        <Route path="space/mentor" element={<MentorDashboard />} />
+        <Route path="space/disciple" element={<DiscipleDashboard />} />
+        
+        {/* Shared Features */}
+        <Route path="profile" element={<Profile />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="notifications" element={<NotificationCenter />} />
+        <Route path="menu" element={<Menu />} />
+        <Route path="search" element={<SearchPage />} />
+        <Route path="help" element={<HelpFAQ />} />
+        <Route path="feedback" element={<FeedbackForm />} />
+        <Route path="scheduler" element={<MeetingScheduler />} />
+        <Route path="attendance" element={<AttendanceTracking />} /> 
+        <Route path="statistics" element={<Statistics />} />
+
+        {/* New Appointment System Routes */}
+        <Route path="my-appointments" element={<AppointmentsList />} />
+        <Route path="my-prayers" element={<PrayerSessionsList />} />
+        <Route path="history-log" element={<HistoryLog />} />
+
+        {/* Learning Resources */}
+        <Route path="ebooks" element={<Ebooks />} />
+        <Route path="teaching-videos" element={<TeachingVideos />} />
+        <Route path="testimonial-videos" element={<TestimonialVideos />} />
+        <Route path="meditations" element={<WordMeditation />} />
+        <Route path="books-to-read" element={<BooksToRead />} />
+        <Route path="books-to-read/:bookId" element={<BookReader />} />
+        <Route path="my-summaries" element={<MySummaries />} />
+
+        {/* Impact X */}
+        <Route path="impact-x" element={<ImpactX />} />
+        <Route path="impact-x/video/:id" element={<ImpactXVideo />} />
+
+        {/* Mentor Specific Features */}
+        <Route path="disciples" element={<Disciples />} />
+        <Route path="disciples/:id" element={<DiscipleDetail />} />
+        
+        <Route path="circles" element={<Circles />} />
+        <Route path="prayer-requests" element={<PrayerList />} />
+        <Route path="send-report" element={<SendReport />} />
+        <Route path="evangelization" element={<Evangelization />} />
+        
+        {/* Admin Routes */}
+        <Route path="admin" element={
+            <ProtectedRoute requiredRole="admin">
+                <AdminDashboard />
+            </ProtectedRoute>
+        } />
+        <Route path="admin/reports" element={<AdminReportsView />} />
+        <Route path="admin/testimonies" element={<AdminTestimonyModeration />} />
+        <Route path="admin/access-codes" element={<AdminAccessCodeManager />} />
+        <Route path="admin/activity-logs" element={<AdminActivityLog />} />
+        <Route path="admin/feedback" element={<AdminFeedback />} />
+
+      </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        <RoleProvider>
+          <ThemeProvider defaultTheme="dark" storageKey="disciple-life-theme">
+            <Helmet>
+                <title>DiscipleLife | Vie de Disciple</title>
+                <meta name="description" content="Plateforme de formation de disciples." />
+                <meta name="theme-color" content="#0f0518" />
+            </Helmet>
+            <AppRoutes />
+            <Toaster />
+          </ThemeProvider>
+        </RoleProvider>
+      </AuthProvider>
+    </Router>
+  );
+}
+
+export default App;
