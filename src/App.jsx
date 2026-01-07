@@ -28,6 +28,7 @@ import PrayerList from './pages/PrayerList';
 import SendReport from './pages/SendReport';
 import Statistics from './pages/Statistics'; // Import Statistics Page
 import Evangelization from './pages/Evangelization';
+import Engagement from './pages/Engagement';
 import Ebooks from './pages/Ebooks';
 import TeachingVideos from './pages/TeachingVideos';
 import TestimonialVideos from './pages/TestimonialVideos';
@@ -139,6 +140,7 @@ function AppRoutes() {
         <Route path="prayer-requests" element={<PrayerList />} />
         <Route path="send-report" element={<SendReport />} />
         <Route path="evangelization" element={<Evangelization />} />
+        <Route path="engagement" element={<Engagement />} />
         
         {/* Admin Routes */}
         <Route path="admin" element={

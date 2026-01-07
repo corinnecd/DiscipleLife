@@ -160,3 +160,4 @@ Si vous rencontrez des problèmes :
 2. Vérifiez votre configuration : `git config --list`
 3. Consultez la documentation GitHub : https://docs.github.com
 
+

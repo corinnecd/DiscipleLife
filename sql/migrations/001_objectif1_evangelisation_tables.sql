@@ -149,3 +149,4 @@ COMMENT ON COLUMN campagnes_evangelisation.statut IS 'Statut: planifiee, en_cour
 
 
 
+
