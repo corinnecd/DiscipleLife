@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, CheckCircle2, Clock, Flame, Users, ChevronRight, CalendarDays, MessageSquare, Bell } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Clock, Flame, Users, ChevronRight, CalendarDays, MessageSquare, Bell, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -198,16 +198,16 @@ const PrayerList = () => {
   const filteredDisciplePrayers = selectedDisciple ? prayers.filter(p => p.disciple_name === selectedDisciple) : [];
 
   return (
-    <div className="max-w-xl mx-auto space-y-8 pb-20 p-4 md:p-0">
+    <div className="max-w-xl mx-auto space-y-8 pb-20 p-4 md:p-0 px-4 sm:px-6">
       
       {/* Header */}
       <div className="space-y-4">
         <div className="space-y-2">
-            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-                <Users className="text-pink-500" size={32} />
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                <Users className="text-purple-500" size={32} />
                 Mur de Prières
             </h1>
-            <p className="text-gray-400 text-base leading-relaxed">
+            <p className="text-gray-600 text-base leading-relaxed">
                 Portez les fardeaux les uns des autres.
             </p>
         </div>
@@ -217,14 +217,14 @@ const PrayerList = () => {
         <div className="grid grid-cols-2 gap-3">
              <Button 
                 onClick={() => navigate('/prayer-reminder')} 
-                className="bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 gap-2 h-auto py-3 flex-col items-center justify-center text-xs sm:text-sm"
+                className="bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300 gap-2 h-auto py-3 flex-col items-center justify-center text-xs sm:text-sm"
              >
                 <CalendarDays size={20} />
                 Planifier une prière
              </Button>
              <Button 
                 onClick={() => navigate('/interviews')} 
-                className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 gap-2 h-auto py-3 flex-col items-center justify-center text-xs sm:text-sm"
+                className="bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300 gap-2 h-auto py-3 flex-col items-center justify-center text-xs sm:text-sm"
              >
                 <MessageSquare size={20} />
                 Planifier un entretien
@@ -233,21 +233,21 @@ const PrayerList = () => {
       </div>
 
       {/* Input Card */}
-      <div className="rounded-xl border border-white/10 bg-card/30 p-4 space-y-4 shadow-sm">
+      <Card className="bg-white border-gray-200 shadow-sm p-4 space-y-4">
           <form onSubmit={handleAdd} className="space-y-4">
             
             <Select 
                 value={discipleName} 
                 onValueChange={setDiscipleName}
             >
-                <SelectTrigger className="w-full bg-[#241b35] border-white/10 text-white h-12 text-base focus:ring-pink-500/50">
+                <SelectTrigger className="w-full bg-white border-gray-300 text-gray-900 h-12 text-base focus:ring-purple-500">
                     <SelectValue placeholder="Pour qui ? (Optionnel)" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#1e1b4b] border-white/10 text-white">
-                    <SelectItem value="Moi" className="focus:bg-white/10 focus:text-white cursor-pointer py-2">Moi</SelectItem>
-                    <div className="h-px bg-white/10 my-1" />
+                <SelectContent className="bg-white border-gray-200 text-gray-900">
+                    <SelectItem value="Moi" className="focus:bg-gray-100 focus:!text-gray-900 cursor-pointer py-2">Moi</SelectItem>
+                    <div className="h-px bg-gray-200 my-1" />
                     {disciples.map((d) => (
-                        <SelectItem key={d.id} value={d.name} className="focus:bg-white/10 focus:text-white cursor-pointer py-2">
+                        <SelectItem key={d.id} value={d.name} className="focus:bg-gray-100 focus:!text-gray-900 cursor-pointer py-2">
                             {d.name}
                         </SelectItem>
                     ))}
@@ -258,33 +258,33 @@ const PrayerList = () => {
                 value={newRequest}
                 onChange={(e) => setNewRequest(e.target.value)}
                 placeholder="Partagez un sujet de prière..." 
-                className="bg-[#241b35] border-white/10 text-white placeholder:text-gray-500 min-h-[100px] resize-none text-base focus-visible:ring-pink-500/50"
+                className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-500 min-h-[100px] resize-none text-base focus-visible:ring-purple-500"
             />
             
-            <div className="flex flex-col gap-3 p-3 bg-black/20 rounded-lg border border-white/5">
+            <div className="flex flex-col gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center gap-2">
                     <input 
                         type="checkbox" 
                         id="reminder-toggle"
                         checked={isReminderEnabled}
                         onChange={(e) => setIsReminderEnabled(e.target.checked)}
-                        className="w-4 h-4 rounded border-white/30 bg-white/10 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                        className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                     />
-                    <label htmlFor="reminder-toggle" className="text-sm text-blue-300 font-medium flex items-center gap-1 cursor-pointer select-none">
+                    <label htmlFor="reminder-toggle" className="text-sm text-gray-700 font-medium flex items-center gap-1 cursor-pointer select-none">
                         <Bell size={14} className="fill-current" /> Planifier un rappel
                     </label>
                 </div>
                 {isReminderEnabled && (
                     <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:'auto'}} className="grid grid-cols-2 gap-2">
-                        <Input type="date" value={reminderDate} onChange={e => setReminderDate(e.target.value)} className="bg-white/5 border-white/10 text-white" />
-                        <Input type="time" value={reminderTime} onChange={e => setReminderTime(e.target.value)} className="bg-white/5 border-white/10 text-white" />
+                        <Input type="date" value={reminderDate} onChange={e => setReminderDate(e.target.value)} className="bg-white border-gray-300 text-gray-900" />
+                        <Input type="time" value={reminderTime} onChange={e => setReminderTime(e.target.value)} className="bg-white border-gray-300 text-gray-900" />
                     </motion.div>
                 )}
             </div>
 
             <Button 
                 type="submit" 
-                className="w-full bg-[#1abc9c] hover:bg-[#16a085] text-white font-bold h-12 text-base rounded-md transition-colors gap-2"
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold h-12 text-base rounded-md transition-colors gap-2"
             >
                 <Plus size={20} /> Ajouter un sujet de prière
             </Button>
@@ -295,29 +295,29 @@ const PrayerList = () => {
                     id="urgent-toggle"
                     checked={isUrgent}
                     onChange={(e) => setIsUrgent(e.target.checked)}
-                    className="w-4 h-4 rounded border-white/30 bg-white/10 text-pink-500 focus:ring-pink-500 focus:ring-offset-0"
+                    className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                 />
-                <label htmlFor="urgent-toggle" className="text-sm text-gray-200 font-medium flex items-center gap-1 cursor-pointer select-none">
+                <label htmlFor="urgent-toggle" className="text-sm text-gray-700 font-medium flex items-center gap-1 cursor-pointer select-none">
                     Requête urgente <Flame size={14} className="text-orange-500 fill-orange-500" />
                 </label>
             </div>
           </form>
-      </div>
+      </Card>
 
       {/* List Header */}
       <div className="flex items-center gap-3 pt-2">
-         <h2 className="text-lg font-bold text-white">Requêtes actives</h2>
-         <span className="bg-[#2d243a] text-gray-300 text-xs font-bold px-2.5 py-0.5 rounded-full">{activeCount}</span>
+         <h2 className="text-lg font-bold text-gray-900">Requêtes actives</h2>
+         <span className="bg-purple-100 text-purple-700 text-xs font-bold px-2.5 py-0.5 rounded-full">{activeCount}</span>
       </div>
         
       {/* Prayers List */}
       <div className="space-y-4">
         {loading ? (
              <div className="flex justify-center py-12">
-                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                 <Loader2 className="animate-spin h-8 w-8 text-purple-600"></Loader2>
              </div>
         ) : sortedPrayers.length === 0 ? (
-             <div className="text-center py-16 text-gray-500 text-lg font-medium">
+             <div className="text-center py-16 text-gray-600 text-lg font-medium">
                 Aucune requête de prière pour le moment.
              </div>
         ) : (
@@ -326,17 +326,15 @@ const PrayerList = () => {
               const isOwnerOrAdmin = isAdmin || (user?.id === prayer.user_id);
               
               return (
-                <motion.div 
+                <Card
                     key={prayer.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    layout 
-                    className={`p-5 rounded-xl border transition-all duration-200 relative overflow-hidden flex flex-col gap-3 group bg-card/40 border-white/5 hover:border-white/10 hover:bg-card/60`}
+                    className={`p-5 rounded-xl border transition-all duration-200 relative overflow-hidden flex flex-col gap-3 group bg-white border-gray-200 hover:border-purple-300 hover:shadow-sm shadow-sm ${
+                        prayer.is_urgent ? 'border-l-4 border-l-orange-500' : ''
+                    }`}
                 >
                     {/* Urgent Badge Strip */}
                     {prayer.is_urgent && (
-                        <div className="absolute top-0 left-0 w-1 h-full bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]" />
+                        <div className="absolute top-0 left-0 w-1 h-full bg-orange-500" />
                     )}
 
                     {/* Main Content Row */}
@@ -346,8 +344,8 @@ const PrayerList = () => {
                             disabled={!isOwnerOrAdmin}
                             className={`mt-1 shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
                                 isOwnerOrAdmin 
-                                    ? 'border-gray-600 hover:border-emerald-400 hover:text-emerald-400 text-transparent' 
-                                    : 'border-gray-700 cursor-default opacity-30'
+                                    ? 'border-gray-300 hover:border-green-500 hover:text-green-500 text-transparent' 
+                                    : 'border-gray-300 cursor-default opacity-30'
                             }`}
                             title={isOwnerOrAdmin ? "Marquer comme exaucé" : "Lecture seule"}
                         >
@@ -357,13 +355,13 @@ const PrayerList = () => {
                         <div className="flex-1 min-w-0 pt-0.5">
                             <div className="flex items-start justify-between gap-2 mb-1">
                                 {prayer.is_urgent && (
-                                    <div className="inline-flex items-center gap-1 shrink-0 bg-orange-500/10 px-2 py-0.5 rounded text-orange-500 text-[10px] font-bold border border-orange-500/20 uppercase tracking-wide mb-1">
+                                    <div className="inline-flex items-center gap-1 shrink-0 bg-orange-500/10 px-2 py-0.5 rounded text-orange-600 text-[10px] font-bold border border-orange-500/20 uppercase tracking-wide mb-1">
                                         <Flame size={10} className="fill-orange-500" /> URGENT
                                     </div>
                                 )}
                             </div>
                             
-                            <p className="text-[15px] leading-relaxed font-medium text-gray-100">
+                            <p className="text-[15px] leading-relaxed font-medium text-gray-900">
                                 {prayer.request_text}
                             </p>
                         </div>
@@ -372,7 +370,7 @@ const PrayerList = () => {
                             <Button 
                                 variant="ghost" 
                                 size="icon" 
-                                className="shrink-0 -mt-2 -mr-2 text-gray-600 hover:text-red-400 hover:bg-red-400/10 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="shrink-0 -mt-2 -mr-2 text-gray-600 hover:text-red-600 hover:bg-red-50 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
                                 onClick={() => deletePrayer(prayer.id)}
                             >
                                 <Trash2 size={16} />
@@ -381,9 +379,9 @@ const PrayerList = () => {
                     </div>
 
                     {/* Bottom Meta Row: Date & Disciple Name */}
-                    <div className="flex items-center justify-between mt-2 pt-3 border-t border-white/5">
+                    <div className="flex items-center justify-between mt-2 pt-3 border-t border-gray-200">
                         <div className="flex items-center gap-2">
-                            <Clock size={12} className="text-gray-600" />
+                            <Clock size={12} className="text-gray-500" />
                             <span className="text-xs text-gray-600 font-medium">
                                 {new Date(prayer.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                             </span>
@@ -392,18 +390,18 @@ const PrayerList = () => {
                         <div className="flex items-center gap-2">
                             <div 
                                 onClick={() => setSelectedDisciple(prayer.disciple_name)}
-                                className={`flex items-center gap-2 bg-white/5 px-2 py-1 rounded-md border border-white/5 cursor-pointer hover:bg-white/10 hover:border-white/10 transition-all group/chip`}
+                                className={`flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-md border border-gray-200 cursor-pointer hover:bg-purple-50 hover:border-purple-300 transition-all group/chip`}
                             >
                                 <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${getAvatarColor(prayer.disciple_name)}`}>
                                     {getInitials(prayer.disciple_name)}
                                 </div>
-                                <span className="text-xs font-medium text-gray-400 group-hover/chip:text-white transition-colors">{prayer.disciple_name}</span>
-                                <ChevronRight size={10} className="opacity-0 group-hover/chip:opacity-100 -ml-1 text-gray-400" />
+                                <span className="text-xs font-medium text-gray-700 group-hover/chip:text-purple-600 transition-colors">{prayer.disciple_name}</span>
+                                <ChevronRight size={10} className="opacity-0 group-hover/chip:opacity-100 -ml-1 text-gray-500" />
                             </div>
                         </div>
                     </div>
 
-                </motion.div>
+                </Card>
               )
             })}
             </AnimatePresence>

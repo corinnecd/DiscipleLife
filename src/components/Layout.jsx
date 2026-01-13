@@ -57,6 +57,7 @@ const Layout = () => {
     { label: 'Suivi de Présence', path: '/attendance', icon: CalendarCheck, iconColor: 'text-blue-500' },
     { label: 'Évangélisation', path: '/evangelization', icon: UserPlus, iconColor: 'text-teal-500' },
     { label: 'Engagement', path: '/engagement', icon: Award, iconColor: 'text-purple-500' },
+    { label: 'Transformation', path: '/transformation', icon: Heart, iconColor: 'text-pink-500' },
     { label: 'Mes Disciples', path: '/disciples', icon: User, iconColor: 'text-green-500' },
     { label: 'Cercles', path: '/circles', icon: Target, iconColor: 'text-pink-500' },
     { label: 'Requêtes de Prières', path: '/prayer-requests', icon: Heart, iconColor: 'text-pink-500' },

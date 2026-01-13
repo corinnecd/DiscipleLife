@@ -165,3 +165,4 @@ CREATE POLICY "Responsables and admins can delete activites_solidarite" ON activ
     );
 
 
+

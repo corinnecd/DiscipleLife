@@ -184,3 +184,4 @@ Si le problème persiste :
 - `008_verification_et_creation_codes_invitation.sql` : **RECOMMANDÉ** - Version simplifiée et robuste
 - `006_fix_codes_invitation_lien.sql` : Pour ajouter seulement la colonne `lien_invitation`
 
+

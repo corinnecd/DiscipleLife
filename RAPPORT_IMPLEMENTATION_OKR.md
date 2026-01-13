@@ -542,3 +542,4 @@ OBJECTIF (O) : Déclaration qualitative d'ambition
 **Fin du rapport d'implémentation OKR**
 
 
+

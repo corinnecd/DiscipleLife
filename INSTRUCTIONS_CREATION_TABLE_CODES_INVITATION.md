@@ -104,3 +104,4 @@ Si le problème persiste après avoir suivi ces instructions :
 2. Vérifiez que toutes les migrations précédentes ont été exécutées
 3. Vérifiez que la table `profils` existe et est accessible
 
+

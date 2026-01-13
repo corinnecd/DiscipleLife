@@ -1265,11 +1265,11 @@ const Evangelization = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-200 border-none text-gray-600">
-                  <SelectItem value="tous" className="text-gray-600 hover:bg-purple-500 hover:text-white">Tous les statuts</SelectItem>
-                  <SelectItem value="visiteur" className="text-gray-600 hover:bg-purple-500 hover:text-white">Visiteur</SelectItem>
-                  <SelectItem value="nouveau_contact" className="text-gray-600 hover:bg-purple-500 hover:text-white">Nouveau converti</SelectItem>
-                  <SelectItem value="eloigne" className="text-gray-600 hover:bg-purple-500 hover:text-white">Éloigné</SelectItem>
-                  <SelectItem value="retourne" className="text-gray-600 hover:bg-purple-500 hover:text-white">Revenu</SelectItem>
+                  <SelectItem value="tous" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Tous les statuts</SelectItem>
+                  <SelectItem value="visiteur" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Visiteur</SelectItem>
+                  <SelectItem value="nouveau_contact" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Nouveau converti</SelectItem>
+                  <SelectItem value="eloigne" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Éloigné</SelectItem>
+                  <SelectItem value="retourne" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Revenu</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -1277,9 +1277,9 @@ const Evangelization = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-200 border-none text-gray-600">
-                  <SelectItem value="tous" className="text-gray-600 hover:bg-purple-500 hover:text-white">Tous les types</SelectItem>
-                  <SelectItem value="nouvelle_ame" className="text-gray-600 hover:bg-purple-500 hover:text-white">Nouvelle âme</SelectItem>
-                  <SelectItem value="ancien_eloigne" className="text-gray-600 hover:bg-purple-500 hover:text-white">Ancien éloigné</SelectItem>
+                  <SelectItem value="tous" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Tous les types</SelectItem>
+                  <SelectItem value="nouvelle_ame" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Nouvelle âme</SelectItem>
+                  <SelectItem value="ancien_eloigne" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Ancien éloigné</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1347,8 +1347,8 @@ const Evangelization = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-gray-200 border-none text-gray-600">
-                          <SelectItem value="nouvelle_ame" className="text-gray-600 hover:bg-purple-500 hover:text-white">Nouvelle âme</SelectItem>
-                          <SelectItem value="ancien_eloigne" className="text-gray-600 hover:bg-purple-500 hover:text-white">Ancien éloigné</SelectItem>
+                          <SelectItem value="nouvelle_ame" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Nouvelle âme</SelectItem>
+                          <SelectItem value="ancien_eloigne" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Ancien éloigné</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1362,10 +1362,10 @@ const Evangelization = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-gray-200 border-none text-gray-600">
-                          <SelectItem value="visiteur" className="text-gray-600 hover:bg-purple-500 hover:text-white">Visiteur</SelectItem>
-                          <SelectItem value="nouveau_contact" className="text-gray-600 hover:bg-purple-500 hover:text-white">Nouveau converti</SelectItem>
-                          <SelectItem value="eloigne" className="text-gray-600 hover:bg-purple-500 hover:text-white">Éloigné</SelectItem>
-                          <SelectItem value="retourne" className="text-gray-600 hover:bg-purple-500 hover:text-white">Revenu</SelectItem>
+                          <SelectItem value="visiteur" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Visiteur</SelectItem>
+                          <SelectItem value="nouveau_contact" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Nouveau converti</SelectItem>
+                          <SelectItem value="eloigne" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Éloigné</SelectItem>
+                          <SelectItem value="retourne" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Revenu</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

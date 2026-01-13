@@ -622,3 +622,4 @@ Toutes les tables de l'ancien rapport restent valides et nécessaires. Les nouve
 **Fin du rapport comparatif**
 
 
+

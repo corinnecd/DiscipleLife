@@ -525,10 +525,10 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
-                            <SelectItem value="Non-croyant">Non-croyant</SelectItem>
-                            <SelectItem value="Nouveau converti">Nouveau converti</SelectItem>
-                            <SelectItem value="Disciple affermi">Disciple affermi</SelectItem>
-                            <SelectItem value="Faiseur de disciples">Faiseur de disciples</SelectItem>
+                            <SelectItem value="Non-croyant" className="focus:bg-gray-100 focus:!text-gray-900">Non-croyant</SelectItem>
+                            <SelectItem value="Nouveau converti" className="focus:bg-gray-100 focus:!text-gray-900">Nouveau converti</SelectItem>
+                            <SelectItem value="Disciple affermi" className="focus:bg-gray-100 focus:!text-gray-900">Disciple affermi</SelectItem>
+                            <SelectItem value="Faiseur de disciples" className="focus:bg-gray-100 focus:!text-gray-900">Faiseur de disciples</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -554,9 +554,9 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                             <SelectValue placeholder="Aucun (Racine)" />
                           </SelectTrigger>
                           <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200] max-h-[300px] overflow-y-auto">
-                            <SelectItem value="none">Aucun (Racine)</SelectItem>
+                            <SelectItem value="none" className="focus:bg-gray-100 focus:!text-gray-900">Aucun (Racine)</SelectItem>
                             {allPotentialParents.map(member => (
-                              <SelectItem key={member.id} value={member.id}>
+                              <SelectItem key={member.id} value={member.id} className="focus:bg-gray-100 focus:!text-gray-900">
                                 {member.name} {member.type === 'mentor' ? '(Mentor)' : '(Disciple)'}
                               </SelectItem>
                             ))}
@@ -574,8 +574,8 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
-                            <SelectItem value="non">Non</SelectItem>
-                            <SelectItem value="oui">Oui</SelectItem>
+                            <SelectItem value="non" className="focus:bg-gray-100 focus:!text-gray-900">Non</SelectItem>
+                            <SelectItem value="oui" className="focus:bg-gray-100 focus:!text-gray-900">Oui</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -601,13 +601,13 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                             setIsAdding(false);
                             initializeFormData();
                           }} 
-                          className="flex-1 max-w-xs border-slate-300 bg-slate-800 text-white hover:text-green-600 hover:bg-white hover:border-green-600"
+                          className="flex-1 max-w-xs border-gray-300 text-gray-700 hover:bg-gray-50"
                         >
                           Annuler
                         </Button>
                         <Button 
                           type="submit" 
-                          className="flex-1 max-w-xs bg-teal-600 hover:bg-teal-700 text-white"
+                          className="flex-1 max-w-xs bg-purple-600 hover:bg-purple-700 text-white"
                         >
                           Enregistrer
                         </Button>
@@ -670,14 +670,14 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
       {/* Confirmation Modal for Public Visibility */}
       <AnimatePresence>
         {publicConfirmPerson && (
-           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm">
-               <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#1e293b] w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+               <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-xl border border-gray-200">
                    <div className="p-6">
-                       <h3 className="text-2xl font-bold text-white mb-4">Rendre Public ?</h3>
-                       <p className="text-slate-300 mb-6 leading-relaxed">Voulez-vous rendre ce nom public ? Cela permettra aux autres membres de votre groupe de voir ce nom.</p>
+                       <h3 className="text-2xl font-bold text-gray-900 mb-4">Rendre Public ?</h3>
+                       <p className="text-gray-600 mb-6 leading-relaxed">Voulez-vous rendre ce nom public ? Cela permettra aux autres membres de votre groupe de voir ce nom.</p>
                        <div className="flex justify-end gap-3">
-                           <Button onClick={() => setPublicConfirmPerson(null)} className="h-12 w-12 rounded-full bg-red-500 hover:bg-red-600 text-white p-0 flex items-center justify-center"><X size={24} /></Button>
-                           <Button onClick={() => updateVisibility(publicConfirmPerson.id, true)} className="h-12 w-12 rounded-full bg-teal-500 hover:bg-teal-600 text-white p-0 flex items-center justify-center"><Check size={24} /></Button>
+                           <Button onClick={() => setPublicConfirmPerson(null)} className="h-12 w-12 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-900 p-0 flex items-center justify-center"><X size={24} /></Button>
+                           <Button onClick={() => updateVisibility(publicConfirmPerson.id, true)} className="h-12 w-12 rounded-full bg-purple-600 hover:bg-purple-700 text-white p-0 flex items-center justify-center"><Check size={24} /></Button>
                        </div>
                    </div>
                </motion.div>
@@ -688,14 +688,14 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
       {/* Confirmation Modal for Deletion */}
       <AnimatePresence>
         {deleteConfirmPerson && (
-           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm">
-               <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#1e293b] w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+               <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-xl border border-gray-200">
                    <div className="p-6 text-center">
-                       <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4 text-red-500"><Trash2 size={24} /></div>
-                       <h3 className="text-xl font-bold text-white mb-2">Supprimer {deleteConfirmPerson.name} ?</h3>
-                       <p className="text-slate-400 mb-6">Êtes-vous sûr de vouloir retirer cette personne de votre cercle ? Cette action est irréversible.</p>
+                       <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4 text-red-600"><Trash2 size={24} /></div>
+                       <h3 className="text-xl font-bold text-gray-900 mb-2">Supprimer {deleteConfirmPerson.name} ?</h3>
+                       <p className="text-gray-600 mb-6">Êtes-vous sûr de vouloir retirer cette personne de votre cercle ? Cette action est irréversible.</p>
                        <div className="flex gap-3">
-                           <Button variant="outline" onClick={() => setDeleteConfirmPerson(null)} className="flex-1 border-slate-600 text-slate-200 hover:bg-slate-800">Annuler</Button>
+                           <Button variant="outline" onClick={() => setDeleteConfirmPerson(null)} className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50">Annuler</Button>
                            <Button onClick={handleDelete} className="flex-1 bg-red-600 hover:bg-red-700 text-white">Supprimer</Button>
                        </div>
                    </div>
@@ -747,11 +747,11 @@ const Circles = () => {
   };
 
   return (
-    <div className="h-full flex flex-col items-center justify-center w-full relative overflow-y-auto overflow-x-hidden min-h-[600px] py-10">
+    <div className="h-full flex flex-col items-center justify-center w-full relative overflow-y-auto overflow-x-hidden min-h-[600px] py-10 px-4 sm:px-6">
         
         <div className="text-center mb-4 z-0 px-4 mt-4 md:mt-0">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">Cercles de Disciples</h2>
-            <p className="text-gray-400 max-w-md mx-auto">Identifiez et priez pour les personnes que Dieu a placées dans votre vie.</p>
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">Cercles de Disciples</h2>
+            <p className="text-gray-600 max-w-md mx-auto">Identifiez et priez pour les personnes que Dieu a placées dans votre vie.</p>
         </div>
 
         <div className="relative w-[280px] h-[280px] sm:w-[340px] sm:h-[340px] md:w-[440px] md:h-[440px] lg:w-[520px] lg:h-[520px] flex items-center justify-center my-8">
@@ -762,11 +762,11 @@ const Circles = () => {
         </div>
         
         <div className="w-full max-w-md px-4 mt-24 flex flex-col gap-4">
-            <Button className="flex-1 py-5 text-lg bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-500 hover:to-blue-700 shadow-lg shadow-blue-900/30 border border-blue-400/30 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-prayers')}>
+            <Button className="flex-1 py-5 text-lg bg-purple-600 hover:bg-purple-700 text-white shadow-sm border border-purple-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-prayers')}>
                 <BellRing className="mr-2 h-5 w-5" />
                 Planifier une Prière
             </Button>
-            <Button className="flex-1 py-5 text-lg bg-gradient-to-r from-green-600 to-green-800 hover:from-green-500 hover:to-green-700 shadow-lg shadow-green-900/30 border border-green-400/30 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-appointments')}>
+            <Button className="flex-1 py-5 text-lg bg-purple-600 hover:bg-purple-700 text-white shadow-sm border border-purple-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-appointments')}>
                 <MessageCircle className="mr-2 h-5 w-5" />
                 Planifier un Échange
             </Button>

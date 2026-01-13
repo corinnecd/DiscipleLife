@@ -96,3 +96,4 @@ COMMENT ON TABLE contacts_relance IS 'Table pour tracker les tentatives de relan
 COMMENT ON TABLE historique_presence IS 'Table pour tracker l''historique de présence des visiteurs';
 
 
+

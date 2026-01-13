@@ -308,113 +308,115 @@ const DiscipleDetail = () => {
       </Button>
 
       {/* Header Profile */}
-      <div className="bg-card/40 border border-white/10 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row gap-6 items-center md:items-start backdrop-blur-sm">
-        <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-4xl font-bold text-white shadow-xl shadow-teal-500/20">
-          {disciple.name.charAt(0).toUpperCase()}
-        </div>
-        <div className="flex-1 text-center md:text-left space-y-2">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold text-white">{disciple.name}</h1>
-            <Button
-              size="sm"
-              className="bg-red-600 hover:bg-red-700 text-white text-sm ml-auto"
-              onClick={() => setIsDeleteModalOpen(true)}
-            >
-              <Trash2 size={14} className="mr-1" />
-              Supprimer ce disciple
-            </Button>
+      <Card className="bg-white border-gray-200 shadow-sm rounded-2xl p-6 md:p-8">
+        <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
+          <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-4xl font-bold text-white shadow-lg shadow-purple-500/20">
+            {disciple.name.charAt(0).toUpperCase()}
           </div>
-          <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
-            <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-sm font-medium border border-indigo-500/20">
-              {getStatusLabel(disciple.circle_type).toUpperCase()}
-            </span>
-            <span className="text-gray-400 text-sm flex items-center gap-1">
-              <Calendar size={14} /> Ajouté le {new Date(disciple.created_at).toLocaleDateString()}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2 mt-4 justify-center md:justify-start">
-             <Button size="sm" variant="secondary" onClick={() => handleAction("Message envoyé")}>
-               <MessageSquare size={16} className="mr-2" /> Message
-             </Button>
-             <Button size="sm" variant="outline" className="border-white/10" onClick={() => handleAction("Appel lancé")}>
-               <Phone size={16} className="mr-2" /> Appeler
-             </Button>
-             {getNextLevel(disciple.circle_type) && (
-               <Button 
-                 size="sm" 
-                 className="bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-600 hover:to-blue-700 text-white"
-                 onClick={handleUpgradeLevel}
-                 disabled={isUpgrading}
-               >
-                 {isUpgrading ? (
-                   <>
-                     <Loader2 size={16} className="mr-2 animate-spin" /> Mise à jour...
-                   </>
-                 ) : (
-                   <>
-                     <TrendingUp size={16} className="mr-2" /> Passer au niveau supérieur
-                   </>
-                 )}
+          <div className="flex-1 text-center md:text-left space-y-2">
+            <div className="flex items-center justify-between">
+              <h1 className="text-3xl font-bold text-gray-900">{disciple.name}</h1>
+              <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 text-white text-sm ml-auto"
+                onClick={() => setIsDeleteModalOpen(true)}
+              >
+                <Trash2 size={14} className="mr-1" />
+                Supprimer ce disciple
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+              <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-sm font-medium border border-purple-200">
+                {getStatusLabel(disciple.circle_type).toUpperCase()}
+              </span>
+              <span className="text-gray-600 text-sm flex items-center gap-1">
+                <Calendar size={14} /> Ajouté le {new Date(disciple.created_at).toLocaleDateString()}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-4 justify-center md:justify-start">
+               <Button size="sm" variant="secondary" className="bg-gray-800 hover:bg-gray-100 text-white hover:text-black" onClick={() => handleAction("Message envoyé")}>
+                 <MessageSquare size={16} className="mr-2" /> Message
                </Button>
-             )}
+               <Button size="sm" variant="outline" className="border-gray-800 bg-gray-800 text-white hover:bg-gray-100 hover:text-black" onClick={() => handleAction("Appel lancé")}>
+                 <Phone size={16} className="mr-2" /> Appeler
+               </Button>
+               {getNextLevel(disciple.circle_type) && (
+                 <Button 
+                   size="sm" 
+                   className="bg-purple-600 hover:bg-purple-700 text-white"
+                   onClick={handleUpgradeLevel}
+                   disabled={isUpgrading}
+                 >
+                   {isUpgrading ? (
+                     <>
+                       <Loader2 size={16} className="mr-2 animate-spin" /> Mise à jour...
+                     </>
+                   ) : (
+                     <>
+                       <TrendingUp size={16} className="mr-2" /> Passer au niveau supérieur
+                     </>
+                   )}
+                 </Button>
+               )}
+            </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Quick Info */}
-        <Card className="bg-card/30 border-white/10">
+        <Card className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg text-white">Informations</CardTitle>
+            <CardTitle className="text-lg text-gray-900">Informations</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center gap-3 text-gray-300">
-              <div className="p-2 bg-white/5 rounded-lg"><Mail size={18} /></div>
+            <div className="flex items-center gap-3 text-gray-600">
+              <div className="p-2 bg-gray-100 rounded-lg"><Mail size={18} className="text-gray-600" /></div>
               <span>Non renseigné</span>
             </div>
-            <div className="flex items-center gap-3 text-gray-300">
-              <div className="p-2 bg-white/5 rounded-lg"><Phone size={18} /></div>
+            <div className="flex items-center gap-3 text-gray-600">
+              <div className="p-2 bg-gray-100 rounded-lg"><Phone size={18} className="text-gray-600" /></div>
               <span>Non renseigné</span>
             </div>
-            <div className="flex items-center gap-3 text-gray-300">
-              <div className="p-2 bg-white/5 rounded-lg"><MapPin size={18} /></div>
+            <div className="flex items-center gap-3 text-gray-600">
+              <div className="p-2 bg-gray-100 rounded-lg"><MapPin size={18} className="text-gray-600" /></div>
               <span>Non renseigné</span>
             </div>
           </CardContent>
         </Card>
 
         {/* Spiritual Activity */}
-        <Card className="bg-card/30 border-white/10">
+        <Card className="bg-white border-gray-200 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg text-white">Activité Spirituelle</CardTitle>
+            <CardTitle className="text-lg text-gray-900">Activité Spirituelle</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
                <div 
                   onClick={() => navigate('/conversations')}
-                  className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/5 hover:bg-white/10 cursor-pointer transition-colors"
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-purple-50 hover:border-purple-300 cursor-pointer transition-colors"
                >
                   <div className="flex items-center gap-3">
-                    <Activity className="text-green-400" size={20} />
+                    <Activity className="text-purple-500" size={20} />
                     <div>
-                      <p className="text-sm font-medium text-white">Dernière rencontre</p>
-                      <p className="text-xs text-gray-400">Voir la liste des échanges</p>
+                      <p className="text-sm font-medium text-gray-900">Dernière rencontre</p>
+                      <p className="text-xs text-gray-600">Voir la liste des échanges</p>
                     </div>
                   </div>
-                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-gray-400">
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-gray-500 hover:text-purple-600">
                       <span className="text-lg leading-none">→</span>
                   </Button>
                </div>
 
-               <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/5 group hover:border-blue-500/30 transition-colors cursor-pointer" onClick={() => setIsPrayerModalOpen(true)}>
+               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 group hover:bg-purple-50 hover:border-purple-300 transition-colors cursor-pointer" onClick={() => setIsPrayerModalOpen(true)}>
                   <div className="flex items-center gap-3">
-                    <MessageSquare className="text-blue-400" size={20} />
+                    <MessageSquare className="text-purple-500" size={20} />
                     <div>
-                      <p className="text-sm font-medium text-white">Sujets de prière</p>
-                      <p className="text-xs text-gray-400">Ajouter une requête</p>
+                      <p className="text-sm font-medium text-gray-900">Sujets de prière</p>
+                      <p className="text-xs text-gray-600">Ajouter une requête</p>
                     </div>
                   </div>
-                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-full bg-white/5 hover:bg-blue-500 hover:text-white">
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-full bg-gray-100 hover:bg-purple-600 hover:text-white">
                       <span className="text-lg leading-none">+</span>
                   </Button>
                </div>

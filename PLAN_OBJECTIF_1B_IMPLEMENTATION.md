@@ -92,3 +92,4 @@ Dans chaque carte d'éloigné, afficher les derniers contacts (si disponibles)
 Le fichier est très long. Faire les modifications avec précaution en vérifiant les numéros de ligne exacts avant chaque modification.
 
 
+

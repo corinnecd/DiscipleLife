@@ -44,3 +44,4 @@ Après l'exécution, vous devriez voir :
 - La requête utilise `ON CONFLICT DO NOTHING` pour éviter les doublons si exécutée plusieurs fois
 
 
+

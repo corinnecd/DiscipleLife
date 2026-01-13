@@ -29,6 +29,8 @@ import SendReport from './pages/SendReport';
 import Statistics from './pages/Statistics'; // Import Statistics Page
 import Evangelization from './pages/Evangelization';
 import Engagement from './pages/Engagement';
+import Transformation from './pages/Transformation';
+import ParcoursDetail from './pages/ParcoursDetail';
 import Ebooks from './pages/Ebooks';
 import TeachingVideos from './pages/TeachingVideos';
 import TestimonialVideos from './pages/TestimonialVideos';
@@ -141,6 +143,8 @@ function AppRoutes() {
         <Route path="send-report" element={<SendReport />} />
         <Route path="evangelization" element={<Evangelization />} />
         <Route path="engagement" element={<Engagement />} />
+        <Route path="transformation" element={<Transformation />} />
+        <Route path="transformation/:parcoursId" element={<ParcoursDetail />} />
         
         {/* Admin Routes */}
         <Route path="admin" element={

@@ -831,3 +831,4 @@ Chaque objectif a maintenant des Key Results (KR) quantifiables et mesurables d�
 *Ce document est le rapport définitif intégrant l'ancien rapport technique et le nouveau contenu OKR. Il sert de base de travail pour l'implémentation complète de la nouvelle dynamique de discipolat.*
 
 
+

@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 import {
   Award, Trophy, Target, TrendingUp, Activity, Users, BookOpen,
   Heart, Calendar, Gift, Star, Zap, BarChart3, PieChart,
-  ArrowRight, Loader2, CheckCircle, Clock, Flame
+  ArrowRight, Loader2, CheckCircle, Clock, Flame, Bell, X,
+  Footprints, GraduationCap, BookOpen as BookOpenIcon, Crown
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -23,6 +24,48 @@ const Engagement = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
 
+  // Fonction helper pour obtenir l'icône d'un badge
+  const getBadgeIcon = (badge) => {
+    // Si l'icône est un emoji, l'afficher directement
+    if (badge?.icone && /[\u{1F300}-\u{1F9FF}]/u.test(badge.icone)) {
+      return <span className="text-4xl">{badge.icone}</span>;
+    }
+    
+    // Mapping des noms de badges vers des icônes Lucide React
+    const iconMap = {
+      'Premier Pas': <Footprints className="w-10 h-10 text-purple-600" />,
+      'Étudiant': <GraduationCap className="w-10 h-10 text-purple-600" />,
+      'Apprenti': <BookOpenIcon className="w-10 h-10 text-purple-600" />,
+      'Érudit': <BookOpenIcon className="w-10 h-10 text-purple-600" />,
+      'Fidèle': <Heart className="w-10 h-10 text-purple-600" />,
+      'Assidu': <Activity className="w-10 h-10 text-purple-600" />,
+      'Pilier': <Award className="w-10 h-10 text-purple-600" />,
+      'Guerrier de Prière': <Target className="w-10 h-10 text-purple-600" />,
+      'Intercesseur': <Heart className="w-10 h-10 text-purple-600" />,
+      'Maître de Prière': <Trophy className="w-10 h-10 text-purple-600" />,
+      'Serviteur': <Users className="w-10 h-10 text-purple-600" />,
+      'Bénévole': <Zap className="w-10 h-10 text-purple-600" />,
+      'Ministre': <Star className="w-10 h-10 text-purple-600" />,
+      'Connecté': <Users className="w-10 h-10 text-purple-600" />,
+      'Actif': <Flame className="w-10 h-10 text-purple-600" />,
+      'Leader': <Star className="w-10 h-10 text-purple-600" />,
+      'Débutant': <Award className="w-10 h-10 text-purple-600" />,
+      'Engagé': <Trophy className="w-10 h-10 text-purple-600" />,
+      'Passionné': <Flame className="w-10 h-10 text-purple-600" />,
+      'Dévoué': <Crown className="w-10 h-10 text-purple-600" />,
+      'Exemplaire': <Trophy className="w-10 h-10 text-purple-600" />,
+      'Équilibré': <Target className="w-10 h-10 text-purple-600" />,
+      'Constance': <Calendar className="w-10 h-10 text-purple-600" />,
+      'Persévérance': <TrendingUp className="w-10 h-10 text-purple-600" />,
+      'Faiseur de Disciples': <Users className="w-10 h-10 text-purple-600" />,
+      'Évangéliste': <Target className="w-10 h-10 text-purple-600" />,
+      'Champion': <Trophy className="w-10 h-10 text-purple-600" />
+    };
+
+    // Retourner l'icône mappée ou l'emoji par défaut
+    return iconMap[badge?.nom] || <span className="text-4xl">{badge?.icone || '🏆'}</span>;
+  };
+
   // États pour les scores
   const [currentScore, setCurrentScore] = useState(null);
   const [scoresHistory, setScoresHistory] = useState([]);
@@ -37,10 +80,16 @@ const Engagement = () => {
   
   // États pour l'historique
   const [engagementHistory, setEngagementHistory] = useState([]);
+  
+  // États pour les notifications
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchAllData();
+      fetchNotifications();
+      generateProactiveNotifications();
     }
   }, [user]);
 
@@ -54,7 +103,8 @@ const Engagement = () => {
         fetchAvailableBadges(),
         fetchProgrammes(),
         fetchUserProgrammes(),
-        fetchEngagementHistory()
+        fetchEngagementHistory(),
+        fetchNotifications()
       ]);
     } catch (error) {
       console.error('Erreur lors du chargement des données:', error);
@@ -198,6 +248,60 @@ const Engagement = () => {
     }
   };
 
+  const fetchNotifications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('engagement_notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('lu', false)
+        .order('date_creation', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setNotifications(data || []);
+    } catch (error) {
+      console.error('Erreur fetchNotifications:', error);
+    }
+  };
+
+  const generateProactiveNotifications = async () => {
+    try {
+      // Appeler la fonction SQL pour générer les notifications proactives
+      const { error } = await supabase.rpc('generer_notifications_proactives', {
+        p_user_id: user.id
+      });
+
+      if (error) {
+        // Si la fonction n'existe pas encore, on ignore l'erreur
+        if (error.code !== '42883') {
+          console.error('Erreur generateProactiveNotifications:', error);
+        }
+      } else {
+        // Rafraîchir les notifications après génération
+        fetchNotifications();
+      }
+    } catch (error) {
+      console.error('Erreur generateProactiveNotifications:', error);
+    }
+  };
+
+  const markNotificationAsRead = async (notificationId) => {
+    try {
+      const { error } = await supabase
+        .from('engagement_notifications')
+        .update({ lu: true })
+        .eq('id', notificationId);
+
+      if (error) throw error;
+
+      // Retirer la notification de la liste
+      setNotifications(notifications.filter(n => n.id !== notificationId));
+    } catch (error) {
+      console.error('Erreur markNotificationAsRead:', error);
+    }
+  };
+
   const handleJoinProgramme = async (programmeId) => {
     try {
       const { error } = await supabase
@@ -271,13 +375,105 @@ const Engagement = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"
         >
-          <h1 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-            <Award className="w-6 h-6 text-purple-600" />
-            Engagement & Fidélisation
-          </h1>
-          <p className="text-gray-600">
-            Suivez votre progression et restez engagé dans votre croissance spirituelle
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+                <Award className="w-6 h-6 text-purple-600" />
+                Engagement & Fidélisation
+              </h1>
+              <p className="text-gray-600">
+                Suivez votre progression et restez engagé dans votre croissance spirituelle
+              </p>
+            </div>
+            {/* Bouton Notifications */}
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative"
+              >
+                <Bell className="w-5 h-5 text-purple-600" />
+                {notifications.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {notifications.length}
+                  </span>
+                )}
+              </Button>
+              {/* Dropdown Notifications */}
+              {showNotifications && (
+                <div className="absolute right-0 top-12 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                  <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">Notifications</h3>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowNotifications(false)}
+                      className="h-6 w-6"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center text-gray-500">
+                      <Bell className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>Aucune notification</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-200">
+                      {notifications.map((notification) => {
+                        const getIcon = () => {
+                          switch (notification.type_notification) {
+                            case 'badge_obtenu':
+                              return '🎉';
+                            case 'suggestion_action':
+                              return '💡';
+                            case 'rappel_activite':
+                              return '📅';
+                            case 'objectif_atteint':
+                              return '✅';
+                            case 'encouragement':
+                              return '💝';
+                            default:
+                              return '🔔';
+                          }
+                        };
+                        return (
+                          <div
+                            key={notification.id}
+                            className="p-4 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="text-2xl">{getIcon()}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-gray-900 text-sm mb-1">
+                                  {notification.titre}
+                                </div>
+                                <div className="text-sm text-gray-600 mb-2">
+                                  {notification.message}
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                  {format(new Date(notification.date_creation), 'dd/MM/yyyy HH:mm', { locale: fr })}
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => markNotificationAsRead(notification.id)}
+                                className="h-6 w-6 shrink-0"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </motion.div>
 
         <Tabs defaultValue="dashboard" className="space-y-6">
@@ -468,8 +664,8 @@ const Engagement = () => {
                             key={userBadge.id}
                             className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center"
                           >
-                            <div className="text-4xl mb-2">
-                              {userBadge.badges?.icone || '🏆'}
+                            <div className="flex items-center justify-center mb-2">
+                              {getBadgeIcon(userBadge.badges)}
                             </div>
                             <div className="font-semibold text-gray-900 text-sm">
                               {userBadge.badges?.nom || 'Badge'}
@@ -513,7 +709,9 @@ const Engagement = () => {
                               }`}
                             >
                               <div className="flex items-center gap-3">
-                                <div className="text-3xl">{badge.icone || '🏆'}</div>
+                                <div className="flex items-center justify-center">
+                                  {getBadgeIcon(badge)}
+                                </div>
                                 <div className="flex-1">
                                   <div className="font-semibold text-gray-900">{badge.nom}</div>
                                   <div className="text-sm text-gray-600 mt-1">

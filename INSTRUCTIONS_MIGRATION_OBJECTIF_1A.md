@@ -60,3 +60,4 @@ Si vous rencontrez une erreur :
 4. Consultez les logs d'erreur dans Supabase
 
 
+

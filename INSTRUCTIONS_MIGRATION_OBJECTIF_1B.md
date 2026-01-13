@@ -53,3 +53,4 @@ Si vous rencontrez des erreurs :
 3. Vérifiez les permissions RLS si nécessaire
 
 
+

@@ -72,3 +72,4 @@ Si vous rencontrez des erreurs lors de l'exécution :
 
 Cette migration est **idempotente** : vous pouvez l'exécuter plusieurs fois sans problème. Elle vérifie l'existence des éléments avant de les créer.
 
+

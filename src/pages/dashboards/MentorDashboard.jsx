@@ -247,8 +247,8 @@ const MentorDashboard = () => {
       {/* 1. Header Section */}
       <div className="space-y-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Tableau de Bord Mentor</h1>
-          <p className="text-gray-400 mt-1 text-base">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">Tableau de Bord Mentor</h1>
+          <p className="text-gray-600">
             Gérez votre groupe, planifiez des rencontres et suivez la progression.
           </p>
         </div>
@@ -256,7 +256,7 @@ const MentorDashboard = () => {
         {/* 2. Action Button */}
         <Button 
           onClick={() => navigate('/circles')}
-          className="bg-[#14b8a6] hover:bg-[#0d9488] text-white font-semibold py-6 px-6 rounded-lg w-full sm:w-auto shadow-lg shadow-[#14b8a6]/20 transition-all flex items-center gap-2"
+          className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-6 px-6 rounded-lg w-full sm:w-auto transition-all flex items-center gap-2"
         >
           <UserPlus size={20} />
           Ajouter un disciple
@@ -266,34 +266,34 @@ const MentorDashboard = () => {
       {/* 2. Summary Cards - Single Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
         {/* Total Disciples */}
-        <Card className="bg-[#1e1b4b]/40 border-0 shadow-lg relative overflow-hidden">
+        <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden">
           <CardContent className="p-6">
-            <p className="text-gray-400 text-sm mb-2">Total Disciples</p>
+            <p className="text-gray-600 text-sm mb-2">Total Disciples</p>
             <div className="flex items-center gap-3">
-              <Users className="text-[#2dd4bf] h-6 w-6" />
-              <span className="text-4xl font-bold text-white">{stats.total}</span>
+              <Users className="text-purple-500 h-6 w-6" />
+              <span className="text-4xl font-bold text-gray-900">{stats.total}</span>
             </div>
           </CardContent>
         </Card>
 
         {/* RDV à venir */}
-        <Card className="bg-[#1e1b4b]/40 border-0 shadow-lg relative overflow-hidden">
+        <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden">
           <CardContent className="p-6">
-            <p className="text-gray-400 text-sm mb-2">RDV à venir</p>
+            <p className="text-gray-600 text-sm mb-2">RDV à venir</p>
             <div className="flex items-center gap-3">
-              <Calendar className="text-[#8b5cf6] h-6 w-6" />
-              <span className="text-4xl font-bold text-white">{stats.meetingsCount}</span>
+              <Calendar className="text-purple-500 h-6 w-6" />
+              <span className="text-4xl font-bold text-gray-900">{stats.meetingsCount}</span>
             </div>
           </CardContent>
         </Card>
 
         {/* Messages Non Lus */}
-        <Card className="bg-[#1e1b4b]/40 border-0 shadow-lg relative overflow-hidden">
+        <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden">
           <CardContent className="p-6">
-            <p className="text-gray-400 text-sm mb-2">Messages Non Lus</p>
+            <p className="text-gray-600 text-sm mb-2">Messages Non Lus</p>
             <div className="flex items-center gap-3">
-              <MessageSquare className="text-[#fbbf24] h-6 w-6" />
-              <span className="text-4xl font-bold text-white">{stats.unreadMessages}</span>
+              <MessageSquare className="text-purple-500 h-6 w-6" />
+              <span className="text-4xl font-bold text-gray-900">{stats.unreadMessages}</span>
             </div>
           </CardContent>
         </Card>
@@ -302,51 +302,44 @@ const MentorDashboard = () => {
       {/* 3. Status Cards Grid - 4 Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8">
         {statusCards.map((card, idx) => (
-          <Card key={idx} className="bg-[#150a24] border-0 relative overflow-hidden group h-full">
-            {/* Top Border Line */}
-            <div className={`absolute top-0 left-0 w-24 h-1 bg-gradient-to-r ${card.gradient.split(' ')[0]} to-transparent rounded-full`} />
-            <div className={`absolute top-0 right-0 w-8 h-1 bg-gradient-to-l ${card.gradient.split(' ')[0]} to-transparent rounded-full opacity-30`} />
-            
+          <Card key={idx} className="bg-white border-gray-200 shadow-sm relative overflow-hidden group h-full">
             <CardContent className="flex flex-col items-center justify-center py-8 px-4 h-full relative z-10">
-              <div className={`w-16 h-16 rounded-full border-2 ${card.borderColor} bg-opacity-10 flex items-center justify-center mb-4 bg-black/20`}>
+              <div className={`w-16 h-16 rounded-full border-2 ${card.borderColor} bg-white flex items-center justify-center mb-4`}>
                  <span className={`text-3xl font-bold ${card.color}`}>{card.count}</span>
               </div>
               
-              <h3 className="text-xs font-extrabold text-white uppercase tracking-widest text-center mb-2">
+              <h3 className="text-xs font-extrabold text-gray-900 uppercase tracking-widest text-center mb-2">
                 {card.title}
               </h3>
               
-              <p className="text-sm text-gray-500 font-medium">
+              <p className="text-sm text-gray-600 font-medium">
                 {getPercentage(card.count, stats.total)}% du total
               </p>
             </CardContent>
-            
-            {/* Background Glow Effect */}
-            <div className={`absolute -bottom-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-5 bg-gradient-to-br ${card.gradient}`} />
           </Card>
         ))}
       </div>
 
       {/* 4. Progression Globale */}
       <div className="space-y-4 mt-8">
-        <h2 className="text-xl font-bold text-white mb-4">Progression Globale</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Progression Globale</h2>
         <div className="grid grid-cols-1 gap-4">
           {metrics.map((metric, idx) => (
-             <div key={idx} className="bg-[#150a24] p-5 rounded-xl flex flex-col justify-center border border-white/5 hover:border-white/10 transition-colors">
+             <Card key={idx} className="bg-white border-gray-200 shadow-sm p-5">
                 <div className="flex justify-between items-center mb-3">
                    <div className="flex items-center gap-4">
                       <div className={`p-3 rounded-xl ${metric.bgIcon}`}>
                          <metric.icon size={20} className={metric.color} />
                       </div>
-                      <span className="font-bold text-white text-lg">{metric.label}</span>
+                      <span className="font-bold text-gray-900 text-lg">{metric.label}</span>
                    </div>
                    <div className="text-right flex items-end gap-2">
-                      <span className="text-white font-bold text-2xl">{metric.value}</span>
-                      <span className="text-gray-500 text-sm mb-1">sur {metric.target}</span>
+                      <span className="text-gray-900 font-bold text-2xl">{metric.value}</span>
+                      <span className="text-gray-600 text-sm mb-1">sur {metric.target}</span>
                    </div>
                 </div>
                 {/* Progress Bar */}
-                <div className="h-1.5 w-full bg-[#0f0518] rounded-full overflow-hidden mt-1">
+                <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden mt-1">
                    <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${getMetricPercentage(metric.value, metric.target)}%` }}
@@ -354,7 +347,7 @@ const MentorDashboard = () => {
                       className={`h-full rounded-full ${metric.barColor}`} 
                    />
                 </div>
-             </div>
+             </Card>
           ))}
         </div>
       </div>
@@ -362,8 +355,8 @@ const MentorDashboard = () => {
       {/* 5. Mon Groupe Section */}
       <div className="mt-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white">Mon Groupe</h2>
-          <Button variant="link" className="text-[#14b8a6] hover:text-[#0d9488] p-0 h-auto" onClick={() => navigate('/disciples')}>
+          <h2 className="text-xl font-bold text-gray-900">Mon Groupe</h2>
+          <Button variant="link" className="text-purple-600 hover:text-purple-700 p-0 h-auto" onClick={() => navigate('/disciples')}>
             Voir tout
           </Button>
         </div>
@@ -371,31 +364,33 @@ const MentorDashboard = () => {
         <div className="space-y-3">
           {stats.disciplesList.length > 0 ? (
             stats.disciplesList.map((disciple, idx) => (
-              <div 
+              <Card
                 key={disciple.id}
                 onClick={() => navigate(`/disciples/${disciple.id}`)}
-                className="flex items-center justify-between bg-[#150a24] p-4 rounded-xl border border-white/5 cursor-pointer hover:bg-[#1e0e33] transition-colors group"
+                className="bg-white border-gray-200 shadow-sm p-4 cursor-pointer hover:border-purple-300 transition-colors group"
               >
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white font-bold text-lg`}>
-                    {getInitials(disciple.name)}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-full ${getAvatarColor(idx)} flex items-center justify-center text-white font-bold text-lg`}>
+                      {getInitials(disciple.name)}
+                    </div>
+                    <div>
+                      <h3 className="text-gray-900 font-semibold group-hover:text-purple-600 transition-colors">
+                        {disciple.name}
+                      </h3>
+                      <p className="text-gray-600 text-sm capitalize">
+                        {disciple.circle_type || 'Inconnu'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-white font-semibold group-hover:text-[#2dd4bf] transition-colors">
-                      {disciple.name}
-                    </h3>
-                    <p className="text-gray-500 text-sm capitalize">
-                      {disciple.circle_type || 'Inconnu'}
-                    </p>
-                  </div>
+                  <ChevronRight className="text-gray-400 group-hover:text-purple-600 transition-colors" size={20} />
                 </div>
-                <ChevronRight className="text-gray-600 group-hover:text-white transition-colors" size={20} />
-              </div>
+              </Card>
             ))
           ) : (
-            <div className="text-center p-8 bg-[#150a24] rounded-xl border border-white/5">
-              <p className="text-gray-400">Aucun disciple pour le moment.</p>
-            </div>
+            <Card className="bg-white border-gray-200 shadow-sm text-center p-8">
+              <p className="text-gray-600">Aucun disciple pour le moment.</p>
+            </Card>
           )}
         </div>
       </div>

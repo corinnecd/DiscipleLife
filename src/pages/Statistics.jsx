@@ -236,47 +236,47 @@ const Statistics = () => {
 
   if (!isMentorView) {
     return (
-      <div className="max-w-6xl mx-auto space-y-8 pb-20">
+      <div className="max-w-6xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Mes Statistiques</h1>
-          <p className="text-gray-400 mt-1">Cette section est réservée aux mentors.</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Mes Statistiques</h1>
+          <p className="text-gray-600 mt-1">Cette section est réservée aux mentors.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-20">
+    <div className="max-w-7xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
       <div>
-        <h1 className="text-3xl font-bold text-white tracking-tight">Mes Statistiques</h1>
-        <p className="text-gray-400 mt-1">Assiduité mensuelle de vos disciples sur 3 mois</p>
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Mes Statistiques</h1>
+        <p className="text-gray-600 mt-1">Assiduité mensuelle de vos disciples sur 3 mois</p>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-teal-400" />
-          <span className="text-gray-400 ml-3">Chargement des statistiques...</span>
+          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+          <span className="text-gray-600 ml-3">Chargement des statistiques...</span>
         </div>
       ) : !stats.disciplesStats || stats.disciplesStats.length === 0 ? (
-        <Card className="bg-[#1a0b2e] border-white/10">
-          <CardContent className="p-6 text-center text-gray-400">
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardContent className="p-6 text-center text-gray-600">
             Aucun disciple avec compte utilisateur trouvé.
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-6">
           {/* Section des absences par mois */}
-          <Card className="bg-[#1a0b2e] border-white/10">
+          <Card className="bg-white border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-white text-xl">Absences par Mois (3 derniers mois)</CardTitle>
-              <CardDescription className="text-gray-400">Tous les disciples absents avec motifs d'absence</CardDescription>
+              <CardTitle className="text-gray-900 text-xl">Absences par Mois (3 derniers mois)</CardTitle>
+              <CardDescription className="text-gray-600">Tous les disciples absents avec motifs d'absence</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {stats.absencesByMonth.map((monthData, monthIndex) => (
-                <div key={monthIndex} className="bg-white/5 rounded-lg p-4">
-                  <h3 className="text-white font-semibold text-lg mb-4">{monthData.month}</h3>
+                <div key={monthIndex} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <h3 className="text-gray-900 font-semibold text-lg mb-4">{monthData.month}</h3>
                   {monthData.discipleAbsencesList.length === 0 ? (
-                    <p className="text-gray-400 text-sm">Aucune absence enregistrée ce mois-ci</p>
+                    <p className="text-gray-600 text-sm">Aucune absence enregistrée ce mois-ci</p>
                   ) : (
                     <div className="space-y-3">
                       {monthData.discipleAbsencesList.map((discipleAbsence, discIndex) => {
@@ -292,8 +292,8 @@ const Statistics = () => {
                         });
                         
                         return (
-                          <div key={discIndex} className="text-sm text-gray-300 bg-white/5 rounded p-3">
-                            <span className="font-medium text-white">{discipleAbsence.discipleName}</span>
+                          <div key={discIndex} className="text-sm text-gray-700 bg-white rounded p-3 border border-gray-200">
+                            <span className="font-medium text-gray-900">{discipleAbsence.discipleName}</span>
                             {' : '}
                             <span className="text-red-400">{absencesText}</span>
                           </div>
@@ -309,24 +309,24 @@ const Statistics = () => {
           {/* Section des stats par disciple */}
           <div className="space-y-6">
             {stats.disciplesStats.map((discipleStat, index) => (
-            <Card key={discipleStat.discipleId || index} className="bg-[#1a0b2e] border-white/10">
+            <Card key={discipleStat.discipleId || index} className="bg-white border-gray-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-white text-xl">{discipleStat.discipleName}</CardTitle>
+                <CardTitle className="text-gray-900 text-xl">{discipleStat.discipleName}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Assiduité mensuelle sur 3 mois */}
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-4">Assiduité Mensuelle (3 derniers mois)</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Assiduité Mensuelle (3 derniers mois)</h3>
                   <div className="space-y-4">
                     {discipleStat.monthlyStats.map((monthStat, monthIndex) => (
-                      <div key={monthIndex} className="bg-white/5 rounded-lg p-4">
+                      <div key={monthIndex} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                         <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-white font-medium">{monthStat.month}</h4>
+                          <h4 className="text-gray-900 font-medium">{monthStat.month}</h4>
                           <div className="flex gap-4 text-sm">
-                            <span className="text-green-400">
+                            <span className="text-green-600">
                               <span className="font-semibold">{monthStat.presences}</span> présences
                             </span>
-                            <span className="text-red-400">
+                            <span className="text-red-600">
                               <span className="font-semibold">{monthStat.absences}</span> absences
                             </span>
                           </div>
@@ -337,23 +337,23 @@ const Statistics = () => {
                 </div>
 
                 {/* Autres assiduités */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-white/10">
-                  <div className="bg-white/5 rounded-lg p-4">
-                    <h4 className="text-gray-400 text-sm mb-2">Temps de Partage</h4>
-                    <p className="text-2xl font-bold text-purple-400">{discipleStat.sharingAttendance}</p>
-                    <p className="text-xs text-gray-500 mt-1">présences sur 3 mois</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <h4 className="text-gray-600 text-sm mb-2">Temps de Partage</h4>
+                    <p className="text-2xl font-bold text-purple-600">{discipleStat.sharingAttendance}</p>
+                    <p className="text-xs text-gray-600 mt-1">présences sur 3 mois</p>
                   </div>
                   
-                  <div className="bg-white/5 rounded-lg p-4">
-                    <h4 className="text-gray-400 text-sm mb-2">Prière Jeudi</h4>
-                    <p className="text-2xl font-bold text-indigo-400">{discipleStat.thursdayPrayerAttendance}</p>
-                    <p className="text-xs text-gray-500 mt-1">présences sur 3 mois</p>
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <h4 className="text-gray-600 text-sm mb-2">Prière Jeudi</h4>
+                    <p className="text-2xl font-bold text-purple-600">{discipleStat.thursdayPrayerAttendance}</p>
+                    <p className="text-xs text-gray-600 mt-1">présences sur 3 mois</p>
                   </div>
                   
-                  <div className="bg-white/5 rounded-lg p-4">
-                    <h4 className="text-gray-400 text-sm mb-2">Méditation de la Parole</h4>
-                    <p className="text-2xl font-bold text-amber-400">{discipleStat.meditationAttendance}</p>
-                    <p className="text-xs text-gray-500 mt-1">sessions sur 3 mois</p>
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <h4 className="text-gray-600 text-sm mb-2">Méditation de la Parole</h4>
+                    <p className="text-2xl font-bold text-purple-600">{discipleStat.meditationAttendance}</p>
+                    <p className="text-xs text-gray-600 mt-1">sessions sur 3 mois</p>
                   </div>
                 </div>
               </CardContent>

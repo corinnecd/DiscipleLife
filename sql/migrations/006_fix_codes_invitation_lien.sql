@@ -212,3 +212,4 @@ COMMENT ON TABLE invitations_envoyees IS 'Suivi des invitations envoyées par le
 COMMENT ON COLUMN invitations_envoyees.canal IS 'Canal utilisé: whatsapp, facebook, email, sms, qr_code, autre';
 COMMENT ON COLUMN invitations_envoyees.statut IS 'Statut: envoyee, ouverte, conversion, ignoree';
 
+
