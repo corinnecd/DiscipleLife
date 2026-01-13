@@ -832,3 +832,4 @@ Chaque objectif a maintenant des Key Results (KR) quantifiables et mesurables d√
 
 
 
+

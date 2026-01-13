@@ -185,3 +185,4 @@ Si le problème persiste :
 - `006_fix_codes_invitation_lien.sql` : Pour ajouter seulement la colonne `lien_invitation`
 
 
+

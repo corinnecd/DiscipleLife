@@ -244,3 +244,4 @@ BEGIN
   RAISE NOTICE '✅ Modules créés pour "Jésus guérit les cœurs brisés": %', module_count;
 END $$;
 
+

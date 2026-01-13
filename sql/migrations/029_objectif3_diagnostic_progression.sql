@@ -74,3 +74,4 @@ FROM pg_constraint
 WHERE conrelid = 'user_parcours_progression'::regclass
 AND contype = 'f';
 
+

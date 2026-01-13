@@ -83,3 +83,4 @@ COMMENT ON COLUMN user_module_progression.module_id IS 'Référence au module';
 COMMENT ON COLUMN user_module_progression.est_complete IS 'Indique si le module est complété';
 COMMENT ON COLUMN user_module_progression.temps_passe_minutes IS 'Temps passé sur le module en minutes';
 
+

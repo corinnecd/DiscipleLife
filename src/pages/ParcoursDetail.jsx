@@ -72,8 +72,8 @@ const ParcoursDetail = () => {
 
       if (progressionData) {
         setProgression(progressionData);
-        // Récupérer les modules complétés
-        await fetchModulesCompletes(progressionData.id);
+        // Récupérer les modules complétés (passer les modules récupérés)
+        await fetchModulesCompletes(progressionData.id, progressionData, modulesData || []);
       } else {
         // Créer une progression si elle n'existe pas
         await createProgression();
@@ -87,7 +87,7 @@ const ParcoursDetail = () => {
         
         if (newProgression) {
           setProgression(newProgression);
-          await fetchModulesCompletes(newProgression.id);
+          await fetchModulesCompletes(newProgression.id, newProgression, modulesData || []);
         }
       }
 
@@ -104,7 +104,7 @@ const ParcoursDetail = () => {
     }
   };
 
-  const fetchModulesCompletes = async (progressionId) => {
+  const fetchModulesCompletes = async (progressionId, currentProgression, modulesList) => {
     try {
       const { data, error } = await supabase
         .from('user_module_progression')
@@ -117,16 +117,79 @@ const ParcoursDetail = () => {
       const completedIds = (data || []).map(m => m.module_id);
       setModulesCompletes(completedIds);
 
-      // Trouver le premier module non complété
-      const firstIncomplete = modules.findIndex((m, index) => {
+      // Utiliser la liste de modules passée en paramètre (pas l'état local qui peut ne pas être à jour)
+      const modulesToCheck = modulesList || modules;
+      
+      // Vérifier si tous les modules sont complétés et mettre à jour le statut si nécessaire
+      // On récupère d'abord la progression actuelle depuis la DB pour être sûr d'avoir les bonnes données
+      const { data: dbProgression, error: fetchProgError } = await supabase
+        .from('user_parcours_progression')
+        .select('statut, progression_pourcentage, modules_completes')
+        .eq('id', progressionId)
+        .single();
+      
+      if (modulesToCheck.length > 0 && completedIds.length === modulesToCheck.length) {
+        // Vérifier le statut depuis la DB, pas depuis l'état React
+        const shouldUpdate = !dbProgression || dbProgression.statut !== 'termine' || dbProgression.progression_pourcentage !== 100;
+        
+        if (shouldUpdate) {
+          console.log('✅ Tous les modules sont complétés, mise à jour du statut du parcours...');
+          console.log('📊 Modules complétés:', completedIds.length, '/', modulesToCheck.length);
+          console.log('📊 Statut actuel dans DB:', dbProgression?.statut || 'non trouvé');
+          console.log('📊 Progression actuelle dans DB:', dbProgression?.progression_pourcentage || 0, '%');
+          
+          // Ne pas inclure date_fin_reelle si la colonne n'existe pas encore
+          // Ne pas inclure modules_completes car cela cause une erreur "expected JSON array"
+          const updateData = {
+            statut: 'termine',
+            progression_pourcentage: 100,
+            updated_at: new Date().toISOString()
+          };
+          
+          const { error: updateError, data: updateResult } = await supabase
+            .from('user_parcours_progression')
+            .update(updateData)
+            .eq('id', progressionId)
+            .select();
+          
+          if (updateError) {
+            console.error('❌ Erreur mise à jour statut parcours:', updateError);
+            console.error('❌ Détails erreur:', {
+              message: updateError.message,
+              code: updateError.code,
+              details: updateError.details,
+              hint: updateError.hint
+            });
+          } else {
+            console.log('✅ Statut du parcours mis à jour à "termine"');
+            console.log('📊 Résultat mise à jour:', updateResult);
+            // Rafraîchir la progression
+            const { data: updatedProg } = await supabase
+              .from('user_parcours_progression')
+              .select('*')
+              .eq('id', progressionId)
+              .single();
+            if (updatedProg) {
+              console.log('✅ Progression rafraîchie:', updatedProg);
+              setProgression(updatedProg);
+            }
+          }
+        } else {
+          console.log('✅ Parcours déjà marqué comme terminé dans la DB');
+        }
+      }
+
+      // Trouver le premier module non complété (utiliser modulesToCheck au lieu de modules)
+      const modulesToCheckForIndex = modulesToCheck || modules;
+      const firstIncomplete = modulesToCheckForIndex.findIndex((m, index) => {
         if (index === 0) return !completedIds.includes(m.id);
-        return !completedIds.includes(m.id) && completedIds.includes(modules[index - 1].id);
+        return !completedIds.includes(m.id) && completedIds.includes(modulesToCheckForIndex[index - 1].id);
       });
       
       if (firstIncomplete !== -1) {
         setCurrentModuleIndex(firstIncomplete);
-      } else if (modules.length > 0 && completedIds.length === modules.length) {
-        setCurrentModuleIndex(modules.length - 1);
+      } else if (modulesToCheckForIndex.length > 0 && completedIds.length === modulesToCheckForIndex.length) {
+        setCurrentModuleIndex(modulesToCheckForIndex.length - 1);
       }
     } catch (error) {
       console.error('Error fetching completed modules:', error);
@@ -136,30 +199,51 @@ const ParcoursDetail = () => {
   const createProgression = async () => {
     try {
       console.log('➕ Création progression pour parcours:', parcoursId, 'user:', user?.id);
+      
+      // Vérifier d'abord si une progression existe déjà (pour éviter les doublons et erreurs UNIQUE)
+      const { data: existing, error: checkError } = await supabase
+        .from('user_parcours_progression')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('parcours_id', parcoursId)
+        .maybeSingle();
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('❌ Erreur vérification progression existante:', checkError);
+        throw checkError;
+      }
+      
+      if (existing) {
+        console.log('✅ Progression existe déjà:', existing);
+        setProgression(existing);
+        return existing;
+      }
+      
+      // Ne pas inclure modules_completes car cela peut causer une erreur "expected JSON array"
+      // Utiliser un statut valide selon le CHECK constraint: 'inscrit', 'en_cours', 'termine', 'abandonne', 'suspendu'
       const { data, error } = await supabase
         .from('user_parcours_progression')
-        .insert({
+        .insert([{
           user_id: user.id,
           parcours_id: parcoursId,
           date_debut: new Date().toISOString(),
-          statut: 'en_cours',
-          progression_pourcentage: 0,
-          modules_completes: 0
-        })
+          statut: 'en_cours', // Statut valide selon CHECK constraint
+          progression_pourcentage: 0
+        }])
         .select()
         .single();
       
       if (error) {
         console.error('❌ Erreur création progression:', error);
+        console.error('❌ Détails erreur:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        });
         throw error;
       }
       
-      console.log('✅ Progression créée avec succès:', data);
-
-      if (error) {
-        console.error('❌ Erreur création progression:', error);
-        throw error;
-      }
       console.log('✅ Progression créée avec succès:', data);
       setProgression(data);
       return data;
@@ -175,22 +259,41 @@ const ParcoursDetail = () => {
       console.log('📊 Progression actuelle:', progression);
       console.log('✅ Modules complétés:', modulesCompletes);
 
-      // S'assurer que la progression existe
+      // S'assurer que la progression existe AVANT de continuer
       let currentProgression = progression;
       if (!currentProgression) {
         console.log('⚠️ Pas de progression, création en cours...');
-        await createProgression();
-        // Récupérer la progression créée
-        const { data: newProgression, error: fetchError } = await supabase
-          .from('user_parcours_progression')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('parcours_id', parcoursId)
-          .single();
-        
-        if (fetchError) throw fetchError;
-        currentProgression = newProgression;
-        setProgression(newProgression);
+        try {
+          const newProgression = await createProgression();
+          if (!newProgression) {
+            throw new Error('La création de progression a échoué');
+          }
+          currentProgression = newProgression;
+          setProgression(newProgression);
+          console.log('✅ Progression créée et récupérée:', currentProgression);
+          
+          // Attendre un peu pour s'assurer que la progression est bien enregistrée
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Récupérer les modules complétés pour cette nouvelle progression (devrait être vide)
+          const { data: completedModules, error: fetchModulesError } = await supabase
+            .from('user_module_progression')
+            .select('module_id')
+            .eq('progression_id', currentProgression.id)
+            .eq('est_complete', true);
+            
+          if (!fetchModulesError && completedModules) {
+            setModulesCompletes(completedModules.map(m => m.module_id));
+          }
+        } catch (createError) {
+          console.error('❌ Erreur lors de la création de progression:', createError);
+          toast({
+            title: 'Erreur',
+            description: `Impossible de créer la progression: ${createError.message || 'Erreur inconnue'}`,
+            variant: 'destructive'
+          });
+          return;
+        }
       }
 
       // Vérifier que tous les modules précédents sont complétés
@@ -259,12 +362,12 @@ const ParcoursDetail = () => {
         console.log('➕ Création nouvelle progression module');
         const { error } = await supabase
           .from('user_module_progression')
-          .insert({
+          .insert([{
             progression_id: currentProgression.id,
             module_id: moduleId,
             est_complete: true,
             date_completion: new Date().toISOString()
-          });
+          }]);
         insertError = error;
       }
 
@@ -281,56 +384,221 @@ const ParcoursDetail = () => {
 
       console.log('✅ Module marqué comme complété dans la base');
 
-      // Mettre à jour la progression globale
-      const newCompleted = [...modulesCompletes, moduleId];
-      setModulesCompletes(newCompleted);
+      // Récupérer TOUS les modules complétés depuis la base de données pour être sûr d'avoir les bonnes données
+      console.log('🔄 Récupération des modules complétés depuis la DB...');
+      const { data: allCompletedModules, error: fetchModulesError } = await supabase
+        .from('user_module_progression')
+        .select('module_id')
+        .eq('progression_id', currentProgression.id)
+        .eq('est_complete', true);
 
-      const newPercentage = Math.round((newCompleted.length / modules.length) * 100);
-      const newModulesCompletes = newCompleted.length;
+      if (fetchModulesError) {
+        console.error('❌ Erreur récupération modules complétés:', fetchModulesError);
+      }
 
+      const completedIdsFromDB = (allCompletedModules || []).map(m => m.module_id);
+      console.log('📊 Modules complétés depuis la DB:', completedIdsFromDB.length, completedIdsFromDB);
+      
+      // Mettre à jour l'état local avec les données de la DB
+      setModulesCompletes(completedIdsFromDB);
+
+      const newPercentage = Math.round((completedIdsFromDB.length / modules.length) * 100);
+      const newModulesCompletes = completedIdsFromDB.length;
+      const isAllCompleted = completedIdsFromDB.length === modules.length;
+
+      console.log('📊 État actuel des modules:');
+      console.log('  - Modules complétés (depuis DB):', completedIdsFromDB.length, completedIdsFromDB);
+      console.log('  - Module actuel complété:', moduleId);
+      console.log('  - Nombre total de modules:', modules.length);
+      console.log('  - Modules dans le parcours:', modules.map(m => ({ id: m.id, titre: m.titre })));
       console.log('📈 Nouvelle progression:', newPercentage, '% -', newModulesCompletes, 'modules');
+      console.log('🎯 Tous les modules complétés?', isAllCompleted, `(${completedIdsFromDB.length} === ${modules.length})`);
 
-      const { error: updateError } = await supabase
+      // Préparer les données de mise à jour
+      // Ne pas inclure modules_completes car cela cause une erreur "expected JSON array"
+      // La colonne sera mise à jour automatiquement par un trigger ou calculée à la volée
+      const updateData = {
+        progression_pourcentage: isAllCompleted ? 100 : newPercentage,
+        updated_at: new Date().toISOString()
+      };
+
+      // Si tous les modules sont complétés, finaliser le parcours
+      if (isAllCompleted) {
+        console.log('🎉 Tous les modules sont complétés, finalisation du parcours...');
+        console.log('📊 Nombre total de modules:', modules.length);
+        console.log('📊 Modules complétés depuis DB:', completedIdsFromDB.length);
+        updateData.statut = 'termine';
+        updateData.progression_pourcentage = 100;
+        // Note: modules_completes n'est pas inclus car cela cause une erreur "expected JSON array"
+        // Note: date_fin_reelle n'est pas ajoutée car la colonne n'existe pas encore dans la DB
+        console.log('📊 Données de mise à jour complètes:', updateData);
+      }
+
+      console.log('📤 Mise à jour de la progression avec:', updateData);
+      console.log('🆔 ID de la progression à mettre à jour:', currentProgression.id);
+
+      const { error: updateError, data: updateResult } = await supabase
         .from('user_parcours_progression')
-        .update({
-          progression_pourcentage: newPercentage,
-          modules_completes: newModulesCompletes,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', currentProgression.id);
+        .update(updateData)
+        .eq('id', currentProgression.id)
+        .select();
 
       if (updateError) {
         console.error('❌ Erreur mise à jour progression:', updateError);
+        console.error('❌ Détails erreur:', {
+          message: updateError.message,
+          code: updateError.code,
+          details: updateError.details,
+          hint: updateError.hint
+        });
         throw updateError;
       }
 
+      console.log('✅ Progression mise à jour avec succès');
+      console.log('📊 Résultat de la mise à jour:', updateResult);
+      
+      if (updateResult && updateResult.length > 0) {
+        const updated = updateResult[0];
+        console.log('✅ Vérification des données mises à jour:');
+        console.log('  - Statut:', updated.statut);
+        console.log('  - Progression:', updated.progression_pourcentage, '%');
+        console.log('  - Modules complétés:', updated.modules_completes);
+        
+        // Vérifier que la mise à jour a bien fonctionné
+        if (isAllCompleted && updated.statut !== 'termine') {
+          console.error('❌ ERREUR: Le statut devrait être "termine" mais est:', updated.statut);
+        }
+        if (isAllCompleted && updated.progression_pourcentage !== 100) {
+          console.error('❌ ERREUR: La progression devrait être 100% mais est:', updated.progression_pourcentage);
+        }
+      } else {
+        console.warn('⚠️ Aucun résultat retourné par la mise à jour');
+      }
+      
+      // Attendre un peu pour s'assurer que la base de données a bien enregistré
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       // Passer au module suivant si disponible
-      if (moduleIndex < modules.length - 1) {
+      if (moduleIndex < modules.length - 1 && !isAllCompleted) {
         console.log('➡️ Passage au module suivant:', moduleIndex + 1);
         setCurrentModuleIndex(moduleIndex + 1);
       }
 
-      toast({
-        title: 'Module complété !',
-        description: 'Félicitations, vous avez terminé ce module',
-      });
+      // Rafraîchir la progression locale pour vérifier que la mise à jour a bien fonctionné
+      console.log('🔄 Vérification de la progression mise à jour...');
+      const { data: updatedProgression, error: fetchError } = await supabase
+        .from('user_parcours_progression')
+        .select('*')
+        .eq('id', currentProgression.id)
+        .single();
 
-      // Si tous les modules sont complétés
-      if (newCompleted.length === modules.length) {
-        const { error: finishError } = await supabase
-          .from('user_parcours_progression')
-          .update({
-            statut: 'termine',
-            date_fin_reelle: new Date().toISOString()
-          })
-          .eq('id', currentProgression.id);
-
-        if (!finishError) {
-          toast({
-            title: 'Parcours terminé !',
-            description: 'Félicitations, vous avez terminé ce parcours !',
-          });
+      if (fetchError) {
+        console.error('❌ Erreur lors de la récupération de la progression mise à jour:', fetchError);
+      } else if (updatedProgression) {
+        console.log('✅ Progression récupérée après mise à jour:');
+        console.log('  - Statut:', updatedProgression.statut);
+        console.log('  - Progression:', updatedProgression.progression_pourcentage, '%');
+        console.log('  - Modules complétés:', updatedProgression.modules_completes);
+        setProgression(updatedProgression);
+        
+        // Vérifier une dernière fois que tout est correct
+        if (isAllCompleted) {
+          if (updatedProgression.statut !== 'termine') {
+            console.error('❌ PROBLÈME: Le statut dans la DB est:', updatedProgression.statut, 'au lieu de "termine"');
+          } else {
+            console.log('✅ CONFIRMÉ: Le parcours est bien marqué comme "termine" dans la base de données');
+          }
         }
+      } else {
+        console.warn('⚠️ Aucune progression trouvée après mise à jour');
+      }
+
+      if (isAllCompleted) {
+        // Vérifier une dernière fois que la mise à jour a bien fonctionné en relisant depuis la DB
+        console.log('🔍 Vérification finale avant redirection...');
+        
+        // Attendre un peu plus longtemps pour s'assurer que la DB est à jour
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Vérifier plusieurs fois que le statut est bien 'termine' (jusqu'à 3 tentatives)
+        let finalCheck = null;
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (attempts < maxAttempts && (!finalCheck || finalCheck.statut !== 'termine')) {
+          attempts++;
+          console.log(`🔄 Tentative ${attempts}/${maxAttempts} de vérification du statut...`);
+          
+          const { data: checkData, error: checkError } = await supabase
+            .from('user_parcours_progression')
+            .select('statut, progression_pourcentage, modules_completes')
+            .eq('id', currentProgression.id)
+            .single();
+          
+          if (checkError) {
+            console.error('❌ Erreur lors de la vérification finale:', checkError);
+            break;
+          }
+          
+          finalCheck = checkData;
+          
+          if (finalCheck && finalCheck.statut === 'termine' && finalCheck.progression_pourcentage === 100) {
+            console.log('✅ CONFIRMÉ: Le parcours est bien terminé à 100% dans la base de données');
+            break;
+          } else if (finalCheck && finalCheck.progression_pourcentage === 100 && finalCheck.statut !== 'termine') {
+            console.warn(`⚠️ Progression à 100% mais statut="${finalCheck.statut}" au lieu de "termine". Tentative de correction...`);
+            
+            // Essayer de corriger le statut
+            const { error: fixError } = await supabase
+              .from('user_parcours_progression')
+              .update({
+                statut: 'termine',
+                progression_pourcentage: 100,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', currentProgression.id);
+            
+            if (fixError) {
+              console.error('❌ Erreur lors de la correction du statut:', fixError);
+            } else {
+              console.log('✅ Statut corrigé avec succès');
+              // Attendre un peu avant de revérifier
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          } else {
+            // Attendre avant de réessayer
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+        
+        if (finalCheck) {
+          console.log('✅ Vérification finale - Données dans la DB:');
+          console.log('  - Statut:', finalCheck.statut);
+          console.log('  - Progression:', finalCheck.progression_pourcentage, '%');
+          console.log('  - Modules complétés:', finalCheck.modules_completes);
+          
+          if (finalCheck.statut !== 'termine' || finalCheck.progression_pourcentage !== 100) {
+            console.error('❌ PROBLÈME: Les données ne sont pas correctes dans la DB après', maxAttempts, 'tentatives');
+            console.error('  Attendu: statut=termine, progression=100%');
+            console.error('  Reçu: statut=' + finalCheck.statut + ', progression=' + finalCheck.progression_pourcentage + '%');
+          }
+        }
+        
+        toast({
+          title: 'Parcours terminé ! 🎉',
+          description: 'Félicitations, vous avez terminé ce parcours à 100% !',
+        });
+        
+        // Rediriger vers Transformation pour rafraîchir les données
+        // Utiliser un timestamp unique pour forcer le rafraîchissement
+        console.log('🔄 Redirection vers Transformation avec rafraîchissement...');
+        const refreshTimestamp = Date.now();
+        navigate(`/transformation?refresh=${refreshTimestamp}&tab=statistiques`);
+      } else {
+        toast({
+          title: 'Module complété !',
+          description: 'Félicitations, vous avez terminé ce module',
+        });
       }
 
       console.log('✅ handleCompleteModule terminé avec succès');

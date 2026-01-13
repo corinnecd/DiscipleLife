@@ -105,3 +105,4 @@ Si le problème persiste après avoir suivi ces instructions :
 3. Vérifiez que la table `profils` existe et est accessible
 
 
+

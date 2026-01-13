@@ -4,7 +4,8 @@ import { motion } from 'framer-motion';
 import {
   BookOpen, Heart, Target, TrendingUp, Calendar, CheckCircle, Clock,
   ArrowRight, Loader2, Plus, Edit2, Trash2, Play, Star, Award,
-  FileText, BarChart3, Sparkles, ChevronRight, X, Save
+  FileText, BarChart3, Sparkles, ChevronRight, X, Save, Search, Filter,
+  Download, Share2, FileDown
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -14,14 +15,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { format } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import jsPDF from 'jspdf';
 
 const Transformation = () => {
   const { user } = useAuth();
@@ -48,6 +51,8 @@ const Transformation = () => {
   // États pour le journal
   const [journalEntries, setJournalEntries] = useState([]);
   const [journalLoading, setJournalLoading] = useState(true);
+  const [isDeleteJournalDialogOpen, setIsDeleteJournalDialogOpen] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState(null);
   const [isJournalDialogOpen, setIsJournalDialogOpen] = useState(false);
   const [editingJournalId, setEditingJournalId] = useState(null);
   const [journalFormData, setJournalFormData] = useState({
@@ -63,9 +68,50 @@ const Transformation = () => {
     tags: []
   });
 
+  // États pour les filtres du journal
+  const [journalSearchQuery, setJournalSearchQuery] = useState('');
+  const [journalFilterThematique, setJournalFilterThematique] = useState('toutes');
+  const [journalFilterDateDebut, setJournalFilterDateDebut] = useState('');
+  const [journalFilterDateFin, setJournalFilterDateFin] = useState('');
+
   // États pour les évaluations
   const [evaluations, setEvaluations] = useState([]);
   const [evaluationsLoading, setEvaluationsLoading] = useState(true);
+
+  // États pour les statistiques
+  const [statsData, setStatsData] = useState({
+    parcoursCompletes: 0,
+    parcoursEnCours: 0,
+    progressionMoyenne: 0,
+    modulesCompletes: 0,
+    evaluationsCount: 0,
+    journalEntriesCount: 0,
+    progressionParCategorie: [],
+    progressionParMois: [],
+    scoresEvaluations: [],
+    top5FormationsSuivies: [],
+    top5FormationsTerminees: []
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [isStatsDetailDialogOpen, setIsStatsDetailDialogOpen] = useState(false);
+  // État pour stocker les statuts et progressions corrigés (basés sur les modules complétés)
+  const [correctedProgressions, setCorrectedProgressions] = useState({});
+  const [statsDetailData, setStatsDetailData] = useState({
+    type: '',
+    title: '',
+    items: [],
+    rawData: [] // Stocker les données brutes pour générer les certificats
+  });
+  // États pour la vue par disciple
+  const [disciples, setDisciples] = useState([]);
+  const [selectedDisciple, setSelectedDisciple] = useState(null);
+  const [discipleSearchQuery, setDiscipleSearchQuery] = useState('');
+  const [isDiscipleViewDialogOpen, setIsDiscipleViewDialogOpen] = useState(false);
+  const [discipleFormations, setDiscipleFormations] = useState({
+    completes: [],
+    enCours: []
+  });
+  const [discipleFormationsLoading, setDiscipleFormationsLoading] = useState(false);
   const [isEvaluationDialogOpen, setIsEvaluationDialogOpen] = useState(false);
   const [evaluationFormData, setEvaluationFormData] = useState({
     date_evaluation: new Date().toISOString().split('T')[0],
@@ -77,6 +123,12 @@ const Transformation = () => {
     notes: ''
   });
 
+  // États pour les filtres des évaluations
+  const [evaluationFilterDomaine, setEvaluationFilterDomaine] = useState('tous');
+  const [evaluationFilterType, setEvaluationFilterType] = useState('tous');
+  const [evaluationFilterDateDebut, setEvaluationFilterDateDebut] = useState('');
+  const [evaluationFilterDateFin, setEvaluationFilterDateFin] = useState('');
+
   useEffect(() => {
     if (user) {
       fetchAllData();
@@ -87,7 +139,25 @@ const Transformation = () => {
   useEffect(() => {
     if (user && location.pathname === '/transformation') {
       console.log('🔄 Rafraîchissement des données (retour sur la page)', location.search);
-      fetchAllData();
+      
+      // Forcer un rafraîchissement complet des données
+      const refreshData = async () => {
+        try {
+          await fetchAllData();
+          console.log('✅ Données rafraîchies avec succès');
+        } catch (error) {
+          console.error('❌ Erreur lors du rafraîchissement:', error);
+        }
+      };
+      
+      refreshData();
+      
+      // Gérer l'onglet depuis l'URL
+      const params = new URLSearchParams(location.search);
+      const tabParam = params.get('tab');
+      if (tabParam && ['bibliotheque', 'mes-formations', 'progression', 'journal', 'evaluations', 'statistiques'].includes(tabParam)) {
+        setActiveTab(tabParam);
+      }
     }
   }, [location.pathname, location.search, user]);
 
@@ -115,11 +185,14 @@ const Transformation = () => {
   const fetchAllData = async () => {
     try {
       setLoading(true);
+      // Récupérer toutes les données en parallèle (fetchStatsData récupère ses propres données depuis la DB)
       await Promise.all([
         fetchParcours(),
         fetchUserProgression(),
         fetchJournalEntries(),
-        fetchEvaluations()
+        fetchEvaluations(),
+        fetchStatsData(),
+        fetchDisciples()
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -230,7 +303,9 @@ const Transformation = () => {
     console.log('👆 Clic sur parcours:', parcours.nom, 'ID:', parcours.id);
     setSelectedParcours(parcours);
     await fetchModules(parcours.id);
+    console.log('✅ Ouverture de la modale, selectedParcours:', parcours);
     setIsParcoursDialogOpen(true);
+    console.log('✅ isParcoursDialogOpen devrait être true maintenant');
   };
 
   const handleStartParcours = async (parcoursId) => {
@@ -251,7 +326,19 @@ const Transformation = () => {
       }
 
       if (existing) {
-        // Mettre à jour le statut si déjà inscrit
+        // Si le parcours est déjà terminé, ne pas le réinitialiser
+        if (existing.statut === 'termine') {
+          console.log('⚠️ Parcours déjà terminé, redirection vers la page de détail');
+          toast({
+            title: 'Parcours déjà terminé',
+            description: 'Ce parcours est déjà complété à 100%. Redirection vers la page de détail...',
+          });
+          // Naviguer vers la page de détail pour voir le parcours terminé
+          navigate(`/transformation/${parcoursId}`);
+          return;
+        }
+        
+        // Mettre à jour le statut si déjà inscrit (mais pas terminé)
         console.log('🔄 Mise à jour progression existante:', existing.id, 'statut actuel:', existing.statut);
         const { error } = await supabase
           .from('user_parcours_progression')
@@ -268,17 +355,17 @@ const Transformation = () => {
         console.log('✅ Progression mise à jour avec succès');
       } else {
         // Créer une nouvelle inscription
+        // Ne pas inclure modules_completes car cela cause une erreur "expected JSON array"
         console.log('➕ Création nouvelle progression pour parcours:', parcoursId);
         const { data: newProgression, error } = await supabase
           .from('user_parcours_progression')
-          .insert({
+          .insert([{
             user_id: user.id,
             parcours_id: parcoursId,
             date_debut: new Date().toISOString(),
             statut: 'en_cours',
-            progression_pourcentage: 0,
-            modules_completes: 0
-          })
+            progression_pourcentage: 0
+          }])
           .select()
           .single();
 
@@ -320,22 +407,110 @@ const Transformation = () => {
 
       if (error) throw error;
 
-      toast({
-        title: 'Parcours annulé',
-        description: 'Vous pouvez le reprendre à tout moment depuis la bibliothèque',
-      });
-
       setIsCancelDialogOpen(false);
       setParcoursToCancel(null);
-      await fetchUserProgression();
-      await fetchParcours();
+      
+      // Rafraîchir toutes les données, y compris les statistiques
+      await Promise.all([
+        fetchUserProgression(),
+        fetchParcours(),
+        fetchStatsData() // Mettre à jour les statistiques pour exclure les parcours annulés
+      ]);
     } catch (error) {
       console.error('Error canceling parcours:', error);
-      toast({
-        title: 'Erreur',
-        description: 'Impossible d\'annuler le parcours',
-        variant: 'destructive'
-      });
+    }
+  };
+
+  // Fonction de réinitialisation pour les tests - Remet toutes les formations en "non complétées"
+  const resetAllFormations = async () => {
+    if (!user) {
+      console.error('❌ Pas d\'utilisateur connecté');
+      return;
+    }
+
+    try {
+      console.log('🔄 Réinitialisation de toutes les formations pour les tests...');
+      
+      // 1. Récupérer toutes les progressions de l'utilisateur
+      const { data: progressions, error: progError } = await supabase
+        .from('user_parcours_progression')
+        .select('id')
+        .eq('user_id', user.id);
+
+      if (progError) {
+        console.error('❌ Erreur récupération progressions:', progError);
+        throw progError;
+      }
+
+      if (!progressions || progressions.length === 0) {
+        console.log('ℹ️ Aucune progression trouvée');
+        return;
+      }
+
+      const progressionIds = progressions.map(p => p.id);
+      console.log(`📊 ${progressionIds.length} progressions trouvées`);
+
+      // 2. Supprimer tous les modules complétés
+      console.log('🗑️ Suppression des modules complétés...');
+      const { error: deleteModulesError } = await supabase
+        .from('user_module_progression')
+        .delete()
+        .in('progression_id', progressionIds);
+
+      if (deleteModulesError) {
+        console.error('❌ Erreur suppression modules:', deleteModulesError);
+        throw deleteModulesError;
+      }
+      console.log('✅ Modules complétés supprimés');
+
+      // 3. Remettre toutes les progressions à "en_cours" avec progression 0%
+      // S'assurer de remettre TOUS les statuts (termine, abandonne, etc.) à "en_cours"
+      console.log('🔄 Remise à zéro des progressions...');
+      console.log('📊 Progressions à réinitialiser:', progressions.map(p => p.id));
+      
+      // Mettre à jour toutes les progressions, peu importe leur statut actuel
+      const { error: updateError } = await supabase
+        .from('user_parcours_progression')
+        .update({
+          statut: 'en_cours',
+          progression_pourcentage: 0,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        console.error('❌ Erreur mise à jour progressions:', updateError);
+        throw updateError;
+      }
+      console.log('✅ Progressions remises à zéro (statut: en_cours, progression: 0%)');
+      
+      // Vérifier que la mise à jour a bien fonctionné
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('user_parcours_progression')
+        .select('id, statut, progression_pourcentage')
+        .eq('user_id', user.id);
+      
+      if (verifyError) {
+        console.error('❌ Erreur vérification:', verifyError);
+      } else {
+        console.log('✅ Vérification après réinitialisation:');
+        verifyData?.forEach(p => {
+          console.log(`  - Progression ${p.id}: statut=${p.statut}, progression=${p.progression_pourcentage}%`);
+        });
+      }
+
+      // 4. Rafraîchir toutes les données
+      console.log('🔄 Rafraîchissement des données...');
+      await Promise.all([
+        fetchUserProgression(),
+        fetchParcours(),
+        fetchStatsData()
+      ]);
+
+      console.log('✅ Réinitialisation terminée avec succès !');
+      
+    } catch (error) {
+      console.error('❌ Erreur lors de la réinitialisation:', error);
     }
   };
 
@@ -387,11 +562,11 @@ const Transformation = () => {
     p.statut === 'actif'
   ).length;
 
-  // Fonction pour vérifier si un parcours est déjà inscrit
+  // Fonction pour vérifier si un parcours est déjà inscrit (inclut les parcours terminés)
   const isParcoursInscrit = (parcoursId) => {
     return userProgression.some(prog => 
       prog.parcours_id === parcoursId && 
-      (prog.statut === 'inscrit' || prog.statut === 'en_cours' || prog.statut === 'suspendu')
+      (prog.statut === 'inscrit' || prog.statut === 'en_cours' || prog.statut === 'suspendu' || prog.statut === 'termine')
     );
   };
 
@@ -401,7 +576,7 @@ const Transformation = () => {
       console.warn('⚠️ Pas d\'utilisateur connecté, impossible de récupérer les progressions');
       setUserProgression([]);
       setProgressionLoading(false);
-      return;
+      return [];
     }
     
     try {
@@ -438,7 +613,7 @@ const Transformation = () => {
           variant: 'destructive'
         });
         setUserProgression([]);
-        return;
+        return [];
       }
       
       console.log('✅ Progression récupérée:', data?.length || 0, 'parcours');
@@ -451,10 +626,122 @@ const Transformation = () => {
           parcours_id: p.parcours_id,
           parcours_nom: p.parcours_transformation?.nom || 'NOM MANQUANT',
           statut: p.statut,
+          progression_pourcentage: p.progression_pourcentage,
+          modules_completes: p.modules_completes,
+          date_fin_reelle: p.date_fin_reelle,
           has_parcours: !!p.parcours_transformation,
           date_debut: p.date_debut
         })));
+        
+        // Log des parcours complétés
+        const completes = data.filter(p => p.statut === 'termine');
+        console.log('✅ Parcours complétés trouvés dans fetchUserProgression:', completes.length);
+        completes.forEach(p => {
+          console.log(`  ✓ ${p.parcours_transformation?.nom || 'Sans nom'}: ${p.progression_pourcentage}% (modules: ${p.modules_completes})`);
+        });
       }
+      
+      // Vérifier et corriger automatiquement les formations complétées
+      // Si tous les modules sont complétés mais le statut n'est pas "termine", corriger
+      const corrected = {};
+      for (const progression of data || []) {
+        // Vérifier si tous les modules sont complétés
+        try {
+          // Récupérer le nombre total de modules du parcours
+          const { data: modulesData, error: modulesError } = await supabase
+            .from('modules_parcours')
+            .select('id')
+            .eq('parcours_id', progression.parcours_id)
+            .eq('statut', 'actif');
+          
+          if (!modulesError && modulesData && modulesData.length > 0) {
+            const totalModules = modulesData.length;
+            
+            // Récupérer le nombre de modules complétés
+            const { data: completedModules, error: completedError } = await supabase
+              .from('user_module_progression')
+              .select('module_id')
+              .eq('progression_id', progression.id)
+              .eq('est_complete', true);
+            
+            if (!completedError && completedModules) {
+              const completedCount = completedModules.length;
+              
+              // Si tous les modules sont complétés, mettre à jour le statut
+              if (completedCount === totalModules && totalModules > 0) {
+                // Stocker la correction pour l'affichage
+                corrected[progression.id] = {
+                  statut: 'termine',
+                  progression_pourcentage: 100
+                };
+                
+                // Si le statut dans la DB n'est pas "termine", corriger
+                if (progression.statut !== 'termine' || progression.progression_pourcentage !== 100) {
+                  console.log(`🔧 Correction automatique: Progression ${progression.id} - Tous les modules complétés (${completedCount}/${totalModules}), mise à jour à "termine"`);
+                  
+                  // Si le statut est "abandonne", on le remet d'abord à "en_cours"
+                  if (progression.statut === 'abandonne') {
+                    await supabase
+                      .from('user_parcours_progression')
+                      .update({
+                        statut: 'en_cours',
+                        progression_pourcentage: 100,
+                        updated_at: new Date().toISOString()
+                      })
+                      .eq('id', progression.id);
+                    
+                    // Attendre un peu avant de mettre à jour à "termine"
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                  }
+                  
+                  // Mettre à jour à "termine"
+                  const { error: updateError } = await supabase
+                    .from('user_parcours_progression')
+                    .update({
+                      statut: 'termine',
+                      progression_pourcentage: 100,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', progression.id);
+                  
+                  if (updateError) {
+                    console.error(`❌ Erreur correction progression ${progression.id}:`, updateError);
+                  } else {
+                    console.log(`✅ Progression ${progression.id} corrigée: statut mis à "termine"`);
+                    // Mettre à jour localement
+                    progression.statut = 'termine';
+                    progression.progression_pourcentage = 100;
+                  }
+                }
+              } else {
+                // Recalculer la progression si nécessaire
+                const correctPercentage = Math.round((completedCount / totalModules) * 100);
+                if (progression.progression_pourcentage !== correctPercentage) {
+                  corrected[progression.id] = {
+                    statut: progression.statut,
+                    progression_pourcentage: correctPercentage
+                  };
+                  
+                  // Mettre à jour dans la DB
+                  await supabase
+                    .from('user_parcours_progression')
+                    .update({
+                      progression_pourcentage: correctPercentage,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', progression.id);
+                  progression.progression_pourcentage = correctPercentage;
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`❌ Erreur vérification modules pour progression ${progression.id}:`, error);
+        }
+      }
+      
+      // Mettre à jour l'état des progressions corrigées
+      setCorrectedProgressions(corrected);
       
       // Filtrer les progressions avec statut en_cours ou inscrit
       const progressionsActives = (data || []).filter(p => 
@@ -475,8 +762,10 @@ const Transformation = () => {
       }
       
       setUserProgression(data || []);
+      return data || [];
     } catch (error) {
       console.error('Error fetching progression:', error);
+      return [];
     } finally {
       setProgressionLoading(false);
     }
@@ -486,17 +775,27 @@ const Transformation = () => {
   const fetchJournalEntries = async () => {
     try {
       setJournalLoading(true);
+      console.log('📔 Début fetchJournalEntries pour user:', user.id);
       const { data, error } = await supabase
         .from('journal_transformation')
         .select('*')
         .eq('user_id', user.id)
-        .order('date_entree', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(50);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erreur fetchJournalEntries:', error);
+        throw error;
+      }
+      console.log('📔 Entrées récupérées:', data?.length || 0);
+      if (data && data.length > 0) {
+        console.log('📔 Première entrée:', data[0]);
+        console.log('📔 Thématiques trouvées:', data.map(e => e.thematique).filter(t => t));
+      }
       setJournalEntries(data || []);
     } catch (error) {
-      console.error('Error fetching journal entries:', error);
+      console.error('❌ Error fetching journal entries:', error);
+      setJournalEntries([]);
     } finally {
       setJournalLoading(false);
     }
@@ -504,11 +803,19 @@ const Transformation = () => {
 
   const handleSaveJournal = async () => {
     try {
+      // Préparer les données à enregistrer (uniquement les colonnes qui existent dans la table)
       const journalData = {
-        ...journalFormData,
         user_id: user.id,
-        contenu: journalFormData.contenu || journalFormData.titre
+        contenu: journalFormData.contenu || journalFormData.titre || '',
+        thematique: journalFormData.thematique || null
       };
+
+      // Ajouter les champs optionnels seulement s'ils ont des valeurs
+      if (journalFormData.titre) {
+        journalData.titre = journalFormData.titre;
+      }
+
+      console.log('💾 Données à enregistrer:', journalData);
 
       if (editingJournalId) {
         const { error } = await supabase
@@ -516,21 +823,21 @@ const Transformation = () => {
           .update(journalData)
           .eq('id', editingJournalId);
 
-        if (error) throw error;
-        toast({
-          title: 'Succès',
-          description: 'Entrée de journal mise à jour',
-        });
+        if (error) {
+          console.error('❌ Erreur lors de la mise à jour:', error);
+          throw error;
+        }
+        // Toast supprimé
       } else {
         const { error } = await supabase
           .from('journal_transformation')
           .insert(journalData);
 
-        if (error) throw error;
-        toast({
-          title: 'Succès',
-          description: 'Entrée de journal créée',
-        });
+        if (error) {
+          console.error('❌ Erreur lors de l\'insertion:', error);
+          throw error;
+        }
+        // Toast supprimé
       }
 
       setIsJournalDialogOpen(false);
@@ -549,10 +856,44 @@ const Transformation = () => {
       });
       await fetchJournalEntries();
     } catch (error) {
-      console.error('Error saving journal:', error);
+      console.error('❌ Error saving journal:', error);
       toast({
         title: 'Erreur',
-        description: 'Impossible de sauvegarder l\'entrée',
+        description: error.message || 'Impossible de sauvegarder l\'entrée',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleDeleteJournal = (entry) => {
+    setEntryToDelete(entry);
+    setIsDeleteJournalDialogOpen(true);
+  };
+
+  const confirmDeleteJournal = async () => {
+    if (!entryToDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('journal_transformation')
+        .delete()
+        .eq('id', entryToDelete.id);
+
+      if (error) {
+        console.error('❌ Erreur lors de la suppression:', error);
+        throw error;
+      }
+
+      // Toast supprimé
+
+      setIsDeleteJournalDialogOpen(false);
+      setEntryToDelete(null);
+      await fetchJournalEntries();
+    } catch (error) {
+      console.error('❌ Error deleting journal:', error);
+      toast({
+        title: 'Erreur',
+        description: error.message || 'Impossible de supprimer l\'entrée',
         variant: 'destructive'
       });
     }
@@ -574,6 +915,1389 @@ const Transformation = () => {
     });
     setIsJournalDialogOpen(true);
   };
+
+  // Fonction de filtrage pour le journal
+  const getFilteredJournalEntries = () => {
+    return journalEntries.filter(entry => {
+      // Filtre par recherche textuelle
+      if (journalSearchQuery) {
+        const query = journalSearchQuery.toLowerCase();
+        const titre = (entry.titre || '').toLowerCase();
+        const contenu = (entry.contenu || '').toLowerCase();
+        if (!titre.includes(query) && !contenu.includes(query)) {
+          return false;
+        }
+      }
+
+      // Filtre par thématique
+      if (journalFilterThematique !== 'toutes' && entry.thematique !== journalFilterThematique) {
+        return false;
+      }
+
+      // Filtre par date début
+      if (journalFilterDateDebut) {
+        const entryDate = new Date(entry.date_entree);
+        const filterDate = new Date(journalFilterDateDebut);
+        if (entryDate < filterDate) {
+          return false;
+        }
+      }
+
+      // Filtre par date fin
+      if (journalFilterDateFin) {
+        const entryDate = new Date(entry.date_entree);
+        const filterDate = new Date(journalFilterDateFin);
+        if (entryDate > filterDate) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  };
+
+  // Thématiques prédéfinies
+  const THEMATIQUES_PREDEFINIES = [
+    'Discipolat',
+    'Guérison',
+    'Finances',
+    'Relations',
+    'Prière',
+    'Parole de Dieu',
+    'Ministère',
+    'Évangélisation',
+    'Famille',
+    'Travail',
+    'Santé',
+    'Confiance en soi',
+    'ImpactX',
+    'Restauration de l\'âme',
+    'Transformation'
+  ];
+
+  // Obtenir les thématiques uniques pour le filtre (prédéfinies + celles des entrées existantes)
+  const getUniqueThematiques = () => {
+    // Récupérer les thématiques des entrées existantes
+    let thematiquesEntrees = [];
+    if (journalEntries && journalEntries.length > 0) {
+      const allThematiques = journalEntries.map(entry => entry?.thematique);
+      thematiquesEntrees = allThematiques
+        .filter(thematique => thematique && typeof thematique === 'string' && thematique.trim() !== '');
+    }
+    
+    // Combiner les thématiques prédéfinies avec celles des entrées
+    const toutesThematiques = [...new Set([...THEMATIQUES_PREDEFINIES, ...thematiquesEntrees])];
+    
+    // Trier par ordre alphabétique
+    return toutesThematiques.sort((a, b) => a.localeCompare(b, 'fr'));
+  };
+
+  // Fonction de filtrage pour les évaluations
+  const getFilteredEvaluations = () => {
+    return evaluations.filter(evaluation => {
+      // Filtre par domaine
+      if (evaluationFilterDomaine !== 'tous' && evaluation.domaine_evalue !== evaluationFilterDomaine) {
+        return false;
+      }
+
+      // Filtre par type
+      if (evaluationFilterType !== 'tous' && evaluation.type_evaluation !== evaluationFilterType) {
+        return false;
+      }
+
+      // Filtre par date début
+      if (evaluationFilterDateDebut) {
+        const evalDate = new Date(evaluation.date_evaluation);
+        const filterDate = new Date(evaluationFilterDateDebut);
+        if (evalDate < filterDate) {
+          return false;
+        }
+      }
+
+      // Filtre par date fin
+      if (evaluationFilterDateFin) {
+        const evalDate = new Date(evaluation.date_evaluation);
+        const filterDate = new Date(evaluationFilterDateFin);
+        if (evalDate > filterDate) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  };
+
+  // Fonction helper pour obtenir le label d'un domaine
+  const getDomaineLabelForStats = (domaine) => {
+    const labels = {
+      'relation_dieu': 'Relation avec Dieu',
+      'priere': 'Prière',
+      'parole': 'Parole de Dieu',
+      'service': 'Service',
+      'communaute': 'Communauté',
+      'temperament': 'Tempérament',
+      'finances': 'Finances',
+      'sante': 'Santé',
+      'relations': 'Relations',
+      'autre': 'Autre'
+    };
+    return labels[domaine] || domaine.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  // Fonction pour récupérer les statistiques
+  // Récupère toujours les données depuis la base de données pour avoir les données les plus récentes
+  const fetchStatsData = async () => {
+    if (!user) return;
+    
+    try {
+      setStatsLoading(true);
+      
+      // TOUJOURS récupérer les données depuis la base de données pour avoir les données les plus récentes
+      // Cela garantit que "Parcours Complétés" utilise les données les plus à jour
+      console.log('📊 Récupération des données depuis la base de données pour les statistiques');
+      
+      const { data, error: progError } = await supabase
+        .from('user_parcours_progression')
+        .select(`
+          *,
+          parcours_transformation (
+            nom,
+            categorie
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
+
+      if (progError) {
+        console.error('❌ Erreur récupération progressions:', progError);
+        throw progError;
+      }
+      const progressions = data || [];
+      
+      console.log('📊 Progressions utilisées pour les statistiques (depuis Mes Formations):', progressions?.length || 0);
+      if (progressions && progressions.length > 0) {
+        console.log('📋 Détails des progressions:');
+        progressions.forEach(p => {
+          console.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut=${p.statut}, progression=${p.progression_pourcentage}%, modules=${p.modules_completes}`);
+        });
+      }
+
+      // Récupérer les modules complétés
+      // Exclure les progressions avec statut 'abandonne' ou supprimées
+      const progressionsActives = progressions?.filter(p => 
+        p.statut !== 'abandonne' && p.statut !== 'supprime'
+      ) || [];
+      const progressionIds = progressionsActives.map(p => p.id);
+      let modulesCompletes = [];
+      if (progressionIds.length > 0) {
+        const { data: modData, error: modError } = await supabase
+          .from('user_module_progression')
+          .select('*')
+          .in('progression_id', progressionIds)
+          .eq('est_complete', true);
+
+        if (modError) throw modError;
+        modulesCompletes = modData || [];
+      }
+      
+      console.log('📊 Modules complétés calculés pour progressions actives:', modulesCompletes.length, '(progressions actives:', progressionsActives.length, '/ total:', progressions?.length || 0, ')');
+
+      // DÉSACTIVÉ TEMPORAIREMENT : Vérification et correction des parcours complétés
+      // Cette logique cause une erreur de contrainte CHECK, donc on la désactive pour l'instant
+      // Le statut sera mis à jour directement dans ParcoursDetail.jsx quand un module est complété
+      console.log('⚠️ Vérification et correction des parcours complétés DÉSACTIVÉE (pour éviter l\'erreur de contrainte CHECK)');
+      /*
+      console.log('🔍 Vérification et correction des parcours complétés...');
+      for (const progression of progressions || []) {
+        if (progression.statut !== 'termine') {
+          // Récupérer tous les modules du parcours
+          const { data: parcoursModules, error: modulesError } = await supabase
+            .from('modules_parcours')
+            .select('id')
+            .eq('parcours_id', progression.parcours_id)
+            .eq('statut', 'actif');
+
+          if (modulesError) {
+            console.error('❌ Erreur récupération modules:', modulesError);
+            continue;
+          }
+
+          const totalModules = parcoursModules?.length || 0;
+          if (totalModules === 0) continue;
+
+          // Compter les modules complétés pour cette progression
+          const completedModulesForProgression = modulesCompletes.filter(
+            m => m.progression_id === progression.id
+          );
+          const completedCount = completedModulesForProgression.length;
+
+          console.log(`🔍 Vérification parcours "${progression.parcours_transformation?.nom || progression.parcours_id}":`);
+          console.log(`  - Total modules: ${totalModules}`);
+          console.log(`  - Modules complétés: ${completedCount}`);
+          console.log(`  - Statut actuel: ${progression.statut}`);
+          console.log(`  - Progression: ${progression.progression_pourcentage}%`);
+
+          // Si tous les modules sont complétés, mettre à jour le statut
+          if (completedCount === totalModules && totalModules > 0) {
+            console.log(`✅ Parcours "${progression.parcours_transformation?.nom || progression.parcours_id}" a tous ses modules complétés (${completedCount}/${totalModules}), mise à jour du statut...`);
+            
+            // Ne pas inclure modules_completes car cela cause une erreur "expected JSON array"
+            const { error: updateError } = await supabase
+              .from('user_parcours_progression')
+              .update({
+                statut: 'termine',
+                progression_pourcentage: 100,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', progression.id);
+
+            if (updateError) {
+              console.error(`❌ Erreur mise à jour parcours ${progression.id}:`, updateError);
+            } else {
+              console.log(`✅ Statut du parcours ${progression.id} mis à jour à "termine"`);
+              // Mettre à jour la progression locale
+              progression.statut = 'termine';
+              progression.progression_pourcentage = 100;
+              progression.modules_completes = totalModules;
+            }
+          }
+        }
+      }
+      */
+
+      // Récupérer les évaluations
+      const { data: evals, error: evalError } = await supabase
+        .from('evaluations_croissance')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date_evaluation', { ascending: false });
+
+      if (evalError) throw evalError;
+
+      // Calculer les statistiques
+      console.log('📊 Calcul des statistiques...');
+      console.log('📋 Toutes les progressions récupérées:', progressions?.length || 0);
+      console.log('📋 Détails de toutes les progressions:', progressions?.map(p => ({
+        id: p.id,
+        parcours_nom: p.parcours_transformation?.nom,
+        statut: p.statut,
+        progression_pourcentage: p.progression_pourcentage,
+        modules_completes: p.modules_completes
+      })) || []);
+      
+      // DEBUG: Vérifier les statuts uniques trouvés
+      const statutsUniques = [...new Set(progressions?.map(p => p.statut) || [])];
+      console.log('🔍 Statuts uniques trouvés dans toutes les progressions:', statutsUniques);
+      
+      // Vérifier si tous les modules sont complétés pour chaque progression active
+      // Cela permet de compter les formations complétées même si le statut n'est pas encore "termine" dans la DB
+      const parcoursCompletesVerifies = [];
+      for (const progression of progressionsActives) {
+        // Si le statut est déjà "termine", l'inclure directement
+        if (progression.statut === 'termine') {
+          parcoursCompletesVerifies.push(progression.id);
+          continue;
+        }
+        
+        // Sinon, vérifier si tous les modules sont complétés
+        try {
+          // Récupérer le nombre total de modules du parcours
+          const { data: modulesData, error: modulesError } = await supabase
+            .from('modules_parcours')
+            .select('id')
+            .eq('parcours_id', progression.parcours_id)
+            .eq('statut', 'actif');
+          
+          if (!modulesError && modulesData && modulesData.length > 0) {
+            const totalModules = modulesData.length;
+            
+            // Récupérer le nombre de modules complétés pour cette progression
+            const completedModulesForProgression = modulesCompletes.filter(
+              m => m.progression_id === progression.id
+            );
+            const completedCount = completedModulesForProgression.length;
+            
+            // Si tous les modules sont complétés, considérer le parcours comme complété
+            if (completedCount === totalModules && totalModules > 0) {
+              console.log(`✅ Parcours "${progression.parcours_transformation?.nom || progression.parcours_id}" a tous ses modules complétés (${completedCount}/${totalModules}), considéré comme complété`);
+              parcoursCompletesVerifies.push(progression.id);
+              
+              // Corriger le statut dans la DB si nécessaire
+              if (progression.statut !== 'termine' || progression.progression_pourcentage !== 100) {
+                console.log(`🔧 Correction automatique du statut pour le parcours ${progression.id}...`);
+                
+                // Si le statut est "abandonne", on le remet d'abord à "en_cours"
+                if (progression.statut === 'abandonne') {
+                  await supabase
+                    .from('user_parcours_progression')
+                    .update({
+                      statut: 'en_cours',
+                      progression_pourcentage: 100,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', progression.id);
+                  
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                
+                // Mettre à jour à "termine"
+                const { error: updateError } = await supabase
+                  .from('user_parcours_progression')
+                  .update({
+                    statut: 'termine',
+                    progression_pourcentage: 100,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', progression.id);
+                
+                if (updateError) {
+                  console.error(`❌ Erreur correction progression ${progression.id}:`, updateError);
+                } else {
+                  console.log(`✅ Progression ${progression.id} corrigée: statut mis à "termine"`);
+                  // Mettre à jour localement
+                  progression.statut = 'termine';
+                  progression.progression_pourcentage = 100;
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`❌ Erreur vérification modules pour progression ${progression.id}:`, error);
+        }
+      }
+      
+      // Compter les parcours complétés (ceux avec statut "termine" OU tous les modules complétés)
+      const parcoursCompletes = parcoursCompletesVerifies.length;
+      const parcoursEnCours = progressionsActives.filter(p => p.statut === 'en_cours' && !parcoursCompletesVerifies.includes(p.id)).length || 0;
+      
+      console.log('📊 Parcours complétés (vérifiés):', parcoursCompletes);
+      console.log('📊 Parcours en cours:', parcoursEnCours);
+      
+      // DEBUG: Vérifier aussi les parcours avec progression 100% mais statut différent (hors abandonnés)
+      const parcours100Pourcent = progressionsActives.filter(p => p.progression_pourcentage === 100 && p.statut !== 'termine' && !parcoursCompletesVerifies.includes(p.id)) || [];
+      if (parcours100Pourcent.length > 0) {
+        console.warn('⚠️ ATTENTION: Parcours à 100% mais statut différent de "termine":', parcours100Pourcent.map(p => ({
+          nom: p.parcours_transformation?.nom,
+          statut: p.statut,
+          progression: p.progression_pourcentage
+        })));
+        
+        // CORRECTION AUTOMATIQUE : Mettre à jour le statut des parcours à 100% qui ne sont pas marqués comme 'termine'
+        console.log('🔧 Correction automatique des parcours à 100% avec statut incorrect...');
+        for (const parcours of parcours100Pourcent) {
+          try {
+            console.log(`🔧 Correction du parcours "${parcours.parcours_transformation?.nom || parcours.parcours_id}"...`);
+            const { error: fixError } = await supabase
+              .from('user_parcours_progression')
+              .update({
+                statut: 'termine',
+                progression_pourcentage: 100,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', parcours.id);
+            
+            if (fixError) {
+              console.error(`❌ Erreur lors de la correction du parcours ${parcours.id}:`, fixError);
+            } else {
+              console.log(`✅ Parcours ${parcours.id} corrigé avec succès (statut mis à 'termine')`);
+              // Mettre à jour la progression locale pour refléter le changement
+              parcours.statut = 'termine';
+            }
+          } catch (error) {
+            console.error(`❌ Erreur lors de la correction du parcours ${parcours.id}:`, error);
+          }
+        }
+        
+        // Recompter les parcours complétés après correction
+        const parcoursCompletesApresCorrection = progressionsActives.filter(p => p.statut === 'termine').length || 0;
+        console.log('✅ Parcours complétés après correction:', parcoursCompletesApresCorrection);
+      }
+      
+      // Afficher les détails des parcours en cours (hors abandonnés)
+      const parcoursEnCoursList = progressionsActives.filter(p => p.statut === 'en_cours') || [];
+      console.log('📚 PARCOURS EN COURS (statut="en_cours"):', parcoursEnCours, 'parcours');
+      if (parcoursEnCoursList.length > 0) {
+        console.log('📋 Détails des parcours en cours:');
+        parcoursEnCoursList.forEach(p => {
+          console.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut="${p.statut}", progression=${p.progression_pourcentage}%`);
+        });
+      }
+      
+      // Afficher les détails des parcours complétés (vérifiés)
+      const parcoursCompletesList = progressionsActives.filter(p => parcoursCompletesVerifies.includes(p.id)) || [];
+      console.log('✅ PARCOURS COMPLÉTÉS (vérifiés - statut="termine" OU tous modules complétés):', parcoursCompletes, 'parcours');
+      if (parcoursCompletesList.length > 0) {
+        console.log('📋 Détails des parcours complétés:');
+        parcoursCompletesList.forEach(p => {
+          console.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut="${p.statut}", progression=${p.progression_pourcentage}%`);
+        });
+      } else {
+        console.log('⚠️ Aucun parcours complété trouvé');
+        // Afficher tous les statuts uniques pour debug (progressions actives uniquement)
+        const statutsUniquesActives = [...new Set(progressionsActives.map(p => p.statut) || [])];
+        console.log('📊 Statuts uniques trouvés dans les progressions actives:', statutsUniquesActives);
+        // Chercher les parcours actifs avec progression 100%
+        const parcours100PourcentActifs = progressionsActives.filter(p => p.progression_pourcentage === 100) || [];
+        console.log('🔍 Parcours actifs avec progression_pourcentage=100%:', parcours100PourcentActifs.length);
+        if (parcours100PourcentActifs.length > 0) {
+          console.log('📋 Détails des parcours actifs à 100% (mais statut différent de "termine"):');
+          parcours100PourcentActifs.forEach(p => {
+            console.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut="${p.statut}", progression=${p.progression_pourcentage}%`);
+          });
+        }
+      }
+      
+      // Calculer la progression moyenne uniquement pour les progressions actives (hors abandonnés)
+      const progressionMoyenne = progressionsActives.length > 0
+        ? Math.round(progressionsActives.reduce((sum, p) => sum + (p.progression_pourcentage || 0), 0) / progressionsActives.length)
+        : 0;
+      const modulesCompletesCount = modulesCompletes?.length || 0;
+      const evaluationsCount = evals?.length || 0;
+      
+      // Récupérer les entrées de journal
+      const { data: journalData, error: journalError } = await supabase
+        .from('journal_transformation')
+        .select('id')
+        .eq('user_id', user.id);
+      
+      if (journalError) throw journalError;
+      const journalEntriesCount = journalData?.length || 0;
+
+      // Progression par catégorie (uniquement pour les progressions actives)
+      const progressionParCategorie = {};
+      progressionsActives.forEach(p => {
+        const categorie = p.parcours_transformation?.categorie || 'autre';
+        if (!progressionParCategorie[categorie]) {
+          progressionParCategorie[categorie] = { total: 0, completes: 0, progression: 0 };
+        }
+        progressionParCategorie[categorie].total++;
+        if (p.statut === 'termine') progressionParCategorie[categorie].completes++;
+        progressionParCategorie[categorie].progression += p.progression_pourcentage || 0;
+      });
+
+      const progressionParCategorieArray = Object.entries(progressionParCategorie).map(([categorie, data]) => ({
+        categorie: getCategorieInfo(categorie).label,
+        total: data.total,
+        completes: data.completes,
+        progression: Math.round(data.progression / data.total)
+      }));
+
+      // Progression par mois (6 derniers mois)
+      const progressionParMois = [];
+      for (let i = 5; i >= 0; i--) {
+        const monthDate = subMonths(new Date(), i);
+        const monthStart = startOfMonth(monthDate);
+        const monthEnd = endOfMonth(monthDate);
+        
+        const progressionsMois = progressions?.filter(p => {
+          const dateDebut = p.date_debut ? new Date(p.date_debut) : null;
+          return dateDebut && dateDebut >= monthStart && dateDebut <= monthEnd;
+        }) || [];
+
+        progressionParMois.push({
+          mois: format(monthDate, 'MMM yyyy', { locale: fr }),
+          parcours: progressionsMois.length,
+          progression: progressionsMois.length > 0
+            ? Math.round(progressionsMois.reduce((sum, p) => sum + (p.progression_pourcentage || 0), 0) / progressionsMois.length)
+            : 0
+        });
+      }
+
+      // Scores des évaluations dans le temps
+      const scoresEvaluations = evals?.map(evaluation => ({
+        date: format(new Date(evaluation.date_evaluation), 'dd MMM yyyy', { locale: fr }),
+        score: evaluation.score,
+        domaine: getDomaineLabelForStats(evaluation.domaine_evalue)
+      })) || [];
+
+      // =========================
+      // Participants par parcours (vue globale)
+      // =========================
+      // 1) Toutes les progressions (tous les disciples)
+      const { data: allProgressions, error: allProgError } = await supabase
+        .from('user_parcours_progression')
+        .select(`
+          id,
+          user_id,
+          statut,
+          parcours_id,
+          parcours_transformation (
+            nom
+          )
+        `);
+
+      if (allProgError) throw allProgError;
+
+      // 2) Tous les disciples pour récupérer les noms à partir du user_id
+      const { data: disciplesData, error: disciplesError } = await supabase
+        .from('cercle_personnes')
+        .select('id, name, first_name, last_name, user_id');
+
+      if (disciplesError) throw disciplesError;
+
+      const discipleNameByUserId = new Map();
+      (disciplesData || []).forEach((disciple) => {
+        const fullName =
+          disciple.name ||
+          `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() ||
+          'Disciple';
+        if (disciple.user_id) {
+          discipleNameByUserId.set(disciple.user_id, fullName);
+        }
+      });
+
+      const completesMap = new Map();
+      const enCoursMap = new Map();
+
+      // Vérifier pour chaque progression si tous les modules sont complétés
+      // Cela permet d'inclure les parcours complétés même si le statut n'est pas encore "termine" dans la DB
+      const progressionsCompletesVerifiees = new Set();
+      
+      // Récupérer tous les modules complétés pour toutes les progressions
+      const allProgressionIds = (allProgressions || []).map(p => p.id);
+      let allModulesCompletes = [];
+      if (allProgressionIds.length > 0) {
+        const { data: allModData, error: allModError } = await supabase
+          .from('user_module_progression')
+          .select('progression_id, module_id')
+          .in('progression_id', allProgressionIds)
+          .eq('est_complete', true);
+        
+        if (!allModError && allModData) {
+          allModulesCompletes = allModData || [];
+        }
+      }
+      
+      // Récupérer tous les modules de tous les parcours pour vérifier la complétion
+      const allParcoursIds = [...new Set((allProgressions || []).map(p => p.parcours_id))];
+      const parcoursModulesMap = new Map();
+      if (allParcoursIds.length > 0) {
+        const { data: allParcoursModules, error: parcoursModError } = await supabase
+          .from('modules_parcours')
+          .select('id, parcours_id')
+          .in('parcours_id', allParcoursIds)
+          .eq('statut', 'actif');
+        
+        if (!parcoursModError && allParcoursModules) {
+          (allParcoursModules || []).forEach(module => {
+            if (!parcoursModulesMap.has(module.parcours_id)) {
+              parcoursModulesMap.set(module.parcours_id, []);
+            }
+            parcoursModulesMap.get(module.parcours_id).push(module.id);
+          });
+        }
+      }
+
+      (allProgressions || []).forEach((p) => {
+        const name = discipleNameByUserId.get(p.user_id);
+        if (!name) return;
+
+        const parcoursId = p.parcours_id;
+        const parcoursNom = p.parcours_transformation?.nom || 'Parcours';
+
+        // Vérifier si tous les modules sont complétés
+        const totalModules = parcoursModulesMap.get(parcoursId)?.length || 0;
+        let isAllModulesCompleted = false;
+        
+        if (totalModules > 0) {
+          const completedModulesForProgression = allModulesCompletes.filter(
+            m => m.progression_id === p.id
+          );
+          const completedCount = completedModulesForProgression.length;
+          isAllModulesCompleted = completedCount === totalModules;
+        }
+
+        let targetMap = null;
+        
+        // PARCOURS COMPLÉTÉS : uniquement ceux qui sont terminés
+        // - Statut = 'termine' OU tous les modules complétés
+        if (p.statut === 'termine' || isAllModulesCompleted) {
+          targetMap = completesMap;
+          progressionsCompletesVerifiees.add(p.id);
+        }
+        // PARCOURS EN COURS : uniquement ceux qui sont démarrés mais pas terminés
+        // - Statut = 'en_cours' ET pas tous les modules complétés
+        else if (p.statut === 'en_cours' && !isAllModulesCompleted) {
+          targetMap = enCoursMap;
+        }
+        // Ignorer les autres statuts (inscrit, suspendu, abandonne, etc.)
+        else {
+          return;
+        }
+
+        if (!targetMap) return;
+
+        if (!targetMap.has(parcoursId)) {
+          targetMap.set(parcoursId, {
+            parcoursId,
+            parcoursNom,
+            participants: new Set()
+          });
+        }
+
+        const entry = targetMap.get(parcoursId);
+        entry.participants.add(name);
+      });
+
+      const mapToArray = (map) =>
+        Array.from(map.values()).map((entry) => ({
+          parcoursId: entry.parcoursId,
+          parcoursNom: entry.parcoursNom,
+          participants: Array.from(entry.participants).sort((a, b) =>
+            a.localeCompare(b, 'fr'),
+          )
+        }));
+
+      // Calculer les top 5 avant de mettre à jour statsData
+      // Compter le nombre total de participants par formation (toutes progressions confondues)
+      const formationsStats = new Map();
+      
+      (allProgressions || []).forEach((p) => {
+        const parcoursId = p.parcours_id;
+        const parcoursNom = p.parcours_transformation?.nom || 'Parcours';
+        
+        if (!formationsStats.has(parcoursId)) {
+          formationsStats.set(parcoursId, {
+            parcoursId,
+            parcoursNom,
+            totalParticipants: 0,
+            participantsTermines: 0
+          });
+        }
+        
+        const stat = formationsStats.get(parcoursId);
+        stat.totalParticipants++;
+        
+        // Vérifier si cette progression est terminée
+        const totalModules = parcoursModulesMap.get(parcoursId)?.length || 0;
+        let isCompleted = false;
+        
+        if (p.statut === 'termine') {
+          isCompleted = true;
+        } else if (totalModules > 0) {
+          const completedModulesForProgression = allModulesCompletes.filter(
+            m => m.progression_id === p.id
+          );
+          const completedCount = completedModulesForProgression.length;
+          isCompleted = completedCount === totalModules;
+        }
+        
+        if (isCompleted) {
+          stat.participantsTermines++;
+        }
+      });
+      
+      // Convertir en tableau et calculer les pourcentages
+      const formationsArray = Array.from(formationsStats.values()).map(formation => ({
+        ...formation,
+        pourcentageTermines: formation.totalParticipants > 0
+          ? Math.round((formation.participantsTermines / formation.totalParticipants) * 100)
+          : 0
+      }));
+      
+      // Trier et prendre le top 3
+      const top3Suivies = [...formationsArray]
+        .sort((a, b) => b.totalParticipants - a.totalParticipants)
+        .slice(0, 3)
+        .map((formation, index) => ({
+          ...formation,
+          rang: index + 1
+        }));
+      
+      const top3Terminees = [...formationsArray]
+        .filter(f => f.participantsTermines > 0)
+        .sort((a, b) => b.participantsTermines - a.participantsTermines)
+        .slice(0, 3)
+        .map((formation, index) => ({
+          ...formation,
+          rang: index + 1
+        }));
+
+      setStatsData({
+        parcoursCompletes,
+        parcoursEnCours,
+        progressionMoyenne,
+        modulesCompletes: modulesCompletesCount,
+        evaluationsCount,
+        journalEntriesCount,
+        progressionParCategorie: progressionParCategorieArray,
+        progressionParMois,
+        scoresEvaluations,
+        top5FormationsSuivies: top3Suivies,
+        top5FormationsTerminees: top3Terminees
+      });
+    } catch (error) {
+      console.error('Erreur lors de la récupération des statistiques:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de charger les statistiques',
+        variant: 'destructive'
+      });
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  // Fonction pour ouvrir le détail d'une statistique
+  const handleOpenStatsDetail = async (type) => {
+    if (!user) return;
+    
+    try {
+      let items = [];
+      let title = '';
+      
+      // Récupérer les progressions avec les détails des parcours
+      const { data: progressions, error } = await supabase
+        .from('user_parcours_progression')
+        .select(`
+          *,
+          parcours_transformation (
+            nom,
+            categorie
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('date_debut', { ascending: false });
+
+      if (error) throw error;
+
+      switch (type) {
+        case 'parcours-completes':
+          // Récupérer tous les modules complétés pour vérifier la complétion
+          const progressionIds = progressions?.map(p => p.id) || [];
+          let allModulesCompletes = [];
+          if (progressionIds.length > 0) {
+            const { data: modData } = await supabase
+              .from('user_module_progression')
+              .select('progression_id, module_id')
+              .in('progression_id', progressionIds)
+              .eq('est_complete', true);
+            allModulesCompletes = modData || [];
+          }
+          
+          // Récupérer tous les modules de tous les parcours
+          const allParcoursIds = [...new Set(progressions?.map(p => p.parcours_id) || [])];
+          const parcoursModulesMap = new Map();
+          if (allParcoursIds.length > 0) {
+            const { data: parcoursModules } = await supabase
+              .from('modules_parcours')
+              .select('id, parcours_id')
+              .in('parcours_id', allParcoursIds)
+              .eq('statut', 'actif');
+            
+            if (parcoursModules) {
+              parcoursModules.forEach(module => {
+                if (!parcoursModulesMap.has(module.parcours_id)) {
+                  parcoursModulesMap.set(module.parcours_id, []);
+                }
+                parcoursModulesMap.get(module.parcours_id).push(module.id);
+              });
+            }
+          }
+          
+          // Filtrer les parcours complétés (statut 'termine' OU tous les modules complétés)
+          const completesProgressions = progressions?.filter(p => {
+            if (p.statut === 'termine') return true;
+            
+            // Vérifier si tous les modules sont complétés
+            const totalModules = parcoursModulesMap.get(p.parcours_id)?.length || 0;
+            if (totalModules > 0) {
+              const completedModulesForProgression = allModulesCompletes.filter(
+                m => m.progression_id === p.id
+              );
+              const completedCount = completedModulesForProgression.length;
+              return completedCount === totalModules;
+            }
+            return false;
+          }) || [];
+          
+          items = completesProgressions.map(p => ({
+            nom: p.parcours_transformation?.nom || 'Parcours sans nom',
+            date_debut: p.date_debut ? format(new Date(p.date_debut), 'dd MMMM yyyy', { locale: fr }) : 'Non définie',
+            date_fin: p.date_fin_reelle ? format(new Date(p.date_fin_reelle), 'dd MMMM yyyy', { locale: fr }) : 
+                     (p.date_fin ? format(new Date(p.date_fin), 'dd MMMM yyyy', { locale: fr }) : 'Non définie'),
+            statut: 'Terminé',
+            progression: p.progression_pourcentage || 100
+          }));
+          title = 'Parcours Complétés';
+          // Stocker les données brutes pour générer les certificats
+          setStatsDetailData({
+            type,
+            title,
+            items,
+            rawData: completesProgressions
+          });
+          setIsStatsDetailDialogOpen(true);
+          return; // Sortir de la fonction ici
+          
+        case 'parcours-en-cours':
+          items = progressions
+            ?.filter(p => p.statut === 'en_cours')
+            .map(p => ({
+              nom: p.parcours_transformation?.nom || 'Parcours sans nom',
+              date_debut: p.date_debut ? format(new Date(p.date_debut), 'dd MMMM yyyy', { locale: fr }) : 'Non définie',
+              date_fin: p.date_fin ? format(new Date(p.date_fin), 'dd MMMM yyyy', { locale: fr }) : 'En cours',
+              statut: 'En cours',
+              progression: p.progression_pourcentage || 0
+            })) || [];
+          title = 'Parcours en Cours';
+          break;
+          
+        case 'modules-completes':
+          // Récupérer les modules complétés avec les détails des parcours
+          const moduleProgressionIds = progressions?.map(p => p.id) || [];
+          if (moduleProgressionIds.length > 0) {
+            const { data: modulesData, error: modError } = await supabase
+              .from('user_module_progression')
+              .select(`
+                *,
+                modules_parcours (
+                  titre
+                )
+              `)
+              .eq('est_complete', true)
+              .in('progression_id', moduleProgressionIds);
+
+            if (modError) throw modError;
+            
+            // Mapper les modules avec les informations des progressions
+            items = modulesData?.map(m => {
+              const progression = progressions?.find(p => p.id === m.progression_id);
+              return {
+                nom: m.modules_parcours?.titre || 'Module sans nom',
+                parcours_nom: progression?.parcours_transformation?.nom || 'Parcours sans nom',
+                date_debut: progression?.date_debut 
+                  ? format(new Date(progression.date_debut), 'dd MMMM yyyy', { locale: fr }) 
+                  : 'Non définie',
+                date_fin: m.date_completion 
+                  ? format(new Date(m.date_completion), 'dd MMMM yyyy', { locale: fr }) 
+                  : 'Non définie',
+                statut: progression?.statut === 'termine' ? 'Terminé' : 'En cours'
+              };
+            }) || [];
+          }
+          title = 'Modules Complétés';
+          break;
+          
+        case 'evaluations':
+          const { data: evals, error: evalError } = await supabase
+            .from('evaluations_croissance')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('date_evaluation', { ascending: false });
+
+          if (evalError) throw evalError;
+          
+          items = evals?.map(e => ({
+            nom: getDomaineLabelForStats(e.domaine_evalue),
+            date_debut: format(new Date(e.date_evaluation), 'dd MMMM yyyy', { locale: fr }),
+            date_fin: format(new Date(e.date_evaluation), 'dd MMMM yyyy', { locale: fr }),
+            statut: 'Terminé',
+            score: e.score
+          })) || [];
+          title = 'Évaluations';
+          break;
+          
+        case 'journal-entries':
+          const { data: journalData, error: journalError } = await supabase
+            .from('journal_transformation')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('date_entree', { ascending: false });
+
+          if (journalError) throw journalError;
+          
+          items = journalData?.map(j => ({
+            nom: j.titre || 'Entrée sans titre',
+            date_debut: format(new Date(j.date_entree), 'dd MMMM yyyy', { locale: fr }),
+            date_fin: format(new Date(j.date_entree), 'dd MMMM yyyy', { locale: fr }),
+            statut: 'Terminé',
+            thematique: j.thematique
+          })) || [];
+          title = 'Entrées Journal';
+          break;
+      }
+
+      setStatsDetailData({
+        type,
+        title,
+        items,
+        rawData: [] // Pas de données brutes pour les autres types
+      });
+      setIsStatsDetailDialogOpen(true);
+    } catch (error) {
+      console.error('Erreur lors de la récupération des détails:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de charger les détails',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Fonctions d'export et partage
+  const handleExportCSV = () => {
+    try {
+      if (!statsData || Object.keys(statsData).length === 0) {
+        console.error('❌ Aucune donnée à exporter');
+        return;
+      }
+
+      const csvData = [
+        ['Statistique', 'Valeur'],
+        ['Parcours Complétés', statsData.parcoursCompletes || 0],
+        ['Parcours en Cours', statsData.parcoursEnCours || 0],
+        ['Progression Moyenne (%)', statsData.progressionMoyenne || 0],
+        ['Modules Complétés', statsData.modulesCompletes || 0],
+        ['Évaluations', statsData.evaluationsCount || 0],
+        ['Entrées Journal', statsData.journalEntriesCount || 0]
+      ];
+
+      const csvContent = csvData.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = `statistiques_transformation_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      console.log('✅ Export CSV réussi');
+    } catch (error) {
+      console.error('❌ Erreur lors de l\'export CSV:', error);
+    }
+  };
+
+  const handleExportJSON = () => {
+    try {
+      if (!statsData || Object.keys(statsData).length === 0) {
+        console.error('❌ Aucune donnée à exporter');
+        return;
+      }
+
+      const jsonData = {
+        date_export: new Date().toISOString(),
+        statistiques: statsData
+      };
+
+      const jsonContent = JSON.stringify(jsonData, null, 2);
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = `statistiques_transformation_${format(new Date(), 'yyyy-MM-dd')}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      console.log('✅ Export JSON réussi');
+    } catch (error) {
+      console.error('❌ Erreur lors de l\'export JSON:', error);
+    }
+  };
+
+  const handleShareProgression = async () => {
+    try {
+      if (!statsData || Object.keys(statsData).length === 0) {
+        console.error('❌ Aucune donnée à partager');
+        return;
+      }
+
+      const shareText = `📊 Ma progression sur DiscipleLife :
+✅ ${statsData.parcoursCompletes || 0} parcours complétés
+📚 ${statsData.parcoursEnCours || 0} parcours en cours
+📈 ${statsData.progressionMoyenne || 0}% de progression moyenne
+📖 ${statsData.modulesCompletes || 0} modules complétés
+📝 ${statsData.evaluationsCount || 0} évaluations réalisées
+✍️ ${statsData.journalEntriesCount || 0} entrées de journal`;
+
+      console.log('🔍 Tentative de partage:', shareText);
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Ma progression DiscipleLife',
+            text: shareText
+          });
+          console.log('✅ Partage réussi via Web Share API');
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            console.warn('⚠️ Partage Web Share API échoué, copie dans le presse-papiers:', error);
+            // Copier dans le presse-papiers si le partage échoue
+            try {
+              await navigator.clipboard.writeText(shareText);
+              console.log('✅ Texte copié dans le presse-papiers');
+            } catch (clipboardError) {
+              console.error('❌ Erreur lors de la copie dans le presse-papiers:', clipboardError);
+            }
+          } else {
+            console.log('ℹ️ Partage annulé par l\'utilisateur');
+          }
+        }
+      } else {
+        console.log('ℹ️ Web Share API non disponible, copie dans le presse-papiers');
+        // Fallback: copier dans le presse-papiers
+        try {
+          await navigator.clipboard.writeText(shareText);
+          console.log('✅ Texte copié dans le presse-papiers');
+        } catch (clipboardError) {
+          console.error('❌ Erreur lors de la copie dans le presse-papiers:', clipboardError);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erreur lors du partage:', error);
+    }
+  };
+
+  // Fonction pour générer un certificat PDF
+  const generateCertificatePDF = async (progressionData) => {
+    try {
+      // Récupérer le nom de l'utilisateur
+      let userName = 'Disciple';
+      
+      // Essayer de récupérer depuis cercle_personnes
+      const { data: discipleData } = await supabase
+        .from('cercle_personnes')
+        .select('name, first_name, last_name')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (discipleData) {
+        userName = discipleData.name || 
+          `${discipleData.first_name || ''} ${discipleData.last_name || ''}`.trim() || 
+          'Disciple';
+      } else {
+        // Essayer depuis profils
+        const { data: profileData } = await supabase
+          .from('profils')
+          .select('first_name, last_name')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profileData) {
+          userName = `${profileData.first_name || ''} ${profileData.last_name || ''}`.trim() || 'Disciple';
+        }
+      }
+
+      const parcoursNom = progressionData.parcours_transformation?.nom || 'Parcours de Transformation';
+      const dateFin = progressionData.date_fin_reelle || progressionData.date_fin || new Date();
+      const dateFinFormatted = format(new Date(dateFin), 'dd MMMM yyyy', { locale: fr });
+
+      // Créer le PDF
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // Couleurs
+      const primaryColor = [147, 51, 234]; // Purple
+      const secondaryColor = [59, 130, 246]; // Blue
+      const textColor = [31, 41, 55]; // Gray-800
+
+      // Fond gris très clair
+      doc.setFillColor(248, 248, 248);
+      doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+      // Bordure décorative
+      doc.setDrawColor(...primaryColor);
+      doc.setLineWidth(2);
+      doc.rect(10, 10, pageWidth - 20, pageHeight - 20);
+
+      // Titre principal
+      doc.setFontSize(32);
+      doc.setTextColor(...primaryColor);
+      doc.setFont(undefined, 'bold');
+      doc.text('CERTIFICAT DE COMPLÉTION', pageWidth / 2, 50, { align: 'center' });
+
+      // Sous-titre
+      doc.setFontSize(18);
+      doc.setTextColor(...textColor);
+      doc.setFont(undefined, 'normal');
+      doc.text('de Formation DiscipleLife', pageWidth / 2, 65, { align: 'center' });
+
+      // Ligne décorative
+      doc.setDrawColor(...secondaryColor);
+      doc.setLineWidth(1);
+      doc.line(50, 75, pageWidth - 50, 75);
+
+      // Texte principal
+      doc.setFontSize(16);
+      doc.setTextColor(...textColor);
+      doc.setFont(undefined, 'normal');
+      const text1 = 'Ceci certifie que';
+      doc.text(text1, pageWidth / 2, 100, { align: 'center' });
+
+      // Nom du disciple
+      doc.setFontSize(24);
+      doc.setTextColor(...primaryColor);
+      doc.setFont(undefined, 'bold');
+      doc.text(userName, pageWidth / 2, 120, { align: 'center' });
+
+      // Texte de complétion
+      doc.setFontSize(16);
+      doc.setTextColor(...textColor);
+      doc.setFont(undefined, 'normal');
+      const text2 = 'a complété avec succès le parcours de formation';
+      doc.text(text2, pageWidth / 2, 140, { align: 'center' });
+
+      // Nom du parcours
+      doc.setFontSize(20);
+      doc.setTextColor(...primaryColor);
+      doc.setFont(undefined, 'bold');
+      // Gérer les noms longs
+      const parcoursLines = doc.splitTextToSize(parcoursNom, pageWidth - 60);
+      doc.text(parcoursLines, pageWidth / 2, 160, { align: 'center' });
+
+      // Date
+      doc.setFontSize(14);
+      doc.setTextColor(...textColor);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Date de complétion : ${dateFinFormatted}`, pageWidth / 2, 190, { align: 'center' });
+
+      // Signature et sceau
+      doc.setFontSize(12);
+      doc.setTextColor(...textColor);
+      doc.setFont(undefined, 'italic');
+      doc.text('DiscipleLife - Transformation', pageWidth / 2, pageHeight - 30, { align: 'center' });
+
+      // Numéro de certificat (optionnel)
+      const certNumber = `CERT-${progressionData.id?.substring(0, 8).toUpperCase() || 'XXXX'}-${format(new Date(), 'yyyyMMdd')}`;
+      doc.setFontSize(10);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`N° ${certNumber}`, pageWidth / 2, pageHeight - 15, { align: 'center' });
+
+      // Sauvegarder le PDF
+      const fileName = `Certificat_${parcoursNom.replace(/[^a-zA-Z0-9]/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+      
+      console.log('📄 Génération du certificat PDF pour:', userName, '-', parcoursNom);
+      console.log('📄 Nom du fichier:', fileName);
+      
+      try {
+        doc.save(fileName);
+        console.log('✅ Certificat PDF généré et téléchargé avec succès');
+      } catch (saveError) {
+        console.error('❌ Erreur lors de la sauvegarde du PDF:', saveError);
+        throw saveError;
+      }
+
+    } catch (error) {
+      console.error('❌ Erreur lors de la génération du certificat:', error);
+      toast({
+        title: 'Erreur',
+        description: `Impossible de générer le certificat PDF: ${error.message || 'Erreur inconnue'}`,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // ========== FONCTIONS POUR LA VUE PAR DISCIPLE ==========
+  const fetchDisciples = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('cercle_personnes')
+        .select('id, name, first_name, last_name, user_id')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+
+      const disciplesList = (data || []).map(disciple => ({
+        id: disciple.id,
+        user_id: disciple.user_id,
+        name: disciple.name || 
+              `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() || 
+              'Disciple'
+      }));
+
+      setDisciples(disciplesList);
+    } catch (error) {
+      console.error('Erreur lors de la récupération des disciples:', error);
+    }
+  };
+
+  const fetchDiscipleFormations = async (discipleUserId) => {
+    if (!discipleUserId || !selectedDisciple) {
+      console.error('❌ fetchDiscipleFormations: discipleUserId ou selectedDisciple est manquant');
+      return;
+    }
+
+    try {
+      setDiscipleFormationsLoading(true);
+      
+      // Réinitialiser les données avant de charger les nouvelles
+      setDiscipleFormations({
+        completes: [],
+        enCours: []
+      });
+
+      console.log('🔍 Récupération des formations pour disciple:', selectedDisciple?.name);
+      console.log('🔍 Disciple ID (cercle_personnes):', selectedDisciple?.id);
+      console.log('🔍 Disciple user_id:', discipleUserId);
+      console.log('🔍 user.id (utilisateur connecté):', user?.id);
+
+      // Récupérer les progressions du disciple
+      // D'abord, essayer de récupérer les progressions liées au disciple via cercle_personnes_id
+      let query = supabase
+        .from('user_parcours_progression')
+        .select(`
+          *,
+          parcours_transformation (
+            nom,
+            categorie
+          )
+        `);
+
+      // Si le disciple a le même user_id que l'utilisateur connecté,
+      // chercher les progressions liées au disciple via cercle_personnes_id
+      if (discipleUserId === user?.id && selectedDisciple?.id) {
+        console.log('🔍 Le disciple a le même user_id que l\'utilisateur connecté. Recherche via cercle_personnes_id...');
+        query = query.eq('cercle_personnes_id', selectedDisciple.id);
+      } else {
+        // Si le disciple a son propre compte utilisateur, chercher via user_id
+        console.log('🔍 Le disciple a son propre compte utilisateur. Recherche via user_id...');
+        query = query.eq('user_id', discipleUserId);
+      }
+
+      const { data: progressions, error: progError } = await query.order('date_debut', { ascending: false });
+
+      if (progError) {
+        console.error('❌ Erreur lors de la récupération des progressions:', progError);
+        throw progError;
+      }
+
+      console.log(`✅ ${progressions?.length || 0} progressions trouvées pour user_id ${discipleUserId}`);
+      if (progressions && progressions.length > 0) {
+        console.log('📋 Détails des progressions:', progressions.map(p => ({
+          id: p.id,
+          parcours_id: p.parcours_id,
+          nom: p.parcours_transformation?.nom,
+          user_id: p.user_id
+        })));
+      }
+
+      // Récupérer tous les modules complétés
+      const progressionIds = progressions?.map(p => p.id) || [];
+      let allModulesCompletes = [];
+      if (progressionIds.length > 0) {
+        const { data: modData } = await supabase
+          .from('user_module_progression')
+          .select('progression_id, module_id')
+          .in('progression_id', progressionIds)
+          .eq('est_complete', true);
+        allModulesCompletes = modData || [];
+      }
+
+      // Récupérer tous les modules de tous les parcours
+      const allParcoursIds = [...new Set(progressions?.map(p => p.parcours_id) || [])];
+      const parcoursModulesMap = new Map();
+      if (allParcoursIds.length > 0) {
+        const { data: parcoursModules } = await supabase
+          .from('modules_parcours')
+          .select('id, parcours_id')
+          .in('parcours_id', allParcoursIds)
+          .eq('statut', 'actif');
+        
+        if (parcoursModules) {
+          parcoursModules.forEach(module => {
+            if (!parcoursModulesMap.has(module.parcours_id)) {
+              parcoursModulesMap.set(module.parcours_id, []);
+            }
+            parcoursModulesMap.get(module.parcours_id).push(module.id);
+          });
+        }
+      }
+
+      // Séparer les formations complétées et en cours
+      const completes = [];
+      const enCours = [];
+
+      (progressions || []).forEach(p => {
+        const parcoursNom = p.parcours_transformation?.nom || 'Parcours sans nom';
+        const totalModules = parcoursModulesMap.get(p.parcours_id)?.length || 0;
+        let isCompleted = false;
+        let progressionPourcentage = p.progression_pourcentage || 0;
+
+        if (p.statut === 'termine') {
+          isCompleted = true;
+        } else if (totalModules > 0) {
+          const completedModulesForProgression = allModulesCompletes.filter(
+            m => m.progression_id === p.id
+          );
+          const completedCount = completedModulesForProgression.length;
+          isCompleted = completedCount === totalModules;
+          progressionPourcentage = Math.round((completedCount / totalModules) * 100);
+        }
+
+        const formationData = {
+          id: p.id,
+          parcours_id: p.parcours_id,
+          nom: parcoursNom,
+          date_debut: p.date_debut ? format(new Date(p.date_debut), 'dd MMMM yyyy', { locale: fr }) : 'Non définie',
+          date_fin: p.date_fin_reelle ? format(new Date(p.date_fin_reelle), 'dd MMMM yyyy', { locale: fr }) : 
+                   (p.date_fin ? format(new Date(p.date_fin), 'dd MMMM yyyy', { locale: fr }) : 'En cours'),
+          progression: progressionPourcentage,
+          statut: isCompleted ? 'Terminé' : 'En cours'
+        };
+
+        if (isCompleted) {
+          completes.push(formationData);
+        } else if (p.statut === 'en_cours' || p.statut === 'inscrit') {
+          enCours.push(formationData);
+        }
+      });
+
+      console.log(`📊 Formations récupérées pour user_id ${discipleUserId} - Complétées: ${completes.length}, En cours: ${enCours.length}`);
+
+      setDiscipleFormations({
+        completes,
+        enCours
+      });
+    } catch (error) {
+      console.error('❌ Erreur lors de la récupération des formations du disciple:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de récupérer les formations du disciple',
+        variant: 'destructive'
+      });
+    } finally {
+      setDiscipleFormationsLoading(false);
+    }
+  };
+
+  const handleDiscipleSelect = async (disciple) => {
+    console.log('👤 Disciple sélectionné:', disciple);
+    if (!disciple.user_id) {
+      console.error('❌ Le disciple sélectionné n\'a pas de user_id:', disciple);
+      toast({
+        title: 'Erreur',
+        description: 'Ce disciple n\'a pas d\'identifiant utilisateur associé',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    setSelectedDisciple(disciple);
+    setDiscipleSearchQuery(disciple.name);
+    
+    // Réinitialiser les formations avant de charger les nouvelles
+    setDiscipleFormations({
+      completes: [],
+      enCours: []
+    });
+    
+    await fetchDiscipleFormations(disciple.user_id);
+    setIsDiscipleViewDialogOpen(true);
+  };
+
+  const filteredDisciples = disciples.filter(disciple =>
+    disciple.name.toLowerCase().includes(discipleSearchQuery.toLowerCase())
+  );
 
   // ========== FONCTIONS POUR LES ÉVALUATIONS ==========
   const fetchEvaluations = async () => {
@@ -650,34 +2374,95 @@ const Transformation = () => {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Transformation</h1>
-            <p className="text-gray-600">Édifier, construire, guérir et transformer votre vie en Christ</p>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Transformation</h1>
+                <p className="text-gray-600">Édifier, construire, guérir et transformer votre vie en Christ</p>
+              </div>
+              <div className="relative">
+                <div className="relative">
+                    <Input
+                      type="text"
+                      placeholder="Suivre un disciple : Taper son nom"
+                      value={discipleSearchQuery}
+                      onChange={(e) => setDiscipleSearchQuery(e.target.value)}
+                      onFocus={() => {
+                        if (disciples.length === 0) {
+                          fetchDisciples();
+                        }
+                      }}
+                      className="w-64 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
+                    />
+                  {discipleSearchQuery && filteredDisciples.length > 0 && !isDiscipleViewDialogOpen && (
+                    <div className="absolute top-full left-0 w-64 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-60 overflow-y-auto">
+                      {filteredDisciples.map((disciple) => (
+                        <button
+                          key={disciple.id}
+                          onClick={() => handleDiscipleSelect(disciple)}
+                          className="w-full text-left px-4 py-2 hover:bg-purple-50 hover:text-purple-600 transition-colors"
+                        >
+                          {disciple.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-5 bg-white mb-6">
-              <TabsTrigger value="bibliotheque" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+            <TabsList className="nav-tabs-list grid w-full grid-cols-6 bg-white mb-6">
+              <TabsTrigger 
+                value="bibliotheque" 
+                className="nav-tab hover:bg-purple-600 hover:text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white focus:outline-none focus:ring-0 transition-colors"
+              >
                 <BookOpen className="w-4 h-4 mr-2" />
                 Bibliothèque
               </TabsTrigger>
-              <TabsTrigger value="mes-formations" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <TabsTrigger 
+                value="mes-formations" 
+                className="nav-tab hover:bg-purple-600 hover:text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white focus:outline-none focus:ring-0 transition-colors"
+              >
                 <Play className="w-4 h-4 mr-2" />
                 Mes Formations
               </TabsTrigger>
-              <TabsTrigger value="progression" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <TabsTrigger 
+                value="progression" 
+                className="nav-tab hover:bg-purple-600 hover:text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white focus:outline-none focus:ring-0 transition-colors"
+              >
                 <TrendingUp className="w-4 h-4 mr-2" />
                 Mes Parcours
               </TabsTrigger>
-              <TabsTrigger value="journal" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <TabsTrigger 
+                value="journal" 
+                className="nav-tab hover:bg-purple-600 hover:text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white focus:outline-none focus:ring-0 transition-colors"
+              >
                 <FileText className="w-4 h-4 mr-2" />
                 Journal
               </TabsTrigger>
-              <TabsTrigger value="evaluations" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <TabsTrigger 
+                value="evaluations" 
+                className="nav-tab hover:bg-purple-600 hover:text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white focus:outline-none focus:ring-0 transition-colors"
+              >
                 <BarChart3 className="w-4 h-4 mr-2" />
                 Évaluations
               </TabsTrigger>
+              <TabsTrigger 
+                value="statistiques" 
+                className="nav-tab hover:bg-purple-600 hover:text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white focus:outline-none focus:ring-0 transition-colors"
+              >
+                <TrendingUp className="w-4 h-4 mr-2" />
+                Statistiques
+              </TabsTrigger>
             </TabsList>
+            <style jsx>{`
+              .nav-tabs-list:hover .nav-tab[data-state="active"]:not(:hover) {
+                background-color: transparent !important;
+                color: rgb(75 85 99) !important;
+              }
+            `}</style>
 
             {/* Tab Content: Bibliothèque */}
             <TabsContent value="bibliotheque" className="space-y-6">
@@ -753,7 +2538,7 @@ const Transformation = () => {
                   <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
                 </div>
               ) : filteredParcours.length === 0 ? (
-                <Card className="bg-white">
+                <Card className="bg-white border-gray-200">
                   <CardContent className="py-12 text-center">
                     <BookOpen className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                     <p className="text-gray-600">Aucun parcours disponible pour le moment</p>
@@ -851,8 +2636,8 @@ const Transformation = () => {
                 <div className="flex justify-center py-20">
                   <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
                 </div>
-              ) : userProgression.filter(prog => prog.statut === 'en_cours' || prog.statut === 'inscrit').length === 0 ? (
-                <Card className="bg-white">
+              ) : userProgression.filter(prog => prog.statut === 'en_cours' || prog.statut === 'inscrit' || prog.statut === 'termine').length === 0 ? (
+                <Card className="bg-white border-gray-200">
                   <CardContent className="py-12 text-center">
                     <Play className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                     <p className="text-gray-600 mb-4">Vous n'avez démarré aucune formation</p>
@@ -862,8 +2647,9 @@ const Transformation = () => {
                   </CardContent>
                 </Card>
               ) : (() => {
+                // Afficher les parcours en cours, inscrits ET terminés dans "Mes Formations"
                 const progressionsActives = userProgression.filter(prog => 
-                  prog.statut === 'en_cours' || prog.statut === 'inscrit'
+                  prog.statut === 'en_cours' || prog.statut === 'inscrit' || prog.statut === 'termine'
                 );
                 console.log('📋 Onglet Mes Formations - Progressions actives:', progressionsActives.length);
                 console.log('📊 Détails progressions actives:', progressionsActives.map(p => ({
@@ -890,9 +2676,15 @@ const Transformation = () => {
                       console.warn('⚠️ Progression sans parcours:', prog.id);
                       return null;
                     }
+                    
+                    // Utiliser les valeurs corrigées si disponibles, sinon utiliser les valeurs de la DB
+                    const corrected = correctedProgressions[prog.id];
+                    const actualStatut = corrected?.statut || prog.statut;
+                    const actualProgression = corrected?.progression_pourcentage ?? (prog.progression_pourcentage || 0);
+                    
                     const categorieInfo = parcour?.categorie ? getCategorieInfo(parcour.categorie) : null;
                     return (
-                      <Card key={prog.id} className="bg-white">
+                      <Card key={prog.id} className="bg-white border-gray-200">
                         <CardHeader>
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -903,12 +2695,16 @@ const Transformation = () => {
                                   </Badge>
                                 )}
                                 <Badge className={
-                                  prog.statut === 'termine' ? 'bg-green-500' :
-                                  prog.statut === 'en_cours' ? 'bg-blue-500' :
-                                  prog.statut === 'abandonne' ? 'bg-red-500' :
-                                  'bg-gray-500'
+                                  actualStatut === 'termine' ? 'bg-green-500 text-white' :
+                                  actualStatut === 'en_cours' ? 'bg-blue-500 text-white' :
+                                  actualStatut === 'abandonne' ? 'bg-red-500 text-white' :
+                                  'bg-gray-500 text-white'
                                 }>
-                                  {prog.statut}
+                                  {actualStatut === 'termine' ? 'Terminé' :
+                                   actualStatut === 'en_cours' ? 'En cours' :
+                                   actualStatut === 'inscrit' ? 'Inscrit' :
+                                   actualStatut === 'abandonne' ? 'Abandonné' :
+                                   actualStatut}
                                 </Badge>
                               </div>
                               <CardTitle className="text-gray-900">{parcour?.nom || 'Parcours'}</CardTitle>
@@ -923,9 +2719,9 @@ const Transformation = () => {
                             <div>
                               <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
                                 <span>Progression</span>
-                                <span>{prog.progression_pourcentage}%</span>
+                                <span>{actualProgression === 100 ? 100 : actualProgression}%</span>
                               </div>
-                              <Progress value={prog.progression_pourcentage} className="h-2" />
+                              <Progress value={actualProgression === 100 ? 100 : actualProgression} className="h-2" />
                             </div>
                             <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                               <div>
@@ -940,7 +2736,7 @@ const Transformation = () => {
                               </div>
                             </div>
                             <div className="flex gap-2 justify-center">
-                              {prog.statut !== 'en_cours' && (
+                              {actualStatut !== 'termine' && actualStatut !== 'en_cours' && (
                                 <Button
                                   className="flex-1 bg-purple-600 text-white"
                                   onClick={() => handleStartParcours(prog.parcours_id)}
@@ -949,13 +2745,15 @@ const Transformation = () => {
                                   Commencer le programme
                                 </Button>
                               )}
-                              <Button
-                                variant="outline"
-                                className="bg-white border-red-500 text-red-600 hover:bg-red-500 hover:text-white"
-                                onClick={() => handleCancelParcours(prog)}
-                              >
-                                Annuler le programme
-                              </Button>
+                              {actualStatut !== 'termine' && (
+                                <Button
+                                  variant="outline"
+                                  className="bg-white border-red-500 text-red-600 hover:bg-red-500 hover:text-white"
+                                  onClick={() => handleCancelParcours(prog)}
+                                >
+                                  Annuler le programme
+                                </Button>
+                              )}
                             </div>
                           </div>
                         </CardContent>
@@ -974,7 +2772,7 @@ const Transformation = () => {
                   <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
                 </div>
               ) : userProgression.filter(prog => prog.statut === 'en_cours' || prog.statut === 'inscrit').length === 0 ? (
-                <Card className="bg-white">
+                <Card className="bg-white border-gray-200">
                   <CardContent className="py-12 text-center">
                     <Target className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                     <p className="text-gray-600 mb-4">Vous n'avez pas encore démarré de parcours</p>
@@ -1012,7 +2810,7 @@ const Transformation = () => {
                       return null;
                     }
                     return (
-                      <Card key={prog.id} className="bg-white">
+                      <Card key={prog.id} className="bg-white border-gray-200">
                         <CardHeader>
                           <div className="flex items-start justify-between">
                             <div>
@@ -1089,12 +2887,83 @@ const Transformation = () => {
                 </Button>
               </div>
 
+              {/* Filtres du Journal */}
+              <Card className="bg-white border-gray-200">
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* Recherche textuelle */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Input
+                        placeholder="Rechercher..."
+                        value={journalSearchQuery}
+                        onChange={(e) => setJournalSearchQuery(e.target.value)}
+                        className="pl-10 bg-white border-gray-300 text-gray-900"
+                      />
+                    </div>
+
+                    {/* Filtre par thématique */}
+                    <Select value={journalFilterThematique} onValueChange={setJournalFilterThematique}>
+                      <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200] max-h-60 overflow-y-auto">
+                        <SelectItem value="toutes" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Toutes les thématiques</SelectItem>
+                        {getUniqueThematiques().map(thematique => (
+                          <SelectItem key={thematique} value={thematique} className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">
+                            {thematique}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {/* Filtre par date début */}
+                    <Input
+                      type="date"
+                      placeholder="Date début"
+                      value={journalFilterDateDebut}
+                      onChange={(e) => setJournalFilterDateDebut(e.target.value)}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+
+                    {/* Filtre par date fin */}
+                    <Input
+                      type="date"
+                      placeholder="Date fin"
+                      value={journalFilterDateFin}
+                      onChange={(e) => setJournalFilterDateFin(e.target.value)}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+                  </div>
+
+                  {/* Boutons de réinitialisation */}
+                  {(journalSearchQuery || journalFilterThematique !== 'toutes' || journalFilterDateDebut || journalFilterDateFin) && (
+                    <div className="mt-4 flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setJournalSearchQuery('');
+                          setJournalFilterThematique('toutes');
+                          setJournalFilterDateDebut('');
+                          setJournalFilterDateFin('');
+                        }}
+                        className="bg-gray-600 text-white border-gray-600 hover:bg-white hover:text-black hover:border-gray-300"
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Réinitialiser les filtres
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               {journalLoading ? (
                 <div className="flex justify-center py-20">
                   <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
                 </div>
               ) : journalEntries.length === 0 ? (
-                <Card className="bg-white">
+                <Card className="bg-white border-gray-200">
                   <CardContent className="py-12 text-center">
                     <FileText className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                     <p className="text-gray-600 mb-4">Aucune entrée dans votre journal</p>
@@ -1106,10 +2975,29 @@ const Transformation = () => {
                     </Button>
                   </CardContent>
                 </Card>
+              ) : getFilteredJournalEntries().length === 0 ? (
+                <Card className="bg-white border-gray-200">
+                  <CardContent className="py-12 text-center">
+                    <Filter className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                    <p className="text-gray-600 mb-4">Aucune entrée ne correspond aux filtres sélectionnés</p>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setJournalSearchQuery('');
+                        setJournalFilterThematique('toutes');
+                        setJournalFilterDateDebut('');
+                        setJournalFilterDateFin('');
+                      }}
+                      className="bg-gray-800 text-white border-gray-600 hover:bg-white hover:text-black hover:border-gray-300"
+                    >
+                      Réinitialiser les filtres
+                    </Button>
+                  </CardContent>
+                </Card>
               ) : (
                 <div className="space-y-4">
-                  {journalEntries.map((entry) => (
-                    <Card key={entry.id} className="bg-white">
+                  {getFilteredJournalEntries().map((entry) => (
+                    <Card key={entry.id} className="bg-white border-gray-200">
                       <CardHeader>
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -1120,19 +3008,30 @@ const Transformation = () => {
                               {format(new Date(entry.date_entree), 'dd MMMM yyyy', { locale: fr })}
                             </CardDescription>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditJournal(entry)}
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditJournal(entry)}
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteJournal(entry)}
+                              className="bg-red-600 text-white border-red-600 hover:bg-red-700 hover:text-white"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Supprimer l'entrée
+                            </Button>
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent>
                         <p className="text-gray-700 whitespace-pre-wrap">{entry.contenu}</p>
                         {entry.thematique && (
-                          <Badge variant="outline" className="mt-3">
+                          <Badge className="mt-3 bg-blue-600 text-white border-none">
                             {entry.thematique}
                           </Badge>
                         )}
@@ -1156,12 +3055,92 @@ const Transformation = () => {
                 </Button>
               </div>
 
+              {/* Filtres des Évaluations */}
+              <Card className="bg-white border-gray-200">
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* Filtre par domaine */}
+                    <Select value={evaluationFilterDomaine} onValueChange={setEvaluationFilterDomaine}>
+                      <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
+                        <SelectItem value="tous" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Tous les domaines</SelectItem>
+                        <SelectItem value="relation_dieu" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Relation avec Dieu</SelectItem>
+                        <SelectItem value="priere" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Prière</SelectItem>
+                        <SelectItem value="parole" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Parole de Dieu</SelectItem>
+                        <SelectItem value="service" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Service</SelectItem>
+                        <SelectItem value="communaute" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Communauté</SelectItem>
+                        <SelectItem value="temperament" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Tempérament</SelectItem>
+                        <SelectItem value="finances" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Finances</SelectItem>
+                        <SelectItem value="sante" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Santé</SelectItem>
+                        <SelectItem value="relations" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Relations</SelectItem>
+                        <SelectItem value="autre" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Autre</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Filtre par type */}
+                    <Select value={evaluationFilterType} onValueChange={setEvaluationFilterType}>
+                      <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
+                        <SelectItem value="tous" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Tous les types</SelectItem>
+                        <SelectItem value="initiale" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Initiale</SelectItem>
+                        <SelectItem value="mensuelle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Mensuelle</SelectItem>
+                        <SelectItem value="trimestrielle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Trimestrielle</SelectItem>
+                        <SelectItem value="annuelle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Annuelle</SelectItem>
+                        <SelectItem value="personnalisee" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Personnalisée</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Filtre par date début */}
+                    <Input
+                      type="date"
+                      placeholder="Date début"
+                      value={evaluationFilterDateDebut}
+                      onChange={(e) => setEvaluationFilterDateDebut(e.target.value)}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+
+                    {/* Filtre par date fin */}
+                    <Input
+                      type="date"
+                      placeholder="Date fin"
+                      value={evaluationFilterDateFin}
+                      onChange={(e) => setEvaluationFilterDateFin(e.target.value)}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+                  </div>
+
+                  {/* Boutons de réinitialisation */}
+                  {(evaluationFilterDomaine !== 'tous' || evaluationFilterType !== 'tous' || evaluationFilterDateDebut || evaluationFilterDateFin) && (
+                    <div className="mt-4 flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEvaluationFilterDomaine('tous');
+                          setEvaluationFilterType('tous');
+                          setEvaluationFilterDateDebut('');
+                          setEvaluationFilterDateFin('');
+                        }}
+                        className="bg-gray-600 text-white border-gray-600 hover:bg-white hover:text-black hover:border-gray-300"
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Réinitialiser les filtres
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               {evaluationsLoading ? (
                 <div className="flex justify-center py-20">
                   <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
                 </div>
               ) : evaluations.length === 0 ? (
-                <Card className="bg-white">
+                <Card className="bg-white border-gray-200">
                   <CardContent className="py-12 text-center">
                     <BarChart3 className="w-16 h-16 mx-auto text-gray-400 mb-4" />
                     <p className="text-gray-600 mb-4">Aucune évaluation enregistrée</p>
@@ -1173,55 +3152,538 @@ const Transformation = () => {
                     </Button>
                   </CardContent>
                 </Card>
+              ) : getFilteredEvaluations().length === 0 ? (
+                <Card className="bg-white border-gray-200">
+                  <CardContent className="py-12 text-center">
+                    <Filter className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                    <p className="text-gray-600 mb-4">Aucune évaluation ne correspond aux filtres sélectionnés</p>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEvaluationFilterDomaine('tous');
+                        setEvaluationFilterType('tous');
+                        setEvaluationFilterDateDebut('');
+                        setEvaluationFilterDateFin('');
+                      }}
+                      className="bg-gray-800 text-white border-gray-600 hover:bg-white hover:text-black hover:border-gray-300"
+                    >
+                      Réinitialiser les filtres
+                    </Button>
+                  </CardContent>
+                </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {evaluations.map((evaluation) => (
-                    <Card key={evaluation.id} className="bg-white">
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-gray-900 capitalize">
-                              {evaluation.domaine_evalue.replace('_', ' ')}
-                            </CardTitle>
-                            <CardDescription className="text-gray-600">
-                              {format(new Date(evaluation.date_evaluation), 'dd MMMM yyyy', { locale: fr })}
-                            </CardDescription>
-                          </div>
-                          <Badge className="bg-purple-600">
-                            {evaluation.score}/100
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div>
-                            <span className="text-sm text-gray-500">Type:</span>
-                            <p className="font-medium text-gray-900 capitalize">{evaluation.type_evaluation}</p>
-                          </div>
-                          {evaluation.notes && (
+                  {getFilteredEvaluations().map((evaluation) => {
+                    const getDomaineLabel = (domaine) => {
+                      const labels = {
+                        'relation_dieu': 'Relation avec Dieu',
+                        'priere': 'Prière',
+                        'parole': 'Parole de Dieu',
+                        'service': 'Service',
+                        'communaute': 'Communauté',
+                        'temperament': 'Tempérament',
+                        'finances': 'Finances',
+                        'sante': 'Santé',
+                        'relations': 'Relations',
+                        'autre': 'Autre'
+                      };
+                      return labels[domaine] || domaine.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    };
+
+                    const getTypeLabel = (type) => {
+                      const labels = {
+                        'initiale': 'Initiale',
+                        'mensuelle': 'Mensuelle',
+                        'trimestrielle': 'Trimestrielle',
+                        'annuelle': 'Annuelle',
+                        'personnalisee': 'Personnalisée'
+                      };
+                      return labels[type] || type.charAt(0).toUpperCase() + type.slice(1);
+                    };
+
+                    return (
+                      <Card key={evaluation.id} className="bg-white border-gray-200">
+                        <CardHeader>
+                          <div className="flex items-start justify-between">
                             <div>
-                              <span className="text-sm text-gray-500">Notes:</span>
-                              <p className="text-gray-700">{evaluation.notes}</p>
+                              <CardTitle className="text-gray-900">
+                                {getDomaineLabel(evaluation.domaine_evalue)}
+                              </CardTitle>
+                              <CardDescription className="text-gray-600">
+                                {format(new Date(evaluation.date_evaluation), 'dd MMMM yyyy', { locale: fr })}
+                              </CardDescription>
                             </div>
-                          )}
+                            <Badge className="bg-purple-600">
+                              {evaluation.score}/100
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-2">
+                            <div>
+                              <span className="text-sm text-gray-500">Type:</span>
+                              <p className="font-medium text-gray-900">{getTypeLabel(evaluation.type_evaluation)}</p>
+                            </div>
+                            {evaluation.notes && (
+                              <div>
+                                <span className="text-sm text-gray-500">Notes:</span>
+                                <p className="text-gray-700">{evaluation.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Tab Content: Statistiques */}
+              <TabsContent value="statistiques" className="space-y-6">
+                {statsLoading ? (
+                  <div className="flex justify-center py-20">
+                    <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Bouton de réinitialisation pour les tests */}
+                    <Card className="bg-yellow-50 border-yellow-200">
+                      <CardContent className="py-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-yellow-800">
+                              🔧 Mode Test : Réinitialiser toutes les formations
+                            </p>
+                            <p className="text-xs text-yellow-600 mt-1">
+                              Remet toutes les formations en "non complétées" pour reprendre les tests depuis le début
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={resetAllFormations}
+                            className="bg-yellow-600 text-white border-yellow-600 hover:bg-yellow-700 hover:text-white"
+                          >
+                            <X className="w-4 h-4 mr-2" />
+                            Réinitialiser toutes les formations
+                          </Button>
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
-                </div>
+                  {/* Cartes de statistiques */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <Card 
+                      className="bg-white border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => handleOpenStatsDetail('parcours-completes')}
+                    >
+                      <CardHeader>
+                        <CardTitle className="text-gray-700 flex items-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-green-500" />
+                          Formations terminées
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-green-600">{statsData.parcoursCompletes}</div>
+                        <p className="text-sm text-gray-600 mt-1">Formations complétées</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card 
+                      className="bg-white border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => handleOpenStatsDetail('parcours-en-cours')}
+                    >
+                      <CardHeader>
+                        <CardTitle className="text-gray-700 flex items-center gap-2">
+                          <Play className="w-5 h-5 text-blue-500" />
+                          Parcours en Cours
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-blue-600">{statsData.parcoursEnCours}</div>
+                        <p className="text-sm text-gray-600 mt-1">Formations actives</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-white border-gray-200">
+                      <CardHeader>
+                        <CardTitle className="text-gray-700 flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-purple-500" />
+                          Progression Moyenne
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-purple-600">{statsData.progressionMoyenne}%</div>
+                        <Progress 
+                          value={statsData.progressionMoyenne} 
+                          className="mt-2 h-1.5 bg-gray-200" 
+                          indicatorClassName="bg-gray-700"
+                        />
+                      </CardContent>
+                    </Card>
+
+                    <Card 
+                      className="bg-white border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => handleOpenStatsDetail('modules-completes')}
+                    >
+                      <CardHeader>
+                        <CardTitle className="text-gray-700 flex items-center gap-2">
+                          <BookOpen className="w-5 h-5 text-indigo-500" />
+                          Modules Complétés
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-indigo-600">{statsData.modulesCompletes}</div>
+                        <p className="text-sm text-gray-600 mt-1">Modules terminés</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card 
+                      className="bg-white border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => handleOpenStatsDetail('evaluations')}
+                    >
+                      <CardHeader>
+                        <CardTitle className="text-gray-700 flex items-center gap-2">
+                          <BarChart3 className="w-5 h-5 text-yellow-500" />
+                          Évaluations
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-yellow-600">{statsData.evaluationsCount}</div>
+                        <p className="text-sm text-gray-600 mt-1">Évaluations réalisées</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card 
+                      className="bg-white border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => handleOpenStatsDetail('journal-entries')}
+                    >
+                      <CardHeader>
+                        <CardTitle className="text-gray-700 flex items-center gap-2">
+                          <FileText className="w-5 h-5 text-pink-500" />
+                          Entrées Journal
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-pink-600">{statsData.journalEntriesCount}</div>
+                        <p className="text-sm text-gray-600 mt-1">Entrées de journal</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Top 3 des formations */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                    {/* Top 3 des formations suivies */}
+                    <Card className="bg-white border-gray-200">
+                      <CardHeader>
+                        <CardTitle className="text-gray-700 flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-blue-500" />
+                          Top 3 des formations suivies
+                        </CardTitle>
+                        <CardDescription>Les formations les plus suivies par les participants</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {statsData.top5FormationsSuivies.length === 0 ? (
+                          <p className="text-sm text-gray-600">Aucune formation suivie pour le moment.</p>
+                        ) : (
+                          <div className="space-y-4">
+                            {statsData.top5FormationsSuivies.map((formation) => (
+                              <div
+                                key={formation.parcoursId}
+                                className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0"
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="font-semibold text-blue-600">
+                                      N° <span className="text-blue-600">{formation.rang}</span> {formation.parcoursNom}
+                                    </p>
+                                    <p className="text-sm text-gray-600 mt-1">
+                                      Nbre de participants : <span className="font-semibold text-blue-600">{formation.totalParticipants}</span> - <span className="font-semibold text-blue-600">{formation.pourcentageTermines}%</span>
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Top 3 des formations terminées */}
+                    <Card className="bg-white border-gray-200">
+                      <CardHeader>
+                        <CardTitle className="text-gray-700 flex items-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-green-500" />
+                          Top 3 des formations terminées
+                        </CardTitle>
+                        <CardDescription>Les formations les plus terminées par les participants</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {statsData.top5FormationsTerminees.length === 0 ? (
+                          <p className="text-sm text-gray-600">Aucune formation terminée pour le moment.</p>
+                        ) : (
+                          <div className="space-y-4">
+                            {statsData.top5FormationsTerminees.map((formation) => (
+                              <div
+                                key={formation.parcoursId}
+                                className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0"
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="font-semibold text-green-600">
+                                      N° <span className="text-green-600">{formation.rang}</span> {formation.parcoursNom}
+                                    </p>
+                                    <p className="text-sm text-gray-600 mt-1">
+                                      Nbre de participants : <span className="font-semibold text-green-600">{formation.participantsTermines}</span> - <span className="font-semibold text-green-600">{formation.pourcentageTermines}%</span>
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Graphiques */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+                    {/* Graphique de progression par mois */}
+                    <Card className="bg-white border-gray-200">
+                      <CardHeader>
+                        <CardTitle className="text-gray-700">Progression Mensuelle</CardTitle>
+                        <CardDescription>Évolution des parcours démarrés (6 derniers mois)</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <LineChart data={statsData.progressionParMois}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="mois" stroke="#888888" fontSize={12} />
+                            <YAxis stroke="#888888" fontSize={12} />
+                            <Tooltip />
+                            <Legend />
+                            <Line type="monotone" dataKey="parcours" stroke="#9333ea" strokeWidth={2} name="Parcours" />
+                            <Line type="monotone" dataKey="progression" stroke="#3b82f6" strokeWidth={2} name="Progression %" />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    {/* Graphique de progression par catégorie */}
+                    {statsData.progressionParCategorie.length > 0 && (
+                      <Card className="bg-white border-gray-200">
+                        <CardHeader>
+                          <CardTitle className="text-gray-700">Progression par Catégorie</CardTitle>
+                          <CardDescription>Répartition des parcours par catégorie</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={statsData.progressionParCategorie}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis dataKey="categorie" stroke="#888888" fontSize={12} angle={-45} textAnchor="end" height={80} />
+                              <YAxis stroke="#888888" fontSize={12} />
+                              <Tooltip />
+                              <Legend />
+                              <Bar dataKey="completes" fill="#10b981" name="Complétés" />
+                              <Bar dataKey="total" fill="#3b82f6" name="Total" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Graphique des scores d'évaluations */}
+                    {statsData.scoresEvaluations.length > 0 && (
+                      <Card className="bg-white border-gray-200 lg:col-span-2">
+                        <CardHeader>
+                          <CardTitle className="text-gray-700">Évolution des Scores d'Évaluations</CardTitle>
+                          <CardDescription>Progression des scores dans le temps</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <LineChart data={statsData.scoresEvaluations}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis dataKey="date" stroke="#888888" fontSize={12} />
+                              <YAxis stroke="#888888" fontSize={12} domain={[0, 100]} />
+                              <Tooltip />
+                              <Legend />
+                              <Line type="monotone" dataKey="score" stroke="#f59e0b" strokeWidth={2} name="Score" />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+
+                  {/* Boutons d'export et partage */}
+                  <Card className="bg-white border-gray-200">
+                    <CardHeader>
+                      <CardTitle className="text-gray-700">Export et Partage</CardTitle>
+                      <CardDescription>Exporter vos données ou partager votre progression</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-4">
+                        <Button
+                          onClick={handleExportCSV}
+                          className="bg-purple-600 text-white hover:bg-purple-700"
+                        >
+                          <FileDown className="w-4 h-4 mr-2" />
+                          Exporter en CSV
+                        </Button>
+                        <Button
+                          onClick={handleExportJSON}
+                          className="bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                          <FileDown className="w-4 h-4 mr-2" />
+                          Exporter en JSON
+                        </Button>
+                        <Button
+                          onClick={handleShareProgression}
+                          className="bg-green-600 text-white hover:bg-green-700"
+                        >
+                          <Share2 className="w-4 h-4 mr-2" />
+                          Partager la Progression
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
               )}
             </TabsContent>
           </Tabs>
         </div>
       </div>
 
+      {/* Dialog: Détails des Statistiques */}
+      <Dialog open={isStatsDetailDialogOpen} onOpenChange={setIsStatsDetailDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-gray-200 text-gray-900 [&>button]:hidden">
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
+            <DialogTitle className="text-gray-900">{statsDetailData.title}</DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Liste détaillée des éléments
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            {statsDetailData.items.length === 0 ? (
+              <div className="text-center py-12 text-gray-600">
+                <p>Aucun élément à afficher</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {statsDetailData.items.map((item, index) => {
+                  const rawDataItem = statsDetailData.rawData[index];
+                  return (
+                  <Card key={index} className="bg-white border-gray-200">
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <CardTitle className="text-gray-900 text-lg">
+                          {item.nom}
+                          {item.parcours_nom && (
+                            <span className="text-sm text-gray-600 font-normal ml-2">
+                              ({item.parcours_nom})
+                            </span>
+                          )}
+                        </CardTitle>
+                        {statsDetailData.type === 'parcours-completes' && rawDataItem && (
+                          <Button
+                            size="sm"
+                            onClick={() => generateCertificatePDF(rawDataItem)}
+                            className="bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-2"
+                          >
+                            <Award className="w-4 h-4" />
+                            Télécharger le certificat
+                          </Button>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1">Date de début</p>
+                          <p className="text-sm font-medium text-gray-900">{item.date_debut}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1">Date de fin</p>
+                          <p className="text-sm font-medium text-gray-900">{item.date_fin}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1">Statut</p>
+                          <Badge 
+                            className={
+                              item.statut === 'Terminé' 
+                                ? 'bg-green-100 text-green-700 border-green-200' 
+                                : 'bg-blue-100 text-blue-700 border-blue-200'
+                            }
+                          >
+                            {item.statut}
+                          </Badge>
+                        </div>
+                        {item.progression !== undefined && (
+                          <div>
+                            <p className="text-sm text-gray-500 mb-1">Progression</p>
+                            <p className="text-sm font-medium text-gray-900">{item.progression}%</p>
+                          </div>
+                        )}
+                        {item.score !== undefined && (
+                          <div>
+                            <p className="text-sm text-gray-500 mb-1">Score</p>
+                            <p className="text-sm font-medium text-gray-900">{item.score}/100</p>
+                          </div>
+                        )}
+                        {item.thematique && (
+                          <div>
+                            <p className="text-sm text-gray-500 mb-1">Thématique</p>
+                            <Badge className="bg-blue-600 text-white border-none">{item.thematique}</Badge>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => setIsStatsDetailDialogOpen(false)}
+              className="bg-gray-800 text-white border-gray-800 hover:bg-white hover:text-black hover:border-gray-300"
+            >
+              Fermer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dialog: Détails du Parcours */}
       <Dialog open={isParcoursDialogOpen} onOpenChange={setIsParcoursDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white">
-          <DialogHeader>
-            <DialogTitle className="text-gray-900">{selectedParcours?.nom}</DialogTitle>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white border-gray-200 text-gray-900 [&>button]:hidden" style={{ backgroundColor: 'white', zIndex: 200 }}>
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
+            <DialogTitle className="text-gray-900">{selectedParcours?.nom || 'Détails du parcours'}</DialogTitle>
             <DialogDescription className="text-gray-600">
-              {selectedParcours?.description}
+              {selectedParcours?.description || 'Chargement...'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-4">
@@ -1260,7 +3722,7 @@ const Transformation = () => {
             <Button 
               variant="outline" 
               onClick={() => setIsParcoursDialogOpen(false)} 
-              className="bg-gray-800 text-white border-gray-800 hover:bg-white hover:text-black hover:border-gray-300 transition-colors"
+              className="bg-gray-800 text-white border-gray-600 hover:bg-white hover:text-black hover:border-gray-300 transition-colors"
             >
               Fermer
             </Button>
@@ -1281,8 +3743,19 @@ const Transformation = () => {
 
       {/* Dialog: Journal */}
       <Dialog open={isJournalDialogOpen} onOpenChange={setIsJournalDialogOpen}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl [&>button]:hidden">
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
             <DialogTitle className="text-gray-900">
               {editingJournalId ? 'Modifier l\'entrée' : 'Nouvelle entrée de journal'}
             </DialogTitle>
@@ -1325,7 +3798,7 @@ const Transformation = () => {
                 id="thematique"
                 value={journalFormData.thematique}
                 onChange={(e) => setJournalFormData({ ...journalFormData, thematique: e.target.value })}
-                placeholder="Ex: Guérison, Finances, Discipulat..."
+                placeholder="Ex: Guérison, Finances, Discipolat..."
                 className="bg-white border-gray-300 text-gray-900"
               />
             </div>
@@ -1342,10 +3815,153 @@ const Transformation = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog: Vue par Disciple */}
+      <Dialog open={isDiscipleViewDialogOpen} onOpenChange={(open) => {
+        setIsDiscipleViewDialogOpen(open);
+        if (!open) {
+          // Réinitialiser la sélection quand on ferme la modale
+          setSelectedDisciple(null);
+          setDiscipleSearchQuery('');
+        }
+      }}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-4xl max-h-[90vh] overflow-y-auto [&>button]:hidden">
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
+            <DialogTitle className="text-gray-900">
+              Formations de {selectedDisciple?.name || 'Disciple'}
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Vue détaillée des formations terminées et en cours
+            </DialogDescription>
+            {selectedDisciple?.user_id === user?.id && (
+              <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ <strong>Note :</strong> Les formations affichées sont celles de l'utilisateur connecté. 
+                  Pour voir les formations individuelles de chaque disciple, chaque disciple doit avoir son propre compte utilisateur.
+                </p>
+              </div>
+            )}
+          </DialogHeader>
+          <div className="mt-6 space-y-6">
+            {discipleFormationsLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+              </div>
+            ) : (
+              <>
+                {/* Formations terminées */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-green-500" />
+                    Formations terminées ({discipleFormations.completes.length})
+                  </h3>
+                  {discipleFormations.completes.length === 0 ? (
+                    <p className="text-sm text-gray-600">Aucune formation terminée</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {discipleFormations.completes.map((formation) => (
+                        <Card key={formation.id} className="bg-white border-gray-200">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h4 className="font-semibold text-gray-900 mb-2">{formation.nom}</h4>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <span className="text-gray-500">Date de début:</span>
+                                    <p className="text-gray-900">{formation.date_debut}</p>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Date de fin:</span>
+                                    <p className="text-gray-900">{formation.date_fin}</p>
+                                  </div>
+                                </div>
+                              </div>
+                              <Badge className="bg-green-500 text-white">Terminé</Badge>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Formations en cours */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-blue-500" />
+                    Formations en cours ({discipleFormations.enCours.length})
+                  </h3>
+                  {discipleFormations.enCours.length === 0 ? (
+                    <p className="text-sm text-gray-600">Aucune formation en cours</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {discipleFormations.enCours.map((formation) => (
+                        <Card key={formation.id} className="bg-white border-gray-200">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1">
+                                <h4 className="font-semibold text-gray-900 mb-2">{formation.nom}</h4>
+                                <div className="grid grid-cols-2 gap-4 text-sm mb-3">
+                                  <div>
+                                    <span className="text-gray-500">Date de début:</span>
+                                    <p className="text-gray-900">{formation.date_debut}</p>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-500">Progression:</span>
+                                    <p className="text-gray-900 font-semibold text-blue-600">{formation.progression}%</p>
+                                  </div>
+                                </div>
+                                <div className="mt-2">
+                                  <Progress value={formation.progression} className="h-2" />
+                                </div>
+                              </div>
+                              <Badge className="bg-blue-500 text-white">En cours</Badge>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => setIsDiscipleViewDialogOpen(false)} 
+              className="bg-purple-600 text-white hover:bg-purple-700"
+            >
+              Fermer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dialog: Évaluation */}
       <Dialog open={isEvaluationDialogOpen} onOpenChange={setIsEvaluationDialogOpen}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl [&>button]:hidden">
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
             <DialogTitle className="text-gray-900">Nouvelle évaluation</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-4">
@@ -1369,11 +3985,11 @@ const Transformation = () => {
                   <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-200 border-none text-gray-600">
-                    <SelectItem value="mensuelle" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Mensuelle</SelectItem>
-                    <SelectItem value="trimestrielle" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Trimestrielle</SelectItem>
-                    <SelectItem value="annuelle" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Annuelle</SelectItem>
-                    <SelectItem value="personnalisee" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Personnalisée</SelectItem>
+                  <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
+                    <SelectItem value="mensuelle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Mensuelle</SelectItem>
+                    <SelectItem value="trimestrielle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Trimestrielle</SelectItem>
+                    <SelectItem value="annuelle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Annuelle</SelectItem>
+                    <SelectItem value="personnalisee" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Personnalisée</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1386,15 +4002,17 @@ const Transformation = () => {
                   <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-200 border-none text-gray-600">
-                    <SelectItem value="relation_dieu" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Relation avec Dieu</SelectItem>
-                    <SelectItem value="priere" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Prière</SelectItem>
-                    <SelectItem value="parole" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Parole de Dieu</SelectItem>
-                    <SelectItem value="service" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Service</SelectItem>
-                    <SelectItem value="communaute" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Communauté</SelectItem>
-                    <SelectItem value="finances" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Finances</SelectItem>
-                    <SelectItem value="sante" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Santé</SelectItem>
-                    <SelectItem value="relations" className="text-gray-600 focus:bg-gray-100 focus:!text-gray-900">Relations</SelectItem>
+                  <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
+                    <SelectItem value="relation_dieu" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Relation avec Dieu</SelectItem>
+                    <SelectItem value="priere" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Prière</SelectItem>
+                    <SelectItem value="parole" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Parole de Dieu</SelectItem>
+                    <SelectItem value="service" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Service</SelectItem>
+                    <SelectItem value="communaute" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Communauté</SelectItem>
+                    <SelectItem value="temperament" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Tempérament</SelectItem>
+                    <SelectItem value="finances" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Finances</SelectItem>
+                    <SelectItem value="sante" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Santé</SelectItem>
+                    <SelectItem value="relations" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Relations</SelectItem>
+                    <SelectItem value="autre" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Autre</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1437,8 +4055,19 @@ const Transformation = () => {
 
       {/* Dialog: Annulation avec message d'encouragement */}
       <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md">
-          <DialogHeader>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md [&>button]:hidden">
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
             <DialogTitle className="text-gray-900">Annuler la formation ?</DialogTitle>
             <DialogDescription className="text-gray-600">
               Êtes-vous sûr de vouloir annuler cette formation ?
@@ -1472,6 +4101,56 @@ const Transformation = () => {
               className="bg-red-600 hover:bg-red-700 text-white"
             >
               Annuler quand même
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Confirmation de suppression d'entrée de journal */}
+      <Dialog open={isDeleteJournalDialogOpen} onOpenChange={setIsDeleteJournalDialogOpen}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md [&>button]:hidden">
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
+            <DialogTitle className="text-gray-900">Supprimer cette entrée ?</DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Êtes-vous sûr de vouloir supprimer définitivement cette entrée de journal ? Cette action est irréversible.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {entryToDelete && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <p className="text-sm text-gray-700 font-medium mb-1">
+                  {entryToDelete.titre || format(new Date(entryToDelete.date_entree), 'dd MMMM yyyy', { locale: fr })}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {format(new Date(entryToDelete.date_entree), 'dd MMMM yyyy', { locale: fr })}
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => setIsDeleteJournalDialogOpen(false)} 
+              className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteJournal}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Supprimer définitivement
             </Button>
           </DialogFooter>
         </DialogContent>

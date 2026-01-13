@@ -251,3 +251,4 @@ COMMENT ON FUNCTION recalculer_scores_mensuels() IS 'Recalcule tous les scores m
 COMMENT ON FUNCTION notifier_nouveaux_badges(UUID) IS 'Vérifie et retourne les nouveaux badges obtenus par un utilisateur';
 
 
+

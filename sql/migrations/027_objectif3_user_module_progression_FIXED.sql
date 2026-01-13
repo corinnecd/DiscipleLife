@@ -103,3 +103,4 @@ BEGIN
   RAISE NOTICE '✅ RLS activé et politiques créées !';
 END $$;
 
+

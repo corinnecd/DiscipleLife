@@ -63,7 +63,6 @@ const Layout = () => {
     { label: 'Requêtes de Prières', path: '/prayer-requests', icon: Heart, iconColor: 'text-pink-500' },
     { label: 'Statistiques', path: '/statistics', icon: BarChart2, iconColor: 'text-purple-500' },
     { label: 'Envoyer Rapport', path: '/send-report', icon: Send, iconColor: 'text-teal-500' },
-    { label: 'Mes Groupes', path: '/disciples', icon: Users, iconColor: 'text-purple-500' },
     { label: 'E-Books', path: '/ebooks', icon: BookOpen, iconColor: 'text-orange-500' },
     { label: 'Vidéos', path: '/teaching-videos', icon: PlayCircle, iconColor: 'text-blue-500' },
   ];

@@ -154,3 +154,4 @@ CREATE POLICY "modules_parcours_public_read" ON modules_parcours
 RAISE NOTICE '✅ Diagnostic terminé';
 
 
+

@@ -213,3 +213,4 @@ COMMENT ON COLUMN invitations_envoyees.canal IS 'Canal utilisé: whatsapp, faceb
 COMMENT ON COLUMN invitations_envoyees.statut IS 'Statut: envoyee, ouverte, conversion, ignoree';
 
 
+
