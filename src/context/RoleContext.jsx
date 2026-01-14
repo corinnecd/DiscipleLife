@@ -50,8 +50,18 @@ export const RoleProvider = ({ children }) => {
           console.error("Error fetching permissions:", permError);
       }
 
+      // Déterminer si l'utilisateur peut avoir des disciples
+      const canHaveDisciples = 
+        permData?.can_have_disciples || 
+        profileData?.is_approved_as_disciple_maker || 
+        userRole === 'mentor' || 
+        userRole === 'admin' || 
+        userRole === 'super_admin' || 
+        userRole === 'superviseur' || 
+        userRole === 'pasteur';
+
       setPermissions({
-        canHaveDisciples: permData?.can_have_disciples || profileData?.is_approved_as_disciple_maker || userRole === 'mentor' || userRole === 'admin',
+        canHaveDisciples,
         isApprovedDiscipleMaker: profileData?.is_approved_as_disciple_maker || false
       });
 
@@ -67,10 +77,21 @@ export const RoleProvider = ({ children }) => {
     role,
     permissions,
     loading,
+    // Rôles existants
     isAdmin: role === 'admin',
     isMentor: role === 'mentor',
     isDisciple: role === 'disciple',
-    canHaveDisciples: permissions.canHaveDisciples
+    // Nouveaux rôles
+    isSuperAdmin: role === 'super_admin',
+    isPasteur: role === 'pasteur',
+    isSuperviseur: role === 'superviseur',
+    isTutore: role === 'tutore',
+    // Vues combinées
+    hasAdminView: role === 'admin' || role === 'super_admin' || role === 'pasteur',
+    hasSuperviseurView: role === 'superviseur' || role === 'admin' || role === 'super_admin' || role === 'pasteur',
+    hasBergerView: role === 'mentor' || permissions.canHaveDisciples,
+    // Permissions
+    canHaveDisciples: permissions.canHaveDisciples || role === 'mentor' || role === 'superviseur' || role === 'admin' || role === 'super_admin' || role === 'pasteur'
   };
 
   return (

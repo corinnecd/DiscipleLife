@@ -49,6 +49,7 @@ import NotificationCenter from './pages/NotificationCenter';
 import MeetingScheduler from './pages/MeetingScheduler';
 import MySummaries from './pages/MySummaries';
 import AttendanceTracking from './pages/AttendanceTracking';
+import FamillesDisciples from './pages/FamillesDisciples';
 
 // New Feature Pages
 import AppointmentsList from './pages/AppointmentsList';
@@ -115,6 +116,7 @@ function AppRoutes() {
         <Route path="scheduler" element={<MeetingScheduler />} />
         <Route path="attendance" element={<AttendanceTracking />} /> 
         <Route path="statistics" element={<Statistics />} />
+        <Route path="familles" element={<FamillesDisciples />} />
 
         {/* New Appointment System Routes */}
         <Route path="my-appointments" element={<AppointmentsList />} />

@@ -26,21 +26,33 @@ const ProtectedRoute = ({ children, requiredRole }) => {
 
   // Handle role-based access
   if (requiredRole) {
-     // Admin overrides everything
-     if (role === 'admin') {
+     // Super Admin et Admin overrides everything
+     if (role === 'super_admin' || role === 'admin') {
          return children;
      }
 
-     if (requiredRole === 'mentor' && role !== 'mentor') {
-         // If a disciple tries to access a mentor route, redirect to dashboard
-         return <Navigate to="/dashboard" replace />;
+     // Pasteur a accès à Admin + Superviseur
+     if (role === 'pasteur' && (requiredRole === 'admin' || requiredRole === 'superviseur')) {
+         return children;
      }
 
-     if (requiredRole === 'disciple' && role !== 'disciple' && role !== 'mentor') {
-        // Technically mentors can see disciple stuff, but if strict separation is needed:
-        // return <Navigate to="/dashboard" replace />;
-        // For now, let's assume mentors can view most things.
+     // Superviseur a accès uniquement à sa vue
+     if (role === 'superviseur' && requiredRole === 'superviseur') {
+         return children;
      }
+
+     // Mentor/Berger a accès à sa vue
+     if (role === 'mentor' && requiredRole === 'mentor') {
+         return children;
+     }
+
+     // Disciple et Tutoré ont accès à leur vue
+     if ((role === 'disciple' || role === 'tutore') && requiredRole === 'disciple') {
+         return children;
+     }
+
+     // Si le rôle ne correspond pas, rediriger vers le dashboard
+     return <Navigate to="/dashboard" replace />;
   }
 
   return children;
