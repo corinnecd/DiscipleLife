@@ -1,0 +1,31 @@
+ROLE,Identifiant,Prénom,Nom,Email,Mot de passe,Pasteur de tutelle
+Pasteur,PASTEUR-001,DR,MODE,dr.mode@disciplelife.com,Pasteur001!2024,N/A
+Pasteur,PASTEUR-002,PS,JULIANA,ps.juliana@disciplelife.com,Pasteur002!2024,N/A
+Pasteur,PASTEUR-003,PS,PEGGY NN,ps.peggy.nn@disciplelife.com,Pasteur003!2024,N/A
+Pasteur,PASTEUR-004,PS,JESSY,ps.jessy@disciplelife.com,Pasteur004!2024,N/A
+Superviseur,FAM001,Alain,SIL,alain.sil@example.com,TempPassword123!,À assigner
+Superviseur,FAM002,Andréa,ERNEST,andrea.ernest@example.com,TempPassword123!,À assigner
+Superviseur,FAM003,Béraca,KAZONGO,beraca.kazongo@example.com,TempPassword123!,À assigner
+Superviseur,FAM004,BETSALEEL,BADILA,betsaleel.badila@example.com,TempPassword123!,À assigner
+Superviseur,FAM005,CARINE,MATONDO,carine.matondo@example.com,TempPassword123!,À assigner
+Superviseur,FAM006,COCO,OKANZI,coco.okanzi@example.com,TempPassword123!,À assigner
+Superviseur,FAM007,CYNTHIA,ALLOH,cynthia.alloh@example.com,TempPassword123!,À assigner
+Superviseur,FAM008,ELISABETH,AMECY,elisabeth.amecy@example.com,TempPassword123!,À assigner
+Superviseur,FAM009,Andréa,Ernest,andrea.ernest2@example.com,TempPassword123!,À assigner
+Superviseur,FAM010,EPHREM,MBA,ephrem.mba@example.com,TempPassword123!,À assigner
+Superviseur,FAM011,GERVAIS,NKATOULOULOU,gervais.nkatouloulou@example.com,TempPassword123!,À assigner
+Superviseur,FAM012,Andréa,Ernest,andrea.ernest3@example.com,TempPassword123!,À assigner
+Superviseur,FAM013,HÉLÈNE,LAMAGO,helene.lamago@example.com,TempPassword123!,À assigner
+Superviseur,FAM014,JOCELYNE,FORTUNE,jocelyne.fortune@example.com,TempPassword123!,À assigner
+Superviseur,FAM015,KARINE,WILLIAM,karine.william@example.com,TempPassword123!,À assigner
+Superviseur,FAM016,KEVIN,THÉA,kevin.thea@example.com,TempPassword123!,À assigner
+Superviseur,FAM017,LAETITIA,OBAME,laetitia.obame@example.com,TempPassword123!,À assigner
+Superviseur,FAM018,MANICIA,THÉA,manicia.thea@example.com,TempPassword123!,À assigner
+Superviseur,FAM019,NANCY,NZI,nancy.nzi@example.com,TempPassword123!,À assigner
+Superviseur,FAM020,NASDÈNE,KODIA,nasdene.kodia@example.com,TempPassword123!,À assigner
+Superviseur,FAM021,PATRICK,BATSIAGA,patrick.batsiaga@example.com,TempPassword123!,À assigner
+Superviseur,FAM022,PROSPERE,LEBA,prospere.leba@example.com,TempPassword123!,À assigner
+Superviseur,FAM023,ROCHELLE,PASSI BEN,rochelle.passiben@example.com,TempPassword123!,À assigner
+Superviseur,FAM024,SERGE,AMANY,serge.amany@example.com,TempPassword123!,À assigner
+Superviseur,FAM025,SNELLA,MOUSSIO,snella.moussio@example.com,TempPassword123!,À assigner
+Superviseur,FAM026,YVAN,DESSANDE,yvan.dessande@example.com,TempPassword123!,À assigner

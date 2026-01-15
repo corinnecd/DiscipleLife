@@ -13,11 +13,14 @@ import UpdatePassword from './pages/UpdatePassword';
 import HomePage from './pages/HomePage';
 import SignupMentor from './pages/SignupMentor';
 import SignupDisciple from './pages/SignupDisciple';
+import SignupSuperviseur from './pages/SignupSuperviseur';
+import SignupPasteur from './pages/SignupPasteur';
 
 // Dashboard imports
 import MentorDashboard from './pages/dashboards/MentorDashboard';
 import DiscipleDashboard from './pages/dashboards/DiscipleDashboard';
 import AdminDashboard from './pages/dashboards/AdminDashboard';
+import SuperviseurDashboard from './pages/dashboards/SuperviseurDashboard';
 import DashboardHome from './pages/DashboardHome';
 
 // Feature Pages
@@ -68,12 +71,21 @@ import { Toaster } from "@/components/ui/toaster";
 
 // Dashboard Router Component
 const DashboardRouter = () => {
-    const { role, canHaveDisciples, loading } = useRole();
+    const { role, loading } = useRole();
     
     if (loading) return <div className="flex items-center justify-center h-screen text-white">Chargement...</div>;
     
-    if (role === 'admin') return <AdminDashboard />;
-    if (role === 'mentor' || canHaveDisciples) return <MentorDashboard />;
+    // Routing par rôle spécifique (ordre important)
+    if (role === 'super_admin' || role === 'admin' || role === 'pasteur') {
+        return <AdminDashboard />;
+    }
+    if (role === 'superviseur') {
+        return <SuperviseurDashboard />;
+    }
+    if (role === 'mentor') {
+        return <MentorDashboard />;
+    }
+    // Par défaut, afficher le Dashboard Disciple
     return <DiscipleDashboard />;
 };
 
@@ -87,6 +99,8 @@ function AppRoutes() {
       <Route path="/auth" element={<Auth />} />
       <Route path="/signup/mentor" element={<SignupMentor />} />
       <Route path="/signup/disciple" element={<SignupDisciple />} />
+      <Route path="/signup/superviseur" element={<SignupSuperviseur />} />
+      <Route path="/signup/pasteur" element={<SignupPasteur />} />
       <Route path="/update-password" element={<UpdatePassword />} />
       
       {/* Protected Routes */}
@@ -101,7 +115,9 @@ function AppRoutes() {
         {/* Smart Dashboard Routing */}
         <Route path="dashboard" element={<DashboardRouter />} />
         
-        {/* Explicit Routes */}
+        {/* Explicit Routes for each dashboard */}
+        <Route path="space/pasteur" element={<AdminDashboard />} />
+        <Route path="space/superviseur" element={<SuperviseurDashboard />} />
         <Route path="space/mentor" element={<MentorDashboard />} />
         <Route path="space/disciple" element={<DiscipleDashboard />} />
         

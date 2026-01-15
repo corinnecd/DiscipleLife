@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useRole } from '@/context/RoleContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,11 +11,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, Mail, Lock, User, ArrowRight, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { supabase } from '@/lib/customSupabaseClient';
 
 const Auth = () => {
   const [activeTab, setActiveTab] = useState('login');
   const [loading, setLoading] = useState(false);
   const { signIn, signUp } = useAuth();
+  const { role } = useRole();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -38,9 +41,37 @@ const Auth = () => {
       const { error } = await signIn(formData.email, formData.password);
       if (error) throw error;
       
-      // Determine redirect path
-      const from = location.state?.from?.pathname || '/';
-      navigate(from, { replace: true });
+      // Attendre un peu pour que le rôle soit chargé
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Récupérer le rôle depuis la base de données
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profileData } = await supabase
+          .from('profils')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+        
+        const userRole = profileData?.role || 'disciple';
+        
+        // Redirection intelligente selon le rôle
+        const redirectPaths = {
+          'super_admin': '/space/pasteur',
+          'admin': '/space/pasteur',
+          'pasteur': '/space/pasteur',
+          'superviseur': '/space/superviseur',
+          'mentor': '/space/mentor',
+          'disciple': '/space/disciple'
+        };
+        
+        const redirectPath = redirectPaths[userRole] || location.state?.from?.pathname || '/home';
+        navigate(redirectPath, { replace: true });
+      } else {
+        // Fallback si pas d'utilisateur
+        const from = location.state?.from?.pathname || '/home';
+        navigate(from, { replace: true });
+      }
       
     } catch (error) {
       toast({

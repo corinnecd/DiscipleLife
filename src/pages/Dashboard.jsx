@@ -4,6 +4,7 @@ import { useRole } from '@/context/RoleContext';
 import MentorDashboard from './dashboards/MentorDashboard';
 import DiscipleDashboard from './dashboards/DiscipleDashboard';
 import AdminDashboard from './dashboards/AdminDashboard';
+import SuperviseurDashboard from './dashboards/SuperviseurDashboard';
 import { Loader2 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -19,6 +20,10 @@ const Dashboard = () => {
 
   if (role === 'admin') {
     return <AdminDashboard />;
+  }
+
+  if (role === 'superviseur') {
+    return <SuperviseurDashboard />;
   }
 
   if (role === 'mentor') {

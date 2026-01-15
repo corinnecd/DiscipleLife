@@ -2,7 +2,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, BookOpen, Users, Heart, Star, UserPlus, UserCheck } from 'lucide-react';
+import { ArrowRight, BookOpen, Users, Heart, Star, UserPlus, UserCheck, Church, Building2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const HomePage = () => {
@@ -49,7 +49,7 @@ const HomePage = () => {
               transition={{ duration: 0.8 }}
               className="text-5xl md:text-6xl font-extrabold tracking-tight mb-8"
             >
-              Votre Parcours de <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">Disciple</span> Commence Ici
+              Bienvenue Dans les Familles de <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">Disciples 70</span>
             </motion.h1>
             
             <motion.p 
@@ -66,20 +66,34 @@ const HomePage = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
-              className="flex flex-col sm:flex-row justify-center gap-4"
+              className="flex flex-row justify-center gap-4 flex-nowrap"
             >
               <Button 
-                onClick={() => navigate('/signup/disciple')}
-                className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-6 text-lg rounded-full font-bold shadow-lg shadow-teal-500/30 transition-all hover:scale-105"
+                onClick={() => navigate('/signup/pasteur')}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-purple-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
-                <UserPlus className="mr-2" /> Je suis Disciple
+                <Church className="mr-2" /> Pasteur Référent de Famille
+              </Button>
+              
+              <Button 
+                onClick={() => navigate('/signup/superviseur')}
+                className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-amber-500/30 transition-all hover:scale-105 whitespace-nowrap"
+              >
+                <Building2 className="mr-2" /> Je suis Superviseur
               </Button>
               
               <Button 
                 onClick={() => navigate('/signup/mentor')}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-lg rounded-full font-bold shadow-lg shadow-purple-500/30 transition-all hover:scale-105"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-blue-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
                 <UserCheck className="mr-2" /> Je suis Mentor
+              </Button>
+              
+              <Button 
+                onClick={() => navigate('/signup/disciple')}
+                className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-teal-500/30 transition-all hover:scale-105 whitespace-nowrap"
+              >
+                <UserPlus className="mr-2" /> Je suis Disciple
               </Button>
             </motion.div>
             
@@ -87,7 +101,7 @@ const HomePage = () => {
                 <Button 
                   variant="link" 
                   onClick={() => navigate('/auth')} 
-                  className="text-gray-400 hover:text-white no-underline hover:no-underline"
+                  className="text-gray-400 hover:text-amber-400 no-underline hover:no-underline transition-colors"
                 >
                     Déjà un compte ? Se connecter
                 </Button>

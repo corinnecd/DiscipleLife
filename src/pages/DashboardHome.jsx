@@ -10,22 +10,23 @@ import {
   Users, 
   Heart, 
   Target, 
-  Zap, 
   Shield, 
   ArrowRight,
   LayoutDashboard,
   Sparkles,
-  FileText
+  FileText,
+  Building2,
+  UserCircle,
+  UserCheck,
+  Church
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const DashboardHome = () => {
   const { user } = useAuth();
-  const { role } = useRole();
+  const { role, loading: roleLoading } = useRole();
   const navigate = useNavigate();
   const [firstName, setFirstName] = useState('');
-
-  const isMentor = role === 'mentor' || role === 'admin';
 
   // Fetch user's first name from database
   useEffect(() => {
@@ -66,35 +67,39 @@ const DashboardHome = () => {
             animate={{ opacity: 1, y: 0 }}
             className="text-4xl font-bold text-white mb-4"
           >
-            Bienvenue, <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400">
-              {isMentor ? 'Mentor' : 'Disciple'}
-            </span>
-            {firstName && (
-              <span className="text-white">
-                {' '}{firstName}
-              </span>
-            )}
+            Bienvenue{firstName && `, ${firstName}`}
           </motion.h1>
           <p className="text-xl text-white/90 mb-8 leading-relaxed">
-            {isMentor 
-              ? "Votre espace de mentorat est prêt. Accompagnez, formez et inspirez vos disciples dès aujourd'hui."
-              : "Heureux de vous voir. Continuez votre croissance spirituelle et explorez les ressources mises à votre disposition."}
+            Accédez à votre espace de travail selon votre rôle.
           </p>
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
             <Button 
-              onClick={() => navigate('/dashboard')} 
-              className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 h-12 px-6 font-semibold"
+              onClick={() => navigate('/space/pasteur')} 
+              className="bg-purple-600 hover:bg-purple-700 text-white gap-2 h-14 px-6 font-semibold flex-1"
             >
-              <LayoutDashboard size={20} />
-              Accéder au Tableau de bord
+              <Church size={24} />
+              Dashboard Pasteur
             </Button>
             <Button 
-              variant="outline"
-              onClick={() => navigate('/menu')}
-              className="border-white/30 bg-white/10 hover:bg-white/20 text-white gap-2 h-12 px-6"
+              onClick={() => navigate('/space/superviseur')} 
+              className="bg-amber-500 hover:bg-amber-600 text-white gap-2 h-14 px-6 font-semibold flex-1"
             >
-              <Zap size={20} />
-              Menu Rapide
+              <Building2 size={24} />
+              Dashboard Superviseur
+            </Button>
+            <Button 
+              onClick={() => navigate('/space/mentor')} 
+              className="bg-blue-600 hover:bg-blue-700 text-white gap-2 h-14 px-6 font-semibold flex-1"
+            >
+              <UserCheck size={24} />
+              Dashboard Mentor
+            </Button>
+            <Button 
+              onClick={() => navigate('/space/disciple')} 
+              className="bg-green-600 hover:bg-green-700 text-white gap-2 h-14 px-6 font-semibold flex-1"
+            >
+              <UserCircle size={24} />
+              Dashboard Disciple
             </Button>
           </div>
         </div>
@@ -140,7 +145,7 @@ const DashboardHome = () => {
             Fonctionnalités Clés
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-             <div onClick={() => navigate(isMentor ? '/prayer-requests' : '/my-prayers')} className="bg-white p-4 rounded-xl border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all cursor-pointer group">
+             <div onClick={() => navigate('/prayer-requests')} className="bg-white p-4 rounded-xl border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all cursor-pointer group">
                 <Heart className="text-pink-500 mb-3 group-hover:scale-110 transition-transform" />
                 <h3 className="text-gray-900 font-semibold mb-1">Prière</h3>
                 <p className="text-xs text-gray-500">Requêtes et intercession.</p>
@@ -170,7 +175,7 @@ const DashboardHome = () => {
                 <p className="text-xs text-gray-500">Vidéos et formations spirituelles.</p>
              </div>
 
-             <div onClick={() => navigate(isMentor ? '/circles' : '/menu')} className="bg-white p-4 rounded-xl border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all cursor-pointer group">
+             <div onClick={() => navigate('/circles')} className="bg-white p-4 rounded-xl border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all cursor-pointer group">
                 <Target className="text-amber-500 mb-3 group-hover:scale-110 transition-transform" />
                 <h3 className="text-gray-900 font-semibold mb-1">Objectifs</h3>
                 <p className="text-xs text-gray-500">Suivi de progression personnel.</p>

@@ -8,12 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, ArrowLeft, UserPlus } from 'lucide-react';
+import { Loader2, ArrowLeft, Building2 } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 
-const SignupDisciple = () => {
+const SignupSuperviseur = () => {
   const [loading, setLoading] = useState(false);
-  const [loadingFamilles, setLoadingFamilles] = useState(true);
+  const [loadingPasteurs, setLoadingPasteurs] = useState(true);
   const { signUp } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -24,45 +24,51 @@ const SignupDisciple = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    familleId: ''
+    pasteurId: '',
+    titre: '' // Nouveau champ pour le titre (Pasteur, Berger, Mentor)
   });
 
-  const [familles, setFamilles] = useState([]);
+  const [pasteurs, setPasteurs] = useState([]);
 
-  // Charger la liste des familles
+  // Charger la liste des pasteurs
   useEffect(() => {
-    const fetchFamilles = async () => {
+    const fetchPasteurs = async () => {
       try {
-        setLoadingFamilles(true);
+        setLoadingPasteurs(true);
         const { data, error } = await supabase
-          .from('familles_disciples')
-          .select('id, nom, identifiant_famille')
-          .order('nom');
+          .from('profils')
+          .select('id, first_name, last_name, identifiant_unique')
+          .eq('role', 'pasteur')
+          .order('identifiant_unique');
 
         if (error) throw error;
 
-        setFamilles(data || []);
+        setPasteurs(data || []);
       } catch (error) {
-        console.error('Erreur lors du chargement des familles:', error);
+        console.error('Erreur lors du chargement des pasteurs:', error);
         toast({
           variant: "destructive",
           title: "Erreur",
-          description: "Impossible de charger la liste des familles. Veuillez réessayer."
+          description: "Impossible de charger la liste des pasteurs. Veuillez réessayer."
         });
       } finally {
-        setLoadingFamilles(false);
+        setLoadingPasteurs(false);
       }
     };
 
-    fetchFamilles();
+    fetchPasteurs();
   }, [toast]);
 
   const handleInputChange = (e) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleFamilleChange = (value) => {
-    setFormData(prev => ({ ...prev, familleId: value }));
+  const handlePasteurChange = (value) => {
+    setFormData(prev => ({ ...prev, pasteurId: value }));
+  };
+
+  const handleTitreChange = (value) => {
+    setFormData(prev => ({ ...prev, titre: value }));
   };
 
   const handleSubmit = async (e) => {
@@ -77,10 +83,19 @@ const SignupDisciple = () => {
         return;
     }
 
-    if (!formData.familleId) {
+    if (!formData.pasteurId) {
         toast({ 
           title: "Erreur", 
-          description: "Veuillez sélectionner votre famille.", 
+          description: "Veuillez sélectionner votre pasteur de tutelle.", 
+          variant: "destructive" 
+        });
+        return;
+    }
+
+    if (!formData.titre) {
+        toast({ 
+          title: "Erreur", 
+          description: "Veuillez sélectionner votre titre.", 
           variant: "destructive" 
         });
         return;
@@ -93,36 +108,38 @@ const SignupDisciple = () => {
         data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
-            role: 'disciple',
-            famille_id: formData.familleId // Stocké dans les métadonnées
+            role: 'superviseur',
+            pasteur_id: formData.pasteurId // Stocké dans les métadonnées, sera utilisé par le trigger
         }
       });
 
       if (signUpError) throw signUpError;
 
       // Attendre un peu pour que le trigger handle_new_user crée le profil
+      // Puis mettre à jour le profil avec pasteur_id
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Mettre à jour le profil pour ajouter famille_id si nécessaire
-      // Note: La liaison disciple-famille peut être gérée différemment selon votre schéma
-      // Ici, on suppose qu'il y a un champ famille_id dans profils ou une table de liaison
+      // Mettre à jour le profil pour ajouter pasteur_id et titre
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Vérifier si le profil existe et mettre à jour si nécessaire
         const { error: updateError } = await supabase
           .from('profils')
-          .update({ famille_id: formData.familleId })
+          .update({ 
+            pasteur_id: formData.pasteurId,
+            titre: formData.titre
+          })
           .eq('id', user.id);
 
         if (updateError) {
-          console.error('Erreur lors de la mise à jour de la famille:', updateError);
+          console.error('Erreur lors de la mise à jour du profil:', updateError);
           // Ne pas bloquer l'inscription si cette mise à jour échoue
+          // Le trigger devrait normalement gérer cela
         }
       }
       
       toast({
           title: "Inscription réussie !",
-          description: "Bienvenue ! Vérifiez votre email pour commencer.",
+          description: "Bienvenue, Superviseur. Vérifiez votre email pour confirmer votre compte.",
       });
       navigate('/auth'); // Redirect to login
     } catch (error) {
@@ -143,11 +160,13 @@ const SignupDisciple = () => {
            <Button variant="ghost" className="w-fit p-0 hover:bg-transparent text-gray-400 hover:text-white mb-2" onClick={() => navigate('/')}>
                <ArrowLeft size={16} className="mr-2" /> Retour
            </Button>
-           <div className="w-12 h-12 bg-teal-500/10 rounded-lg flex items-center justify-center text-teal-400 mb-4">
-               <UserPlus size={24} />
+           <div className="w-12 h-12 bg-amber-500/10 rounded-lg flex items-center justify-center text-amber-400 mb-4">
+               <Building2 size={24} />
            </div>
-           <CardTitle className="text-2xl">Inscription Disciple</CardTitle>
-           <CardDescription className="text-gray-400">Commencez votre voyage de croissance spirituelle dès aujourd'hui.</CardDescription>
+           <CardTitle className="text-2xl">Inscription Superviseur</CardTitle>
+           <CardDescription className="text-gray-400">
+             Rejoignez-nous pour superviser une famille de disciples et rendre compte à votre pasteur.
+           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
@@ -174,34 +193,60 @@ const SignupDisciple = () => {
                 </div>
              </div>
              <div className="space-y-2">
-                <Label htmlFor="familleId">Famille <span className="text-red-400">*</span></Label>
-                {loadingFamilles ? (
+                <Label htmlFor="titre">Titre <span className="text-red-400">*</span></Label>
+                <Select 
+                  value={formData.titre} 
+                  onValueChange={handleTitreChange}
+                  required
+                >
+                  <SelectTrigger className="bg-black/20 border-white/10 text-white">
+                    <SelectValue placeholder="Sélectionnez votre titre" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a0b2e] border-white/10">
+                    <SelectItem value="Pasteur" className="text-white focus:bg-amber-500/20">
+                      Pasteur
+                    </SelectItem>
+                    <SelectItem value="Berger" className="text-white focus:bg-amber-500/20">
+                      Berger
+                    </SelectItem>
+                    <SelectItem value="Mentor" className="text-white focus:bg-amber-500/20">
+                      Mentor
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Indiquez votre titre dans le ministère.
+                </p>
+             </div>
+             <div className="space-y-2">
+                <Label htmlFor="pasteurId">Pasteur de tutelle <span className="text-red-400">*</span></Label>
+                {loadingPasteurs ? (
                   <div className="flex items-center justify-center py-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-teal-400" />
-                    <span className="ml-2 text-sm text-gray-400">Chargement des familles...</span>
+                    <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+                    <span className="ml-2 text-sm text-gray-400">Chargement des pasteurs...</span>
                   </div>
                 ) : (
                   <Select 
-                    value={formData.familleId} 
-                    onValueChange={handleFamilleChange}
+                    value={formData.pasteurId} 
+                    onValueChange={handlePasteurChange}
                     required
                   >
                     <SelectTrigger className="bg-black/20 border-white/10 text-white">
-                      <SelectValue placeholder="Sélectionnez votre famille" />
+                      <SelectValue placeholder="Sélectionnez votre pasteur de tutelle" />
                     </SelectTrigger>
                     <SelectContent className="bg-[#1a0b2e] border-white/10">
-                      {familles.length === 0 ? (
+                      {pasteurs.length === 0 ? (
                         <SelectItem value="" disabled>
-                          Aucune famille disponible
+                          Aucun pasteur disponible
                         </SelectItem>
                       ) : (
-                        familles.map((famille) => (
+                        pasteurs.map((pasteur) => (
                           <SelectItem 
-                            key={famille.id} 
-                            value={famille.id}
-                            className="text-white focus:bg-teal-500/20"
+                            key={pasteur.id} 
+                            value={pasteur.id}
+                            className="text-white focus:bg-amber-500/20"
                           >
-                            {famille.nom} ({famille.identifiant_famille})
+                            {pasteur.identifiant_unique} - {pasteur.first_name} {pasteur.last_name}
                           </SelectItem>
                         ))
                       )}
@@ -209,7 +254,7 @@ const SignupDisciple = () => {
                   </Select>
                 )}
                 <p className="text-xs text-gray-500 mt-1">
-                  Sélectionnez la famille à laquelle vous appartenez.
+                  Vous devez sélectionner le pasteur auquel vous rendrez compte.
                 </p>
              </div>
              <div className="space-y-2">
@@ -250,8 +295,8 @@ const SignupDisciple = () => {
           <CardFooter className="flex flex-col gap-4">
              <Button 
                type="submit" 
-               className="w-full bg-teal-600 hover:bg-teal-700 text-white" 
-               disabled={loading || loadingFamilles}
+               className="w-full bg-amber-600 hover:bg-amber-700 text-white" 
+               disabled={loading || loadingPasteurs}
              >
                  {loading ? (
                    <>
@@ -259,11 +304,11 @@ const SignupDisciple = () => {
                      Création en cours...
                    </>
                  ) : (
-                   "Créer mon compte Gratuit"
+                   "Créer mon compte Superviseur"
                  )}
              </Button>
              <p className="text-sm text-gray-400 text-center">
-                 Déjà inscrit ? <Link to="/auth" className="text-teal-400 hover:underline">Se connecter</Link>
+                 Déjà un compte ? <Link to="/auth" className="text-amber-400 hover:underline">Se connecter</Link>
              </p>
           </CardFooter>
         </form>
@@ -272,4 +317,4 @@ const SignupDisciple = () => {
   );
 };
 
-export default SignupDisciple;
+export default SignupSuperviseur;
