@@ -2657,9 +2657,9 @@ const Evangelization = () => {
 
               {/* Dialog pour envoyer invitation */}
               <Dialog open={isInvitationDialogOpen} onOpenChange={setIsInvitationDialogOpen}>
-                <DialogContent className="bg-[#1a1b26] border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>Envoyer une invitation</DialogTitle>
+                    <DialogTitle className="text-gray-900">Envoyer une invitation</DialogTitle>
                     <DialogDescription>
                       Remplissez les informations pour envoyer une invitation personnalisée
                     </DialogDescription>

@@ -129,6 +129,9 @@ const Layout = () => {
               {user?.user_metadata?.first_name || 'Utilisateur'}
             </p>
             <p className="text-xs text-gray-500 truncate">{role || 'Disciple'}</p>
+            {user?.email && (
+              <p className="text-xs text-gray-400 truncate">{user.email}</p>
+            )}
           </div>
         </div>
 

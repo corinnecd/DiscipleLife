@@ -221,9 +221,9 @@ const AdminAccessCodeManager = () => {
 
       {/* Create Code Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent>
+        <DialogContent className="bg-white border-gray-200 text-gray-900">
           <DialogHeader>
-            <DialogTitle>Créer un nouveau code</DialogTitle>
+            <DialogTitle className="text-gray-900">Créer un nouveau code</DialogTitle>
           </DialogHeader>
           
           <form onSubmit={handleCreate} className="space-y-4 pt-4">

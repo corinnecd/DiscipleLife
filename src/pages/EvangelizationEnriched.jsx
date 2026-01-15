@@ -476,9 +476,9 @@ const EvangelizationEnriched = () => {
                   Ajouter un visiteur
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-[#1a1b26] border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingVisiteurId ? "Modifier le visiteur" : "Nouveau visiteur"}</DialogTitle>
+                  <DialogTitle className="text-gray-900">{editingVisiteurId ? "Modifier le visiteur" : "Nouveau visiteur"}</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-2 gap-4">
@@ -487,7 +487,7 @@ const EvangelizationEnriched = () => {
                       <Input 
                         value={visiteurFormData.prenom}
                         onChange={(e) => setVisiteurFormData({...visiteurFormData, prenom: e.target.value})}
-                        className="bg-black/20 border-gray-700"
+                        className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                     <div className="space-y-2">
@@ -495,7 +495,7 @@ const EvangelizationEnriched = () => {
                       <Input 
                         value={visiteurFormData.nom}
                         onChange={(e) => setVisiteurFormData({...visiteurFormData, nom: e.target.value})}
-                        className="bg-black/20 border-gray-700"
+                        className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                   </div>
@@ -506,7 +506,7 @@ const EvangelizationEnriched = () => {
                         type="email"
                         value={visiteurFormData.email}
                         onChange={(e) => setVisiteurFormData({...visiteurFormData, email: e.target.value})}
-                        className="bg-black/20 border-gray-700"
+                        className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                     <div className="space-y-2">
@@ -514,7 +514,7 @@ const EvangelizationEnriched = () => {
                       <Input 
                         value={visiteurFormData.telephone}
                         onChange={(e) => setVisiteurFormData({...visiteurFormData, telephone: e.target.value})}
-                        className="bg-black/20 border-gray-700"
+                        className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                   </div>
@@ -525,7 +525,7 @@ const EvangelizationEnriched = () => {
                         value={visiteurFormData.statut} 
                         onValueChange={(value) => setVisiteurFormData({...visiteurFormData, statut: value})}
                       >
-                        <SelectTrigger className="bg-black/20 border-gray-700">
+                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -542,7 +542,7 @@ const EvangelizationEnriched = () => {
                         value={visiteurFormData.source_contact}
                         onChange={(e) => setVisiteurFormData({...visiteurFormData, source_contact: e.target.value})}
                         placeholder="Réseaux sociaux, invitation, etc."
-                        className="bg-black/20 border-gray-700"
+                        className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                   </div>
@@ -675,9 +675,9 @@ const EvangelizationEnriched = () => {
                   Créer une campagne
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-[#1a1b26] border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingCampagneId ? "Modifier la campagne" : "Nouvelle campagne"}</DialogTitle>
+                  <DialogTitle className="text-gray-900">{editingCampagneId ? "Modifier la campagne" : "Nouvelle campagne"}</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
@@ -685,7 +685,7 @@ const EvangelizationEnriched = () => {
                     <Input 
                       value={campagneFormData.nom}
                       onChange={(e) => setCampagneFormData({...campagneFormData, nom: e.target.value})}
-                      className="bg-black/20 border-gray-700"
+                      className="bg-white border-gray-300 text-gray-900"
                     />
                   </div>
                   <div className="space-y-2">
@@ -703,7 +703,7 @@ const EvangelizationEnriched = () => {
                         value={campagneFormData.type_campagne} 
                         onValueChange={(value) => setCampagneFormData({...campagneFormData, type_campagne: value})}
                       >
-                        <SelectTrigger className="bg-black/20 border-gray-700">
+                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -720,7 +720,7 @@ const EvangelizationEnriched = () => {
                         value={campagneFormData.statut} 
                         onValueChange={(value) => setCampagneFormData({...campagneFormData, statut: value})}
                       >
-                        <SelectTrigger className="bg-black/20 border-gray-700">
+                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -739,7 +739,7 @@ const EvangelizationEnriched = () => {
                         type="date"
                         value={campagneFormData.date_debut}
                         onChange={(e) => setCampagneFormData({...campagneFormData, date_debut: e.target.value})}
-                        className="bg-black/20 border-gray-700"
+                        className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                     <div className="space-y-2">
@@ -748,7 +748,7 @@ const EvangelizationEnriched = () => {
                         type="date"
                         value={campagneFormData.date_fin}
                         onChange={(e) => setCampagneFormData({...campagneFormData, date_fin: e.target.value})}
-                        className="bg-black/20 border-gray-700"
+                        className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                   </div>
@@ -758,7 +758,7 @@ const EvangelizationEnriched = () => {
                       type="number"
                       value={campagneFormData.objectif_participants}
                       onChange={(e) => setCampagneFormData({...campagneFormData, objectif_participants: e.target.value})}
-                      className="bg-black/20 border-gray-700"
+                      className="bg-white border-gray-300 text-gray-900"
                     />
                   </div>
                 </div>

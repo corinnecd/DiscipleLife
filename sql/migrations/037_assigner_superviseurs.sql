@@ -21,6 +21,7 @@ DECLARE
     "CARINE MATONDO": "CARINE MATONDO",
     "COCO OKANZI": "COCO OKANZI",
     "CYNTHIA ALLOH": "CYNTHIA ALLOH",
+    "David SERVA": "David SERVA",
     "ELISABETH AMECY": "ELISABETH AMECY",
     "EPHREM MBA": "EPHREM MBA",
     "GERVAIS NKATOULOULOU": "GERVAIS NKATOULOULOU",
@@ -28,12 +29,13 @@ DECLARE
     "JOCELYNE FORTUNE": "JOCELYNE FORTUNE",
     "KARINE WILLIAM": "KARINE WILLIAM",
     "KEVIN THÉA": "KEVIN THÉA",
-    "LAETITIA OBAME": "LAETITIA OBAME",
+    "LAËTITIA MISSATOU": "LAËTITIA MISSATOU",
+    "LAËTITIA OBAME": "LAËTITIA OBAME",
     "MANICIA THÉA": "MANICIA THÉA",
     "NANCY NZI": "NANCY NZI",
     "NASDÈNE KODIA": "NASDÈNE KODIA",
-    "PATRICK BATSIAGA": "PATRICK BATSIAGA",
-    "PROSPERE LEBA": "PROSPERE LEBA",
+    "PATRICK BATSIAKA": "PATRICK BATSIAKA",
+    "PROSPER LEBA": "PROSPER LEBA",
     "ROCHELLE PASSI BEN": "ROCHELLE PASSI BEN",
     "SERGE AMANY": "SERGE AMANY",
     "SNELLA MOUSSIO": "SNELLA MOUSSIO",
@@ -54,21 +56,21 @@ BEGIN
         WHEN f.identifiant_famille = 'FAM005' THEN 'CARINE MATONDO'
         WHEN f.identifiant_famille = 'FAM006' THEN 'COCO OKANZI'
         WHEN f.identifiant_famille = 'FAM007' THEN 'CYNTHIA ALLOH'
-        WHEN f.identifiant_famille = 'FAM008' THEN 'ELISABETH AMECY'
-        WHEN f.identifiant_famille = 'FAM009' THEN 'Andréa Ernest'
+        WHEN f.identifiant_famille = 'FAM008' THEN 'David SERVA'
+        WHEN f.identifiant_famille = 'FAM009' THEN 'ELISABETH AMECY'
         WHEN f.identifiant_famille = 'FAM010' THEN 'EPHREM MBA'
         WHEN f.identifiant_famille = 'FAM011' THEN 'GERVAIS NKATOULOULOU'
-        WHEN f.identifiant_famille = 'FAM012' THEN 'Andréa Ernest'
+        WHEN f.identifiant_famille = 'FAM012' THEN 'HÉLÈNE LAMAGO'
         WHEN f.identifiant_famille = 'FAM013' THEN 'HÉLÈNE LAMAGO'
         WHEN f.identifiant_famille = 'FAM014' THEN 'JOCELYNE FORTUNE'
         WHEN f.identifiant_famille = 'FAM015' THEN 'KARINE WILLIAM'
         WHEN f.identifiant_famille = 'FAM016' THEN 'KEVIN THÉA'
-        WHEN f.identifiant_famille = 'FAM017' THEN 'LAETITIA OBAME'
-        WHEN f.identifiant_famille = 'FAM018' THEN 'MANICIA THÉA'
+        WHEN f.identifiant_famille = 'FAM017' THEN 'LAËTITIA MISSATOU'
+        WHEN f.identifiant_famille = 'FAM018' THEN 'LAËTITIA OBAME'
         WHEN f.identifiant_famille = 'FAM019' THEN 'NANCY NZI'
         WHEN f.identifiant_famille = 'FAM020' THEN 'NASDÈNE KODIA'
-        WHEN f.identifiant_famille = 'FAM021' THEN 'PATRICK BATSIAGA'
-        WHEN f.identifiant_famille = 'FAM022' THEN 'PROSPERE LEBA'
+        WHEN f.identifiant_famille = 'FAM021' THEN 'PATRICK BATSIAKA'
+        WHEN f.identifiant_famille = 'FAM022' THEN 'PROSPER LEBA'
         WHEN f.identifiant_famille = 'FAM023' THEN 'ROCHELLE PASSI BEN'
         WHEN f.identifiant_famille = 'FAM024' THEN 'SERGE AMANY'
         WHEN f.identifiant_famille = 'FAM025' THEN 'SNELLA MOUSSIO'

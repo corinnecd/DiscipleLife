@@ -13,7 +13,7 @@ DECLARE
   famille_record RECORD;
   superviseur_uuid UUID;
 BEGIN
-  -- Liste des 26 familles avec leurs superviseurs
+  -- Liste des 26 familles avec leurs superviseurs (mise à jour)
   FOR famille_record IN
     SELECT * FROM (VALUES
       ('LES DÉTERMINÉS', 'FAM001', 'Alain SIL'),
@@ -23,21 +23,22 @@ BEGIN
       ('Les AMOUREUX', 'FAM005', 'CARINE MATONDO'),
       ('ZÉLES', 'FAM006', 'COCO OKANZI'),
       ('INNARRÊTABLES', 'FAM007', 'CYNTHIA ALLOH'),
-      ('LES TÉMOINS', 'FAM008', 'ELISABETH AMECY'),
-      ('LES COMBATTANTS', 'FAM009', 'Andréa Ernest'),
+      ('LES TÉMOINS', 'FAM008', 'David SERVA'),
+      ('LES COMBATTANTS', 'FAM009', 'ELISABETH AMECY'),
       ('LES AGAPÉS', 'FAM010', 'EPHREM MBA'),
       ('LES FIDÈLES', 'FAM011', 'GERVAIS NKATOULOULOU'),
-      ('LES GLORIEUX', 'FAM012', 'Andréa Ernest'),
+      ('LES GLORIEUX', 'FAM012', 'HÉLÈNE LAMAGO'),
       ('Les Vaillants', 'FAM013', 'HÉLÈNE LAMAGO'),
       ('LES PERSÉVERANTS', 'FAM014', 'JOCELYNE FORTUNE'),
       ('LES ÉQUIPÉS', 'FAM015', 'KARINE WILLIAM'),
       ('LES INGÉNIEUX', 'FAM016', 'KEVIN THÉA'),
-      ('LES RACHETÉS', 'FAM017', 'LAETITIA OBAME'),
+      ('LES VICTORIEUX', 'FAM017', 'LAËTITIA MISSATOU'),
+      ('LES RACHETÉS', 'FAM018', 'LAËTITIA OBAME'),
       ('LES RADIEUSES', 'FAM018', 'MANICIA THÉA'),
       ('LES INTIMES', 'FAM019', 'NANCY NZI'),
       ('LES INEBRANLABLES', 'FAM020', 'NASDÈNE KODIA'),
-      ('LES CHOISIS', 'FAM021', 'PATRICK BATSIAGA'),
-      ('LES BOULEVERSEURS', 'FAM022', 'PROSPERE LEBA'),
+      ('LES CHOISIS', 'FAM021', 'PATRICK BATSIAKA'),
+      ('LES BOULEVERSEURS', 'FAM022', 'PROSPER LEBA'),
       ('LES PASSIONNÉS', 'FAM023', 'ROCHELLE PASSI BEN'),
       ('LES CONSACRÉS', 'FAM024', 'SERGE AMANY'),
       ('LES EMBRASÉS', 'FAM025', 'SNELLA MOUSSIO'),
