@@ -107,7 +107,7 @@ const SuperviseurDashboard = () => {
       if (superviseurData?.pasteur_id) {
         const { data: pasteurData, error: pasteurError } = await supabase
           .from('profils')
-          .select('id, first_name, last_name, identifiant_unique, email, avatar_url')
+          .select('id, first_name, last_name, identifiant_unique, avatar_url')
           .eq('id', superviseurData.pasteur_id)
           .single();
 
@@ -309,7 +309,7 @@ const SuperviseurDashboard = () => {
                   Ici, vous êtes chez vous.
                 </p>
                 <p className="text-lg text-white/90 leading-relaxed">
-                  {famille.nom} est un espace de partage, de soutien et de croissance spirituelle, où chacun est accompagné dans sa marche avec Dieu afin de devenir de véritables disciples de Christ.
+                  Un espace de partage, de soutien et de croissance spirituelle, où chacun est accompagné dans sa marche avec Dieu afin de devenir de véritables disciples de Christ.
                 </p>
               </div>
               {/* Icône/Personnage représentant la famille - Positionnée à droite et en bas */}
@@ -354,7 +354,10 @@ const SuperviseurDashboard = () => {
                   })()}
                 </CardTitle>
                 <CardDescription className="text-gray-600">
-                  {famille.nom} ({famille.identifiant_famille})
+                  <div>{famille.nom} ({famille.identifiant_famille})</div>
+                  {user?.email && (
+                    <div className="mt-1 text-sm text-gray-500">{user.email}</div>
+                  )}
                 </CardDescription>
               </div>
               <div className="relative">
@@ -510,11 +513,10 @@ const SuperviseurDashboard = () => {
                       </p>
                     </div>
                   </div>
-                  {pasteur.email && (
-                    <div className="text-sm text-gray-600 pt-2 border-t border-gray-200">
-                      <span className="font-medium">Email :</span> {pasteur.email}
-                    </div>
-                  )}
+                  <div className="text-sm text-gray-600 pt-2 border-t border-gray-200 italic">
+                    <p className="font-medium text-purple-600 mb-1">Matthieu 4:19 (LSG)</p>
+                    <p className="text-gray-700">Jésus leur dit : Suivez-moi, et je vous ferai pêcheurs d'hommes.</p>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center justify-center py-4">

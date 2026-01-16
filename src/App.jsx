@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { RoleProvider, useRole } from '@/context/RoleContext';
 import { ThemeProvider } from '@/context/ThemeContext';
@@ -8,6 +8,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import Layout from './components/Layout';
 import Auth from './pages/Auth';
 import UpdatePassword from './pages/UpdatePassword';
+import { useToast } from '@/components/ui/use-toast';
 
 // Public Pages
 import HomePage from './pages/HomePage';
@@ -69,6 +70,43 @@ import AdminFeedback from './pages/AdminFeedback';
 import { Helmet } from 'react-helmet';
 import { Toaster } from "@/components/ui/toaster";
 
+// Composant pour protéger l'accès aux dashboards
+const ProtectedDashboard = ({ allowedRoles, children, dashboardName }) => {
+    const { role, loading } = useRole();
+    const navigate = useNavigate();
+    const { toast } = useToast();
+    
+    React.useEffect(() => {
+        if (!loading && role && !allowedRoles.includes(role)) {
+            toast({
+                variant: "destructive",
+                title: "Accès non autorisé",
+                description: `Vous n'avez pas les permissions nécessaires pour accéder au ${dashboardName}.`
+            });
+            
+            // Rediriger vers le dashboard approprié selon le rôle
+            const redirectPath = {
+                'super_admin': '/space/pasteur',
+                'admin': '/space/pasteur',
+                'pasteur': '/space/pasteur',
+                'superviseur': '/space/superviseur',
+                'mentor': '/space/mentor',
+                'disciple': '/space/disciple'
+            }[role] || '/home';
+            
+            navigate(redirectPath, { replace: true });
+        }
+    }, [role, loading, allowedRoles, dashboardName, navigate, toast]);
+    
+    if (loading) return <div className="flex items-center justify-center h-screen text-white">Chargement...</div>;
+    
+    if (!allowedRoles.includes(role)) {
+        return <div className="flex items-center justify-center h-screen text-white">Redirection en cours...</div>;
+    }
+    
+    return children;
+};
+
 // Dashboard Router Component
 const DashboardRouter = () => {
     const { role, loading } = useRole();
@@ -115,11 +153,31 @@ function AppRoutes() {
         {/* Smart Dashboard Routing */}
         <Route path="dashboard" element={<DashboardRouter />} />
         
-        {/* Explicit Routes for each dashboard */}
-        <Route path="space/pasteur" element={<AdminDashboard />} />
-        <Route path="space/superviseur" element={<SuperviseurDashboard />} />
-        <Route path="space/mentor" element={<MentorDashboard />} />
-        <Route path="space/disciple" element={<DiscipleDashboard />} />
+        {/* Explicit Routes for each dashboard with access control */}
+        {/* Règles d'accès :
+            - Superviseur : ne peut pas accéder au dashboard pasteur, mais peut accéder au dashboard mentor et disciple
+            - Mentor : ne peut pas accéder au dashboard pasteur ni au dashboard superviseur
+            - Disciple : ne peut accéder qu'à son dashboard uniquement */}
+        <Route path="space/pasteur" element={
+          <ProtectedDashboard allowedRoles={['super_admin', 'admin', 'pasteur']} dashboardName="Dashboard Pasteur">
+            <AdminDashboard />
+          </ProtectedDashboard>
+        } />
+        <Route path="space/superviseur" element={
+          <ProtectedDashboard allowedRoles={['super_admin', 'admin', 'pasteur', 'superviseur']} dashboardName="Dashboard Superviseur">
+            <SuperviseurDashboard />
+          </ProtectedDashboard>
+        } />
+        <Route path="space/mentor" element={
+          <ProtectedDashboard allowedRoles={['super_admin', 'admin', 'pasteur', 'superviseur', 'mentor']} dashboardName="Dashboard Mentor">
+            <MentorDashboard />
+          </ProtectedDashboard>
+        } />
+        <Route path="space/disciple" element={
+          <ProtectedDashboard allowedRoles={['super_admin', 'admin', 'pasteur', 'superviseur', 'disciple']} dashboardName="Dashboard Disciple">
+            <DiscipleDashboard />
+          </ProtectedDashboard>
+        } />
         
         {/* Shared Features */}
         <Route path="profile" element={<Profile />} />
