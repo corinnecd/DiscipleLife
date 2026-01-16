@@ -6,9 +6,10 @@ import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Users, Video, BarChart2, Megaphone, Send, Info, Church, AlertTriangle } from 'lucide-react';
+import { Users, Video, BarChart2, Megaphone, Send, Info, Church, AlertTriangle, Clock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, getWeek, getQuarter, subWeeks, subMonths, subQuarters } from 'date-fns';
 
 const SendReport = () => {
   const { user } = useAuth();
@@ -17,14 +18,37 @@ const SendReport = () => {
   const [submitting, setSubmitting] = useState(false);
   const [discipleCount, setDiscipleCount] = useState(0);
   
+  // Type de rapport (hebdomadaire, mensuel, trimestriel, annuel)
+  const [reportType, setReportType] = useState('mensuel');
+  
+  // Pour les rapports mensuels
   const [reportMonth, setReportMonth] = useState(new Date().getMonth().toString());
   const [reportYear, setReportYear] = useState(new Date().getFullYear().toString());
+  
+  // Pour les rapports hebdomadaires
+  const [reportWeek, setReportWeek] = useState(() => {
+    const now = new Date();
+    return getWeek(now, { weekStartsOn: 1 }); // Semaine commence le lundi
+  });
+  const [reportYearWeek, setReportYearWeek] = useState(new Date().getFullYear().toString());
+  
+  // Pour les rapports trimestriels
+  const [reportQuarter, setReportQuarter] = useState(() => {
+    const now = new Date();
+    return getQuarter(now).toString();
+  });
+  const [reportYearQuarter, setReportYearQuarter] = useState(new Date().getFullYear().toString());
+  
+  // Pour les rapports annuels
+  const [reportYearAnnual, setReportYearAnnual] = useState(new Date().getFullYear().toString());
 
   const [stats, setStats] = useState({
     evangelizedCount: 0,
     videoViews: 0,
     completionRate: 0,
-    sundayAttendanceCount: 0,
+    sundayAttendanceCount: 0, // Culte Dimanche matin
+    saturdayEveningCount: 0, // Culte samedi soir
+    afterCulteCount: 0, // After Culte
     sundaySharingCount: 0,
     saturdayPrayerCount: 0,
     notes: ''
@@ -36,7 +60,7 @@ const SendReport = () => {
     if (user) {
       fetchData();
     }
-  }, [user, reportMonth, reportYear]);
+  }, [user, reportType, reportMonth, reportYear, reportWeek, reportYearWeek, reportQuarter, reportYearQuarter, reportYearAnnual]);
 
   const fetchData = async () => {
     try {
@@ -79,51 +103,111 @@ const SendReport = () => {
         const allUserIds = [user.id, ...discipleUserIds];
         
         if (allUserIds.length > 0) {
-          const selectedMonth = parseInt(reportMonth) + 1; // reportMonth est 0-indexed
-          const selectedYear = parseInt(reportYear);
+          // Calculer les dates selon le type de rapport
+          let periodStart, periodEnd;
           
-          const monthStart = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
-          const monthEnd = selectedMonth === 12 
-            ? `${selectedYear + 1}-01-01`
-            : `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+          if (reportType === 'hebdomadaire') {
+            // Pour hebdomadaire: calculer le début et la fin de la semaine
+            const year = parseInt(reportYearWeek);
+            const weekNum = parseInt(reportWeek);
+            
+            // Utiliser date-fns pour calculer correctement la semaine ISO
+            // Créer une date approximative pour la semaine (janvier + jours jusqu'à la semaine)
+            const jan4 = new Date(year, 0, 4); // 4 janvier est toujours dans la semaine 1
+            const daysToAdd = (weekNum - 1) * 7;
+            const targetDate = new Date(jan4);
+            targetDate.setDate(jan4.getDate() + daysToAdd);
+            
+            // Ajuster pour que la date soit le lundi de cette semaine
+            const weekStartDate = startOfWeek(targetDate, { weekStartsOn: 1 });
+            const weekEndDate = endOfWeek(weekStartDate, { weekStartsOn: 1 });
+            
+            periodStart = weekStartDate.toISOString().split('T')[0];
+            periodEnd = new Date(weekEndDate.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // +1 jour pour inclure le dernier jour
+          } else if (reportType === 'trimestriel') {
+            // Pour trimestriel: calculer le début et la fin du trimestre
+            const year = parseInt(reportYearQuarter);
+            const quarter = parseInt(reportQuarter);
+            const quarterStartMonth = (quarter - 1) * 3; // Q1=0, Q2=3, Q3=6, Q4=9
+            
+            const quarterStart = startOfQuarter(new Date(year, quarterStartMonth, 1));
+            const quarterEnd = endOfQuarter(quarterStart);
+            
+            periodStart = quarterStart.toISOString().split('T')[0];
+            periodEnd = new Date(quarterEnd.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          } else if (reportType === 'annuel') {
+            // Pour annuel: calculer le début et la fin de l'année
+            const year = parseInt(reportYearAnnual);
+            periodStart = `${year}-01-01`;
+            periodEnd = `${year + 1}-01-01`; // Début de l'année suivante
+          } else {
+            // Mensuel (par défaut)
+            const selectedMonth = parseInt(reportMonth) + 1; // reportMonth est 0-indexed
+            const selectedYear = parseInt(reportYear);
+            
+            periodStart = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
+            periodEnd = selectedMonth === 12 
+              ? `${selectedYear + 1}-01-01`
+              : `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+          }
           
           // Compter les présences pour tous les types d'événements
-          const [sundayCount, sharingCount, prayerCount] = await Promise.all([
+          const [sundayCount, sharingCount, prayerCount, saturdayEveningCount, afterCulteCount] = await Promise.all([
             supabase
               .from('attendance_tracking')
               .select('*', { count: 'exact', head: true })
               .eq('attendance_type', 'sunday_worship')
               .eq('status', 'present')
               .in('disciple_id', allUserIds)
-              .gte('attendance_date', monthStart)
-              .lt('attendance_date', monthEnd),
+              .gte('attendance_date', periodStart)
+              .lt('attendance_date', periodEnd),
             supabase
               .from('attendance_tracking')
               .select('*', { count: 'exact', head: true })
               .eq('attendance_type', 'sunday_sharing')
               .eq('status', 'present')
               .in('disciple_id', allUserIds)
-              .gte('attendance_date', monthStart)
-              .lt('attendance_date', monthEnd),
+              .gte('attendance_date', periodStart)
+              .lt('attendance_date', periodEnd),
             supabase
               .from('attendance_tracking')
               .select('*', { count: 'exact', head: true })
               .eq('attendance_type', 'saturday_prayer')
               .eq('status', 'present')
               .in('disciple_id', allUserIds)
-              .gte('attendance_date', monthStart)
-              .lt('attendance_date', monthEnd)
+              .gte('attendance_date', periodStart)
+              .lt('attendance_date', periodEnd),
+            // Pour samedi soir, on utilise saturday_prayer pour l'instant (à adapter selon vos besoins)
+            supabase
+              .from('attendance_tracking')
+              .select('*', { count: 'exact', head: true })
+              .eq('attendance_type', 'saturday_prayer')
+              .eq('status', 'present')
+              .in('disciple_id', allUserIds)
+              .gte('attendance_date', periodStart)
+              .lt('attendance_date', periodEnd),
+            // After Culte = sunday_sharing
+            supabase
+              .from('attendance_tracking')
+              .select('*', { count: 'exact', head: true })
+              .eq('attendance_type', 'sunday_sharing')
+              .eq('status', 'present')
+              .in('disciple_id', allUserIds)
+              .gte('attendance_date', periodStart)
+              .lt('attendance_date', periodEnd)
           ]);
           
           setStats(prev => ({
             ...prev,
             sundayAttendanceCount: sundayCount.count || 0,
             sundaySharingCount: sharingCount.count || 0,
-            saturdayPrayerCount: prayerCount.count || 0
+            saturdayPrayerCount: prayerCount.count || 0,
+            saturdayEveningCount: saturdayEveningCount.count || 0,
+            afterCulteCount: afterCulteCount.count || 0
           }));
           
-          // Récupérer les absences des disciples pour le mois en cours (uniquement dimanche)
-          await fetchAbsentDisciples(discipleUserIds, monthStart, monthEnd);
+          // Récupérer les absences des disciples pour la période sélectionnée (uniquement dimanche)
+          await fetchAbsentDisciples(discipleUserIds, periodStart, periodEnd);
         }
       }
 
@@ -134,7 +218,7 @@ const SendReport = () => {
     }
   };
   
-  const fetchAbsentDisciples = async (discipleUserIds, monthStart, monthEnd) => {
+  const fetchAbsentDisciples = async (discipleUserIds, periodStart, periodEnd) => {
     try {
       if (discipleUserIds.length === 0) {
         setAbsentDisciples([]);
@@ -171,8 +255,8 @@ const SendReport = () => {
         .in('disciple_id', discipleUserIds)
         .eq('attendance_type', 'sunday_worship')
         .eq('status', 'absent')
-        .gte('attendance_date', monthStart)
-        .lt('attendance_date', monthEnd)
+        .gte('attendance_date', periodStart)
+        .lt('attendance_date', periodEnd)
         .order('attendance_date', { ascending: true });
       
       if (absencesError) throw absencesError;
@@ -222,10 +306,10 @@ const SendReport = () => {
   const handleSend = async () => {
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('reports').insert([{
+      // Préparer les données selon le type de rapport
+      const reportData = {
         user_id: user.id,
-        month: reportMonth,
-        year: reportYear,
+        report_type: reportType,
         content: stats.notes,
         statistics_snapshot: {
             disciples: discipleCount,
@@ -233,17 +317,40 @@ const SendReport = () => {
             video_views: stats.videoViews,
             completion_rate: stats.completionRate,
             sunday_attendance_count: stats.sundayAttendanceCount,
+            saturday_evening_count: stats.saturdayEveningCount || 0,
+            after_culte_count: stats.afterCulteCount || 0,
             sunday_sharing_count: stats.sundaySharingCount || 0,
             saturday_prayer_count: stats.saturdayPrayerCount || 0
         },
         status: 'submitted'
-      }]);
+      };
+
+      // Ajouter les champs selon le type de rapport
+      if (reportType === 'hebdomadaire') {
+        reportData.week_number = parseInt(reportWeek);
+        reportData.year = parseInt(reportYearWeek);
+      } else if (reportType === 'trimestriel') {
+        reportData.quarter = parseInt(reportQuarter);
+        reportData.year = parseInt(reportYearQuarter);
+      } else if (reportType === 'annuel') {
+        reportData.year = parseInt(reportYearAnnual);
+      } else {
+        // Mensuel
+        reportData.month = parseInt(reportMonth);
+        reportData.year = parseInt(reportYear);
+      }
+
+      const { error } = await supabase.from('reports').insert([reportData]);
 
       if (error) throw error;
 
+      const reportTypeLabel = reportType === 'hebdomadaire' ? 'hebdomadaire' : 
+                              reportType === 'trimestriel' ? 'trimestriel' : 
+                              reportType === 'annuel' ? 'annuel' : 'mensuel';
+      
       toast({
-        title: "Rapport envoyé avec succès !",
-        description: "Merci pour votre fidélité. Le QG a bien reçu vos données.",
+        title: `Rapport ${reportTypeLabel} envoyé avec succès !`,
+        description: "Merci pour votre fidélité. Votre pasteur de tutelle a bien reçu vos données.",
         className: "bg-green-600 text-white border-none"
       });
       
@@ -267,6 +374,45 @@ const SendReport = () => {
   ];
 
   const years = ["2024", "2025", "2026"];
+  
+  // Générer les semaines de l'année (1-52)
+  const weeks = Array.from({ length: 52 }, (_, i) => i + 1);
+  
+  // Générer les trimestres (1-4)
+  const quarters = [
+    { value: "1", label: "Trimestre 1 (Jan-Mar)" },
+    { value: "2", label: "Trimestre 2 (Avr-Juin)" },
+    { value: "3", label: "Trimestre 3 (Juil-Sep)" },
+    { value: "4", label: "Trimestre 4 (Oct-Déc)" }
+  ];
+  
+  // Fonction pour obtenir le titre dynamique
+  const getReportTitle = () => {
+    switch (reportType) {
+      case 'hebdomadaire':
+        return 'Rapport Hebdomadaire';
+      case 'trimestriel':
+        return 'Rapport Trimestriel';
+      case 'annuel':
+        return 'Rapport Annuel';
+      default:
+        return 'Rapport Mensuel';
+    }
+  };
+  
+  // Fonction pour obtenir la description dynamique
+  const getReportDescription = () => {
+    switch (reportType) {
+      case 'hebdomadaire':
+        return 'Transmettez vos statistiques et vos témoignages pour la semaine sélectionnée.';
+      case 'trimestriel':
+        return 'Transmettez vos statistiques et vos témoignages pour le trimestre sélectionné.';
+      case 'annuel':
+        return 'Transmettez vos statistiques et vos témoignages pour l\'année sélectionnée.';
+      default:
+        return 'Transmettez vos statistiques et vos témoignages pour le mois sélectionné.';
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
@@ -274,33 +420,122 @@ const SendReport = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Rapport Mensuel</h1>
-           <p className="text-gray-600 mt-1">Transmettez vos statistiques et vos témoignages au leadership.</p>
+           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{getReportTitle()}</h1>
+           <p className="text-gray-600 mt-1">{getReportDescription()}</p>
         </div>
         
-        {/* Date Filters */}
-        <div className="flex gap-3 bg-white p-2 rounded-xl border border-gray-300 shadow-sm">
-          <Select value={reportMonth} onValueChange={setReportMonth}>
-              <SelectTrigger className="w-[140px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
-                  <SelectValue placeholder="Mois" />
+        {/* Type de rapport et Date Filters */}
+        <div className="flex flex-col md:flex-row gap-3">
+          {/* Sélection du type de rapport */}
+          <div className="bg-white p-2 rounded-xl border border-gray-300 shadow-sm">
+            <Select value={reportType} onValueChange={setReportType}>
+              <SelectTrigger className="w-[160px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                <SelectValue placeholder="Type de rapport" />
               </SelectTrigger>
               <SelectContent className="bg-white text-gray-900 border-gray-200">
-                  {months.map((m, i) => (
-                      <SelectItem key={i} value={i.toString()} className="focus:bg-gray-100 focus:!text-gray-900">{m}</SelectItem>
-                  ))}
+                <SelectItem value="hebdomadaire" className="focus:bg-gray-100 focus:!text-gray-900">Hebdomadaire</SelectItem>
+                <SelectItem value="mensuel" className="focus:bg-gray-100 focus:!text-gray-900">Mensuel</SelectItem>
+                <SelectItem value="trimestriel" className="focus:bg-gray-100 focus:!text-gray-900">Trimestriel</SelectItem>
+                <SelectItem value="annuel" className="focus:bg-gray-100 focus:!text-gray-900">Annuel</SelectItem>
               </SelectContent>
-          </Select>
-          <div className="w-[1px] bg-gray-300 my-1"></div>
-          <Select value={reportYear} onValueChange={setReportYear}>
-              <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
-                  <SelectValue placeholder="Année" />
-              </SelectTrigger>
-              <SelectContent className="bg-white text-gray-900 border-gray-200">
-                  {years.map((y) => (
+            </Select>
+          </div>
+          
+          {/* Filtres selon le type de rapport */}
+          <div className="flex gap-3 bg-white p-2 rounded-xl border border-gray-300 shadow-sm">
+            {reportType === 'hebdomadaire' && (
+              <>
+                <Select value={reportWeek} onValueChange={setReportWeek}>
+                  <SelectTrigger className="w-[140px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                    <SelectValue placeholder="Semaine" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white text-gray-900 border-gray-200">
+                    {weeks.map((w) => (
+                      <SelectItem key={w} value={w.toString()} className="focus:bg-gray-100 focus:!text-gray-900">Semaine {w}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="w-[1px] bg-gray-300 my-1"></div>
+                <Select value={reportYearWeek} onValueChange={setReportYearWeek}>
+                  <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                    <SelectValue placeholder="Année" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white text-gray-900 border-gray-200">
+                    {years.map((y) => (
                       <SelectItem key={y} value={y} className="focus:bg-gray-100 focus:!text-gray-900">{y}</SelectItem>
-                  ))}
-              </SelectContent>
-          </Select>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            
+            {reportType === 'mensuel' && (
+              <>
+                <Select value={reportMonth} onValueChange={setReportMonth}>
+                  <SelectTrigger className="w-[140px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                    <SelectValue placeholder="Mois" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white text-gray-900 border-gray-200">
+                    {months.map((m, i) => (
+                      <SelectItem key={i} value={i.toString()} className="focus:bg-gray-100 focus:!text-gray-900">{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="w-[1px] bg-gray-300 my-1"></div>
+                <Select value={reportYear} onValueChange={setReportYear}>
+                  <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                    <SelectValue placeholder="Année" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white text-gray-900 border-gray-200">
+                    {years.map((y) => (
+                      <SelectItem key={y} value={y} className="focus:bg-gray-100 focus:!text-gray-900">{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            
+            {reportType === 'trimestriel' && (
+              <>
+                <Select value={reportQuarter} onValueChange={setReportQuarter}>
+                  <SelectTrigger className="w-[180px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                    <SelectValue placeholder="Trimestre" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white text-gray-900 border-gray-200">
+                    {quarters.map((q) => (
+                      <SelectItem key={q.value} value={q.value} className="focus:bg-gray-100 focus:!text-gray-900">{q.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="w-[1px] bg-gray-300 my-1"></div>
+                <Select value={reportYearQuarter} onValueChange={setReportYearQuarter}>
+                  <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                    <SelectValue placeholder="Année" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white text-gray-900 border-gray-200">
+                    {years.map((y) => (
+                      <SelectItem key={y} value={y} className="focus:bg-gray-100 focus:!text-gray-900">{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            
+            {reportType === 'annuel' && (
+              <>
+                <Select value={reportYearAnnual} onValueChange={setReportYearAnnual}>
+                  <SelectTrigger className="w-[120px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                    <SelectValue placeholder="Année" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white text-gray-900 border-gray-200">
+                    {years.map((y) => (
+                      <SelectItem key={y} value={y} className="focus:bg-gray-100 focus:!text-gray-900">{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -315,15 +550,15 @@ const SendReport = () => {
                   <Users size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-purple-600 font-medium text-sm mb-1">Total Disciples</p>
-                  <p className="text-4xl font-bold text-gray-900">{discipleCount}</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1">Total Disciples</p>
+                  <p className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">{discipleCount}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
                     <Info size={12} /> Calculé automatiquement
                   </div>
                </CardContent>
             </Card>
 
-            {/* Absences du mois en cours */}
+            {/* Absences de la période sélectionnée */}
             <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
                <CardHeader className="border-b border-gray-200 pb-4">
                   <CardTitle className="text-gray-900 text-lg flex items-center gap-2">
@@ -335,7 +570,9 @@ const SendReport = () => {
                   {loading ? (
                      <p className="text-gray-600 text-sm">Chargement...</p>
                   ) : absentDisciples.length === 0 ? (
-                     <p className="text-gray-600 text-sm">Aucune absence enregistrée ce mois-ci</p>
+                     <p className="text-gray-600 text-sm">
+                        Aucune absence enregistrée {reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}
+                     </p>
                   ) : (
                      <div className="space-y-2 max-h-[300px] overflow-y-auto">
                         {absentDisciples.map((disciple, index) => (
@@ -356,10 +593,10 @@ const SendReport = () => {
                   <Church size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-purple-600 font-medium text-sm mb-1">Présences au Culte</p>
-                  <p className="text-4xl font-bold text-gray-900">{stats.sundayAttendanceCount}</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1">Présence Culte Dimanche matin</p>
+                  <p className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">{stats.sundayAttendanceCount}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-                    <Info size={12} /> Ce mois-ci
+                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
                   </div>
                </CardContent>
             </Card>
@@ -369,10 +606,10 @@ const SendReport = () => {
                   <Church size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-purple-600 font-medium text-sm mb-1">Présences à la Prière</p>
-                  <p className="text-4xl font-bold text-gray-900">{stats.saturdayPrayerCount || 0}</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1">Présence Culte du samedi soir</p>
+                  <p className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-800 bg-clip-text text-transparent">{stats.saturdayEveningCount || 0}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-                    <Info size={12} /> Ce mois-ci
+                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
                   </div>
                </CardContent>
             </Card>
@@ -382,10 +619,36 @@ const SendReport = () => {
                   <Users size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-purple-600 font-medium text-sm mb-1">Présences au Partage</p>
-                  <p className="text-4xl font-bold text-gray-900">{stats.sundaySharingCount || 0}</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1">Présence à l'After Culte</p>
+                  <p className="text-4xl font-bold bg-gradient-to-r from-teal-600 to-teal-800 bg-clip-text text-transparent">{stats.afterCulteCount || 0}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-                    <Info size={12} /> Ce mois-ci
+                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
+                  </div>
+               </CardContent>
+            </Card>
+
+            <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Clock size={80} className="text-purple-400" />
+               </div>
+               <CardContent className="p-6">
+                  <p className="text-gray-900 font-medium text-sm mb-1">Présences à la Prière</p>
+                  <p className="text-4xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 bg-clip-text text-transparent">{stats.saturdayPrayerCount || 0}</p>
+                  <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
+                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
+                  </div>
+               </CardContent>
+            </Card>
+
+            <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Users size={80} className="text-purple-400" />
+               </div>
+               <CardContent className="p-6">
+                  <p className="text-gray-900 font-medium text-sm mb-1">Présences au Partage</p>
+                  <p className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-800 bg-clip-text text-transparent">{stats.sundaySharingCount || 0}</p>
+                  <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
+                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
                   </div>
                </CardContent>
             </Card>
@@ -395,16 +658,16 @@ const SendReport = () => {
                   <Megaphone size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-purple-600 font-medium text-sm mb-1">Personnes Évangélisées</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1">Personnes Évangélisées</p>
                   <div className="flex items-center gap-3">
                      <Input 
                         type="number"
                         min="0"
                         value={stats.evangelizedCount}
                         onChange={(e) => setStats({...stats, evangelizedCount: parseInt(e.target.value) || 0})}
-                        className="w-24 bg-white border-gray-300 text-gray-900 text-xl font-bold h-10"
+                        className="w-24 bg-white border-gray-300 text-red-600 text-xl font-bold h-10"
                      />
-                     <span className="text-gray-600 text-sm">ce mois-ci</span>
+                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -414,14 +677,14 @@ const SendReport = () => {
                   <Video size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-purple-600 font-medium text-sm mb-1">Vidéos Visionnées</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1">Vidéos Visionnées</p>
                   <div className="flex items-center gap-3">
                      <Input 
                         type="number"
                         min="0"
                         value={stats.videoViews}
                         onChange={(e) => setStats({...stats, videoViews: parseInt(e.target.value) || 0})}
-                        className="w-24 bg-white border-gray-300 text-gray-900 text-xl font-bold h-10"
+                        className="w-24 bg-white border-gray-300 text-pink-600 text-xl font-bold h-10"
                      />
                      <span className="text-gray-600 text-sm">modules</span>
                   </div>
@@ -433,7 +696,7 @@ const SendReport = () => {
                   <BarChart2 size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-purple-600 font-medium text-sm mb-1">Taux de Complétion</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1">Taux de Complétion</p>
                   <div className="flex items-center gap-3">
                      <Input 
                         type="number"
@@ -441,7 +704,7 @@ const SendReport = () => {
                         max="100"
                         value={stats.completionRate}
                         onChange={(e) => setStats({...stats, completionRate: parseInt(e.target.value) || 0})}
-                        className="w-24 bg-white border-gray-300 text-gray-900 text-xl font-bold h-10"
+                        className="w-24 bg-white border-gray-300 text-orange-600 text-xl font-bold h-10"
                      />
                      <span className="text-gray-600 text-sm">% global</span>
                   </div>

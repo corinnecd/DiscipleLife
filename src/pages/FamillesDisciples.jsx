@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -11,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2 } from 'lucide-react';
+import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { getInitials } from '@/lib/utils';
 import { compressImage } from '@/lib/ImageCompression';
@@ -20,6 +21,7 @@ const FamillesDisciples = () => {
   const { user } = useAuth();
   const { role, hasAdminView, hasSuperviseurView, isSuperAdmin } = useRole();
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   const [familles, setFamilles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -343,6 +345,16 @@ const FamillesDisciples = () => {
       </Helmet>
 
       <div className="max-w-7xl mx-auto space-y-6 pb-20 px-4 sm:px-6">
+        {/* Bouton retour */}
+        <Button
+          variant="ghost"
+          onClick={() => navigate(-1)}
+          className="mb-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Retour
+        </Button>
+
         {/* En-tête */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>

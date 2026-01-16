@@ -14,15 +14,23 @@ import {
   Trash2, 
   Eye, 
   FileText, 
-  User
+  User,
+  ArrowLeft
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
 
 const AdminReportsView = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [reports, setReports] = useState([]);
+  
+  const months = [
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin", 
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+  ];
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -30,6 +38,7 @@ const AdminReportsView = () => {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all');
+  const [reportTypeFilter, setReportTypeFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
 
@@ -39,7 +48,7 @@ const AdminReportsView = () => {
 
   useEffect(() => {
     fetchReports();
-  }, [currentPage, statusFilter, dateFilter]);
+  }, [currentPage, statusFilter, reportTypeFilter, dateFilter]);
 
   const fetchReports = async () => {
     try {
@@ -52,6 +61,10 @@ const AdminReportsView = () => {
       // Apply Filters
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
+      }
+      
+      if (reportTypeFilter !== 'all') {
+        query = query.eq('report_type', reportTypeFilter);
       }
       
       if (dateFilter) {
@@ -160,41 +173,66 @@ const AdminReportsView = () => {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <Helmet>
-        <title>Administration des Rapports | DiscipleLife</title>
+        <title>Rapports Superviseurs | DiscipleLife</title>
       </Helmet>
+
+      {/* Bouton retour */}
+      <Button
+        variant="ghost"
+        onClick={() => navigate(-1)}
+        className="mb-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+      >
+        <ArrowLeft className="h-4 w-4 mr-2" />
+        Retour
+      </Button>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Rapports Mentorat</h1>
-          <p className="text-slate-500">Gérez et analysez les rapports mensuels des mentors.</p>
+          <h1 className="text-3xl font-bold text-slate-900">Rapports Superviseurs</h1>
+          <p className="text-slate-500">Gérer et analyser les rapports de vos Superviseurs</p>
         </div>
       </div>
 
       {/* Filters Bar */}
-      <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-end md:items-center">
+      <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm flex flex-col md:flex-row gap-4 items-end md:items-center">
         <form onSubmit={handleSearch} className="flex-1 w-full flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <Input
               placeholder="Rechercher dans le contenu..."
-              className="pl-9"
+              className="pl-9 bg-gray-100 border-gray-200"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <Button type="submit" variant="secondary">Rechercher</Button>
+          <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">Rechercher</Button>
         </form>
         
-        <div className="flex items-center gap-2 w-full md:w-auto">
+        <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+          <div className="w-40">
+            <Select value={reportTypeFilter} onValueChange={setReportTypeFilter}>
+              <SelectTrigger className="bg-gray-100 border-gray-200 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-200">
+                <SelectValue placeholder="Type de rapport" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-gray-200">
+                <SelectItem value="all" className="text-gray-900 hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900">Tous types</SelectItem>
+                <SelectItem value="hebdomadaire" className="text-gray-900 hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900">Hebdomadaire</SelectItem>
+                <SelectItem value="mensuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900">Mensuel</SelectItem>
+                <SelectItem value="trimestriel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900">Trimestriel</SelectItem>
+                <SelectItem value="annuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900">Annuel</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
           <div className="w-40">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
+              <SelectTrigger className="bg-gray-100 border-gray-200 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-200">
                 <SelectValue placeholder="Statut" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous statuts</SelectItem>
-                <SelectItem value="sent">Envoyés</SelectItem>
-                <SelectItem value="draft">Brouillons</SelectItem>
+              <SelectContent className="bg-white border-gray-200">
+                <SelectItem value="all" className="text-gray-900 hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900">Tous statuts</SelectItem>
+                <SelectItem value="sent" className="text-gray-900 hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900">Envoyés</SelectItem>
+                <SelectItem value="draft" className="text-gray-900 hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900">Brouillons</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -204,7 +242,7 @@ const AdminReportsView = () => {
                type="date" 
                value={dateFilter} 
                onChange={(e) => setDateFilter(e.target.value)} 
-               className="w-full md:w-[160px]"
+               className="w-full md:w-[160px] bg-gray-100 border-gray-200 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-200"
              />
           </div>
         </div>
@@ -250,7 +288,26 @@ const AdminReportsView = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-medium text-slate-700">{report.month} {report.year}</span>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {report.report_type === 'hebdomadaire' ? 'Hebdomadaire' : 
+                             report.report_type === 'trimestriel' ? 'Trimestriel' : 
+                             report.report_type === 'annuel' ? 'Annuel' : 'Mensuel'}
+                          </Badge>
+                        </div>
+                        <span className="font-medium text-slate-700 text-sm">
+                          {report.report_type === 'hebdomadaire' && report.week_number 
+                            ? `Semaine ${report.week_number}, ${report.year}`
+                            : report.report_type === 'trimestriel' && report.quarter
+                            ? `Trimestre ${report.quarter}, ${report.year}`
+                            : report.report_type === 'annuel' && report.year
+                            ? `Année ${report.year}`
+                            : report.month && report.year
+                            ? `${months[report.month]} ${report.year}`
+                            : `${report.year || 'N/A'}`}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-slate-500">
                       {format(new Date(report.created_at), 'dd MMM yyyy', { locale: fr })}
@@ -328,43 +385,102 @@ const AdminReportsView = () => {
                   Rapport de {selectedReport.profils?.first_name} {selectedReport.profils?.last_name}
                 </DialogTitle>
                 <DialogDescription>
-                  Période: {selectedReport.month} {selectedReport.year}
+                  Type: {selectedReport.report_type === 'hebdomadaire' ? 'Hebdomadaire' : selectedReport.report_type === 'trimestriel' ? 'Trimestriel' : 'Mensuel'} | 
+                  Période: {
+                    selectedReport.report_type === 'hebdomadaire' && selectedReport.week_number
+                      ? `Semaine ${selectedReport.week_number}, ${selectedReport.year}`
+                      : selectedReport.report_type === 'trimestriel' && selectedReport.quarter
+                      ? `Trimestre ${selectedReport.quarter}, ${selectedReport.year}`
+                      : selectedReport.month !== null && selectedReport.month !== undefined
+                      ? `${months[selectedReport.month]} ${selectedReport.year}`
+                      : `${selectedReport.year || 'N/A'}`
+                  }
                 </DialogDescription>
               </DialogHeader>
 
               {/* Printable Header */}
               <div className="hidden print:block mb-8 border-b pb-4">
-                 <h1 className="text-2xl font-bold">Rapport Mensuel - DiscipleLife</h1>
-                 <p className="text-lg">Mentor: {selectedReport.profils?.first_name} {selectedReport.profils?.last_name}</p>
-                 <p>Période: {selectedReport.month} {selectedReport.year}</p>
+                 <h1 className="text-2xl font-bold">
+                   Rapport {selectedReport.report_type === 'hebdomadaire' ? 'Hebdomadaire' : selectedReport.report_type === 'trimestriel' ? 'Trimestriel' : 'Mensuel'} - DiscipleLife
+                 </h1>
+                 <p className="text-lg">Superviseur: {selectedReport.profils?.first_name} {selectedReport.profils?.last_name}</p>
+                 <p>Période: {
+                   selectedReport.report_type === 'hebdomadaire' && selectedReport.week_number
+                     ? `Semaine ${selectedReport.week_number}, ${selectedReport.year}`
+                     : selectedReport.report_type === 'trimestriel' && selectedReport.quarter
+                     ? `Trimestre ${selectedReport.quarter}, ${selectedReport.year}`
+                     : selectedReport.month !== null && selectedReport.month !== undefined
+                     ? `${months[selectedReport.month]} ${selectedReport.year}`
+                     : `${selectedReport.year || 'N/A'}`
+                 }</p>
                  <p className="text-sm text-gray-500">Généré le: {new Date().toLocaleDateString()}</p>
               </div>
 
               {/* Stats Snapshot */}
               {selectedReport.statistics_snapshot && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                    <span className="text-xs font-medium text-slate-500 uppercase">Disciples</span>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {selectedReport.statistics_snapshot.totalDisciples || 0}
+                <div className="space-y-6">
+                  {/* Statistiques principales */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+                      <span className="text-xs font-medium text-purple-600 uppercase">Total Disciples</span>
+                      <div className="text-2xl font-bold text-purple-700 mt-1">
+                        {selectedReport.statistics_snapshot.disciples || selectedReport.statistics_snapshot.totalDisciples || 0}
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-lg border border-red-200">
+                      <span className="text-xs font-medium text-red-600 uppercase">Évangélisées</span>
+                      <div className="text-2xl font-bold text-red-700 mt-1">
+                        {selectedReport.statistics_snapshot.evangelization || selectedReport.statistics_snapshot.soulsEvangelized || 0}
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-pink-50 to-pink-100 p-4 rounded-lg border border-pink-200">
+                      <span className="text-xs font-medium text-pink-600 uppercase">Vidéos</span>
+                      <div className="text-2xl font-bold text-pink-700 mt-1">
+                        {selectedReport.statistics_snapshot.video_views || selectedReport.statistics_snapshot.modulesCompleted || 0}
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
+                      <span className="text-xs font-medium text-orange-600 uppercase">Taux Complétion</span>
+                      <div className="text-2xl font-bold text-orange-700 mt-1">
+                        {selectedReport.statistics_snapshot.completion_rate || 0}%
+                      </div>
                     </div>
                   </div>
-                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                    <span className="text-xs font-medium text-slate-500 uppercase">Âmes Touchées</span>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {selectedReport.statistics_snapshot.soulsEvangelized || 0}
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                    <span className="text-xs font-medium text-slate-500 uppercase">Modules</span>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {selectedReport.statistics_snapshot.modulesCompleted || 0}
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                    <span className="text-xs font-medium text-slate-500 uppercase">Actifs</span>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {selectedReport.statistics_snapshot.activeDisciples || 0}
+
+                  {/* Statistiques de présence */}
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3">Présences</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-lg border border-blue-200">
+                        <span className="text-xs font-medium text-blue-600 uppercase">Dimanche Matin</span>
+                        <div className="text-xl font-bold text-blue-700 mt-1">
+                          {selectedReport.statistics_snapshot.sunday_attendance_count || 0}
+                        </div>
+                      </div>
+                      <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-3 rounded-lg border border-indigo-200">
+                        <span className="text-xs font-medium text-indigo-600 uppercase">Samedi Soir</span>
+                        <div className="text-xl font-bold text-indigo-700 mt-1">
+                          {selectedReport.statistics_snapshot.saturday_evening_count || 0}
+                        </div>
+                      </div>
+                      <div className="bg-gradient-to-br from-teal-50 to-teal-100 p-3 rounded-lg border border-teal-200">
+                        <span className="text-xs font-medium text-teal-600 uppercase">After Culte</span>
+                        <div className="text-xl font-bold text-teal-700 mt-1">
+                          {selectedReport.statistics_snapshot.after_culte_count || 0}
+                        </div>
+                      </div>
+                      <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-3 rounded-lg border border-amber-200">
+                        <span className="text-xs font-medium text-amber-600 uppercase">Prière</span>
+                        <div className="text-xl font-bold text-amber-700 mt-1">
+                          {selectedReport.statistics_snapshot.saturday_prayer_count || 0}
+                        </div>
+                      </div>
+                      <div className="bg-gradient-to-br from-green-50 to-green-100 p-3 rounded-lg border border-green-200">
+                        <span className="text-xs font-medium text-green-600 uppercase">Partage</span>
+                        <div className="text-xl font-bold text-green-700 mt-1">
+                          {selectedReport.statistics_snapshot.sunday_sharing_count || 0}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -107,22 +107,30 @@ export const AuthProvider = ({ children }) => {
   }, [toast]);
 
   const signOut = useCallback(async () => {
+    // Toujours nettoyer l'état local, même si la déconnexion côté serveur échoue
+    // (par exemple si la session est déjà expirée)
+    setUser(null);
+    setSession(null);
+    setIsAdmin(false);
+    
+    // Essayer de déconnecter côté serveur
     const { error } = await supabase.auth.signOut();
-    if (error) {
+    
+    // Si l'erreur est liée à une session invalide/expirée, c'est normal, on ne l'affiche pas
+    if (error && !error.message?.includes('session') && !error.message?.includes('JWT')) {
       toast({
         variant: "destructive",
         title: "Erreur de déconnexion",
         description: error.message,
       });
     } else {
-      setUser(null);
-      setSession(null);
-      setIsAdmin(false);
+      // Déconnexion réussie ou session déjà expirée (normal)
       toast({
         title: "Déconnexion réussie",
         description: "À bientôt !",
       });
     }
+    
     return { error };
   }, [toast]);
 

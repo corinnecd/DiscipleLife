@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -17,6 +19,7 @@ const TYPES = {
 const Statistics = () => {
   const { user } = useAuth();
   const { isMentor, canHaveDisciples } = useRole();
+  const navigate = useNavigate();
   const isMentorView = isMentor || canHaveDisciples;
   
   const [loading, setLoading] = useState(true);
@@ -237,6 +240,15 @@ const Statistics = () => {
   if (!isMentorView) {
     return (
       <div className="max-w-6xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
+        {/* Bouton retour */}
+        <Button
+          variant="ghost"
+          onClick={() => navigate(-1)}
+          className="mb-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Retour
+        </Button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Mes Statistiques</h1>
           <p className="text-gray-600 mt-1">Cette section est réservée aux mentors.</p>
@@ -247,6 +259,15 @@ const Statistics = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
+      {/* Bouton retour */}
+      <Button
+        variant="ghost"
+        onClick={() => navigate(-1)}
+        className="mb-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+      >
+        <ArrowLeft className="h-4 w-4 mr-2" />
+        Retour
+      </Button>
       <div>
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Mes Statistiques</h1>
         <p className="text-gray-600 mt-1">Assiduité mensuelle de vos disciples sur 3 mois</p>

@@ -3,11 +3,14 @@ import React from 'react';
 import { useRole } from '@/context/RoleContext';
 import MentorDashboard from './MentorDashboard';
 import DiscipleDashboard from './DiscipleDashboard';
+import PasteurDashboard from './PasteurDashboard';
 import { Loader2 } from 'lucide-react';
 
 /**
- * AdminDashboard - Affiche le Dashboard Mentor ou Disciple selon le rôle de l'utilisateur
- * Remplace l'ancienne page Administration par un système de routage intelligent
+ * AdminDashboard - Affiche le Dashboard approprié selon le rôle de l'utilisateur
+ * - Pasteur/Admin : Dashboard Pasteur
+ * - Mentor : Dashboard Mentor
+ * - Autres : Dashboard Disciple
  */
 const AdminDashboard = () => {
   const { role, canHaveDisciples, loading } = useRole();
@@ -18,6 +21,11 @@ const AdminDashboard = () => {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
+  }
+
+  // Si l'utilisateur est pasteur, admin ou super_admin, afficher le Dashboard Pasteur
+  if (role === 'pasteur' || role === 'admin' || role === 'super_admin') {
+    return <PasteurDashboard />;
   }
 
   // Si l'utilisateur est mentor ou peut avoir des disciples, afficher le Dashboard Mentor
