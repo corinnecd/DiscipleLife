@@ -4,16 +4,20 @@ import {
   Users, Target, TrendingUp, UserCheck, Activity, 
   Church, ChevronRight, Loader2, Search, Filter, Eye, BarChart3,
   Mail, Phone, ArrowLeft, Building2, CheckCircle2, AlertCircle, Calendar,
-  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, Plus, X
+  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, Plus, X, Download, FileText
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getWeek, getQuarter, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfMonth, endOfMonth } from 'date-fns';
+import { getWeek, getQuarter, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfMonth, endOfMonth, format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
+import { useToast } from '@/components/ui/use-toast';
+import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
 import {
@@ -24,16 +28,30 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { 
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+} from 'recharts';
 
 const PasteurDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [pasteurNom, setPasteurNom] = useState({ first_name: '', last_name: '', identifiant_unique: '' });
   const [superviseurs, setSuperviseurs] = useState([]);
   const [familles, setFamilles] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFamille, setSelectedFamille] = useState(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [superviseursOptions, setSuperviseursOptions] = useState([]);
+  const [createForm, setCreateForm] = useState({
+    nom: '',
+    identifiant_famille: '',
+    statut: 'actif',
+    objectif_disciples: 70,
+    superviseur_id: '',
+  });
   
   // Filtres de période pour les KPI
   const [kpiPeriodType, setKpiPeriodType] = useState('annuel'); // annuel, trimestriel, mensuel, hebdomadaire
@@ -78,6 +96,7 @@ const PasteurDashboard = () => {
   useEffect(() => {
     if (user) {
       fetchPasteurData();
+      checkMissingReports();
     }
   }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
 
@@ -408,6 +427,9 @@ const PasteurDashboard = () => {
             veillee,
             meditationBible
           };
+
+          // Générer les données pour les graphiques d'évolution (tous les rapports soumis)
+          await generateChartData(rapportsData || []);
         }
       }
 
@@ -453,6 +475,294 @@ const PasteurDashboard = () => {
     return `LES ${nom}`;
   };
 
+  // Charger les superviseurs pour le formulaire de création
+  const loadSuperviseursOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, email')
+        .eq('role', 'superviseur')
+        .order('last_name', { ascending: true });
+
+      if (error) throw error;
+      setSuperviseursOptions(data || []);
+    } catch (error) {
+      console.error('Erreur lors du chargement des superviseurs:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de charger la liste des superviseurs',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Ouvrir le dialog de création
+  const openCreateDialog = async () => {
+    const nextIndex = familles.length + 1;
+    const defaultIdentifiant = `FAM${String(nextIndex).padStart(3, '0')}`;
+
+    setCreateForm({
+      nom: '',
+      identifiant_famille: defaultIdentifiant,
+      statut: 'actif',
+      objectif_disciples: 70,
+      superviseur_id: '',
+    });
+
+    if (superviseursOptions.length === 0) {
+      await loadSuperviseursOptions();
+    }
+    setIsCreateDialogOpen(true);
+  };
+
+  // Créer une nouvelle famille
+  const handleCreateFamille = async (e) => {
+    e?.preventDefault();
+    if (!createForm.nom || !createForm.identifiant_famille || !createForm.superviseur_id) {
+      toast({
+        title: 'Champs manquants',
+        description: 'Merci de renseigner le nom, l\'identifiant et le superviseur de la famille.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setCreateLoading(true);
+      const { error } = await supabase
+        .from('familles_disciples')
+        .insert({
+          nom: createForm.nom.trim(),
+          identifiant_famille: createForm.identifiant_famille.trim(),
+          statut: createForm.statut,
+          objectif_disciples: Number(createForm.objectif_disciples) || 70,
+          nombre_disciples_actuels: 0,
+          superviseur_id: createForm.superviseur_id,
+        });
+
+      if (error) throw error;
+
+      // Recharger les données
+      await fetchPasteurData();
+
+      setIsCreateDialogOpen(false);
+      toast({
+        title: 'Famille créée',
+        description: `La famille "${createForm.nom}" a été ajoutée avec succès.`,
+      });
+    } catch (error) {
+      console.error('Erreur lors de la création de la famille:', error);
+      toast({
+        title: 'Erreur',
+        description: "Impossible de créer la famille. Vérifiez que l'identifiant est unique.",
+        variant: 'destructive',
+      });
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  // État pour les données des graphiques d'évolution
+  const [chartData, setChartData] = useState([]);
+  const [exporting, setExporting] = useState(false);
+  const [missingReports, setMissingReports] = useState([]);
+  const [showAllMissingReports, setShowAllMissingReports] = useState(false);
+
+  // Fonction pour générer les données historiques des graphiques
+  const generateChartData = async (reportsData) => {
+    if (!reportsData || reportsData.length === 0) {
+      setChartData([]);
+      return;
+    }
+
+    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jui", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+    const chartMap = {};
+
+    // Grouper les rapports par mois
+    reportsData.forEach(report => {
+      const reportDate = new Date(report.created_at);
+      const monthKey = `${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = `${months[reportDate.getMonth()]} ${reportDate.getFullYear()}`;
+
+      if (!chartMap[monthKey]) {
+        chartMap[monthKey] = {
+          name: monthLabel,
+          mois: monthKey,
+          culteSamediSoir: 0,
+          culteDimancheMatin: 0,
+          afterCulteDimanche: 0,
+          tempsPriere: 0,
+          tempsPartage: 0,
+          nouveauxConvertis: 0,
+          nouveauxArrivants: 0,
+          sortiesEvangelisation: 0,
+          personnesEvangelisees: 0,
+          comFratDisciples: 0,
+          veillee: 0,
+          meditationBible: 0
+        };
+      }
+
+      const stats = report.statistics_snapshot || {};
+      chartMap[monthKey].culteSamediSoir += stats.saturday_evening_count || 0;
+      chartMap[monthKey].culteDimancheMatin += stats.sunday_attendance_count || 0;
+      chartMap[monthKey].afterCulteDimanche += stats.after_culte_count || 0;
+      chartMap[monthKey].tempsPriere += stats.saturday_prayer_count || 0;
+      chartMap[monthKey].tempsPartage += stats.sunday_sharing_count || 0;
+      chartMap[monthKey].nouveauxConvertis += stats.nouveaux_convertis || 0;
+      chartMap[monthKey].nouveauxArrivants += stats.nouveaux_arrivants || 0;
+      chartMap[monthKey].sortiesEvangelisation += stats.evangelization || 0;
+      chartMap[monthKey].personnesEvangelisees += stats.evangelization || 0;
+      chartMap[monthKey].comFratDisciples += stats.com_frat_disciples || 0;
+      chartMap[monthKey].veillee += stats.veillee || 0;
+      chartMap[monthKey].meditationBible += stats.meditation_bible || 0;
+    });
+
+    // Convertir en tableau et trier par date
+    const dataArray = Object.values(chartMap).sort((a, b) => a.mois.localeCompare(b.mois));
+    
+    // Prendre les 12 derniers mois
+    setChartData(dataArray.slice(-12));
+  };
+
+  // Fonction pour exporter en PDF
+  const handleExportPDF = async () => {
+    setExporting(true);
+    try {
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      const filename = `dashboard_pasteur_${timestamp}.pdf`;
+      await exportElementToPDF('pasteur-dashboard-content', filename);
+      toast({
+        title: 'Export réussi',
+        description: 'Le dashboard a été exporté en PDF avec succès.',
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'export PDF:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erreur d\'export',
+        description: 'Impossible d\'exporter le dashboard en PDF.',
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Fonction pour exporter en Excel (CSV)
+  const handleExportExcel = () => {
+    try {
+      // Préparer les données pour l'export
+      const exportData = familles.map(item => ({
+        'Superviseur': `${item.superviseur.first_name} ${item.superviseur.last_name}`,
+        'Email': item.superviseur.email || '',
+        'Famille': item.famille?.nom || 'Non assignée',
+        'Identifiant': item.famille?.identifiant_famille || '',
+        'Membres actuels': item.stats.nombreMembres,
+        'Objectif': item.stats.objectif,
+        'Progression (%)': Math.round(item.stats.progression),
+        'Statut': item.stats.progression >= 100 ? 'Objectif atteint' : 'En cours'
+      }));
+
+      if (exportData.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Aucune donnée',
+          description: 'Aucune donnée à exporter.',
+        });
+        return;
+      }
+
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      const filename = `dashboard_pasteur_${timestamp}`;
+      exportToExcel(exportData, filename);
+      toast({
+        title: 'Export réussi',
+        description: 'Le dashboard a été exporté en CSV avec succès.',
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'export Excel:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erreur d\'export',
+        description: 'Impossible d\'exporter le dashboard en CSV.',
+      });
+    }
+  };
+
+  // Fonction pour vérifier les rapports manquants
+  const checkMissingReports = async () => {
+    try {
+      const now = new Date();
+      const currentDay = now.getDate();
+      
+      // L'alerte n'apparaît qu'à partir du 1er jour du mois suivant
+      // Si nous ne sommes pas au moins le 1er jour du mois, ne pas afficher l'alerte
+      if (currentDay < 1) {
+        setMissingReports([]);
+        return;
+      }
+
+      // Calculer le mois précédent
+      const previousMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1; // 0-indexed
+      const previousYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+
+      // Déterminer le type de rapport attendu (mensuel pour le mois précédent)
+      const expectedReportType = 'mensuel';
+      
+      // Récupérer tous les superviseurs du pasteur
+      const { data: superviseursData } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, email')
+        .eq('pasteur_id', user.id)
+        .eq('role', 'superviseur');
+
+      if (!superviseursData || superviseursData.length === 0) {
+        setMissingReports([]);
+        return;
+      }
+
+      const superviseurIds = superviseursData.map(s => s.id);
+
+      // Vérifier quels superviseurs ont envoyé leur rapport mensuel pour le mois précédent
+      const { data: rapportsData } = await supabase
+        .from('reports')
+        .select('user_id, month, year, report_type')
+        .in('user_id', superviseurIds)
+        .eq('report_type', expectedReportType)
+        .eq('month', previousMonth)
+        .eq('year', previousYear)
+        .eq('status', 'submitted');
+
+      const superviseursAvecRapport = new Set(
+        (rapportsData || []).map(r => r.user_id)
+      );
+
+      // Identifier les superviseurs sans rapport
+      const manquants = superviseursData
+        .filter(s => !superviseursAvecRapport.has(s.id))
+        .map(s => ({
+          id: s.id,
+          name: `${s.first_name} ${s.last_name}`,
+          email: s.email
+        }));
+
+      setMissingReports(manquants);
+
+      // Afficher une notification si des rapports manquent (seulement à partir du 1er jour du mois)
+      if (manquants.length > 0 && currentDay >= 1) {
+        const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+        const previousMonthName = monthNames[previousMonth];
+        toast({
+          variant: 'destructive',
+          title: `${manquants.length} rapport(s) manquant(s)`,
+          description: `${manquants.length} superviseur(s) n'ont pas encore envoyé leur rapport mensuel pour ${previousMonthName} ${previousYear}.`,
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la vérification des rapports manquants:', error);
+    }
+  };
+
   // Filtrer les familles selon la recherche (insensible à la casse et aux accents)
   const filteredFamilles = familles.filter(item => {
     if (!searchTerm) return true;
@@ -477,7 +787,7 @@ const PasteurDashboard = () => {
         <title>Dashboard Pasteur - DiscipleLife</title>
       </Helmet>
       
-      <div className="space-y-6 p-6 bg-gray-50 min-h-screen">
+      <div id="pasteur-dashboard-content" className="space-y-6 p-6 bg-gray-50 min-h-screen">
         {/* Bouton retour */}
         <Button
           variant="ghost"
@@ -491,19 +801,44 @@ const PasteurDashboard = () => {
         {/* Bandeau de bienvenue */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-950 via-purple-950 to-purple-900 border border-gray-200 shadow-lg p-8 md:p-12">
           <div className="relative z-10">
-            <motion.h1 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-4xl font-bold text-white mb-4"
-            >
-              Bienvenue, <span className="bg-gradient-to-r from-pink-400 to-pink-600 bg-clip-text text-transparent">{pasteurNom.first_name} {pasteurNom.last_name}</span>
-            </motion.h1>
-            <p className="text-xl text-white/90 mb-4 leading-relaxed">
-              Vous êtes le Pasteur Référent des Superviseurs de votre grande famille.
-            </p>
-            <p className="text-lg text-white/90 leading-relaxed">
-              Gérez et suivez la progression de tous vos superviseurs et leurs familles de disciples.
-            </p>
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+              <div className="flex-1">
+                <motion.h1 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-4xl font-bold text-white mb-4"
+                >
+                  Bienvenue, <span className="bg-gradient-to-r from-pink-400 to-pink-600 bg-clip-text text-transparent">{pasteurNom.first_name} {pasteurNom.last_name}</span>
+                </motion.h1>
+                <p className="text-xl text-white/90 mb-4 leading-relaxed">
+                  Vous êtes le Pasteur Référent des Superviseurs de votre grande famille.
+                </p>
+                <p className="text-lg text-white/90 leading-relaxed">
+                  Gérez et suivez la progression de tous vos superviseurs et leurs familles de disciples.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleExportPDF}
+                  disabled={exporting}
+                  className="bg-white/20 hover:bg-white/30 text-white border border-white/30"
+                >
+                  {exporting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {exporting ? 'Export...' : 'PDF'}
+                </Button>
+                <Button
+                  onClick={handleExportExcel}
+                  className="bg-white/20 hover:bg-white/30 text-white border border-white/30"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Excel
+                </Button>
+              </div>
+            </div>
           </div>
           
           {/* Background Decorative Circles */}
@@ -645,21 +980,34 @@ const PasteurDashboard = () => {
                       const monthName = months[parseInt(kpiSelectedMonth)];
                       return `KPI Mensuels ${monthName} ${kpiSelectedYearForPeriod}`;
                     } else {
-                      return `KPI Hebdomadaires Sem ${kpiSelectedWeek} ${kpiSelectedYearForPeriod}`;
+                      // Pour hebdomadaire, calculer le mois de la semaine
+                      const selectedYear = parseInt(kpiSelectedYearForPeriod);
+                      const selectedWeek = parseInt(kpiSelectedWeek);
+                      // Créer une date pour le 1er janvier de l'année
+                      const jan1 = new Date(selectedYear, 0, 1);
+                      // Obtenir le début de la première semaine de l'année (lundi)
+                      const firstWeekStart = startOfWeek(jan1, { weekStartsOn: 1 });
+                      // Calculer le début de la semaine sélectionnée
+                      const targetWeekStart = new Date(firstWeekStart);
+                      targetWeekStart.setDate(firstWeekStart.getDate() + (selectedWeek - 1) * 7);
+                      // Obtenir le mois de cette date (0-indexed, donc Janvier = 0)
+                      const monthIndex = targetWeekStart.getMonth();
+                      const monthName = months[monthIndex];
+                      return `KPI Hebdomadaires Sem ${kpiSelectedWeek} ${monthName} ${kpiSelectedYearForPeriod}`;
                     }
                   })()}
                 </CardTitle>
               </div>
               <div className="flex flex-wrap gap-2 items-center">
                 <Select value={kpiPeriodType} onValueChange={setKpiPeriodType}>
-                  <SelectTrigger className="w-[140px] bg-purple-600 border-0 text-white focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-white hover:bg-purple-700">
+                  <SelectTrigger className="w-[140px] bg-gray-200 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900 hover:bg-gray-300">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200">
-                    <SelectItem value="hebdomadaire" className="text-gray-900 hover:bg-gray-100">Hebdomadaire</SelectItem>
-                    <SelectItem value="mensuel" className="text-gray-900 hover:bg-gray-100">Mensuel</SelectItem>
-                    <SelectItem value="trimestriel" className="text-gray-900 hover:bg-gray-100">Trimestriel</SelectItem>
-                    <SelectItem value="annuel" className="text-gray-900 hover:bg-gray-100">Annuel</SelectItem>
+                    <SelectItem value="hebdomadaire" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Hebdomadaire</SelectItem>
+                    <SelectItem value="mensuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Mensuel</SelectItem>
+                    <SelectItem value="trimestriel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestriel</SelectItem>
+                    <SelectItem value="annuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Annuel</SelectItem>
                   </SelectContent>
                 </Select>
                 
@@ -671,7 +1019,7 @@ const PasteurDashboard = () => {
                     <SelectContent className="bg-white border-gray-200">
                       {Array.from({ length: 5 }, (_, i) => {
                         const year = new Date().getFullYear() - i;
-                        return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100">{year}</SelectItem>;
+                        return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
                       })}
                     </SelectContent>
                   </Select>
@@ -684,10 +1032,10 @@ const PasteurDashboard = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-gray-200">
-                        <SelectItem value="1" className="text-gray-900 hover:bg-gray-100">Trimestre 1</SelectItem>
-                        <SelectItem value="2" className="text-gray-900 hover:bg-gray-100">Trimestre 2</SelectItem>
-                        <SelectItem value="3" className="text-gray-900 hover:bg-gray-100">Trimestre 3</SelectItem>
-                        <SelectItem value="4" className="text-gray-900 hover:bg-gray-100">Trimestre 4</SelectItem>
+                        <SelectItem value="1" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestre 1</SelectItem>
+                        <SelectItem value="2" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestre 2</SelectItem>
+                        <SelectItem value="3" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestre 3</SelectItem>
+                        <SelectItem value="4" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestre 4</SelectItem>
                       </SelectContent>
                     </Select>
                     <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
@@ -697,7 +1045,7 @@ const PasteurDashboard = () => {
                       <SelectContent className="bg-white border-gray-200">
                         {Array.from({ length: 7 }, (_, i) => {
                           const year = 2025 + i;
-                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100">{year}</SelectItem>;
+                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
                         })}
                       </SelectContent>
                     </Select>
@@ -712,7 +1060,7 @@ const PasteurDashboard = () => {
                       </SelectTrigger>
                       <SelectContent className="bg-white border-gray-200">
                         {["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"].map((month, index) => (
-                          <SelectItem key={index} value={index.toString()} className="text-gray-900 hover:bg-gray-100">{month}</SelectItem>
+                          <SelectItem key={index} value={index.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{month}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -723,7 +1071,7 @@ const PasteurDashboard = () => {
                       <SelectContent className="bg-white border-gray-200">
                         {Array.from({ length: 7 }, (_, i) => {
                           const year = 2025 + i;
-                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100">{year}</SelectItem>;
+                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
                         })}
                       </SelectContent>
                     </Select>
@@ -738,7 +1086,7 @@ const PasteurDashboard = () => {
                       </SelectTrigger>
                       <SelectContent className="bg-white border-gray-200 max-h-[200px]">
                         {Array.from({ length: 52 }, (_, i) => (
-                          <SelectItem key={i + 1} value={(i + 1).toString()} className="text-gray-900 hover:bg-gray-100">Semaine {i + 1}</SelectItem>
+                          <SelectItem key={i + 1} value={(i + 1).toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Semaine {i + 1}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -749,7 +1097,7 @@ const PasteurDashboard = () => {
                       <SelectContent className="bg-white border-gray-200">
                         {Array.from({ length: 7 }, (_, i) => {
                           const year = 2025 + i;
-                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100">{year}</SelectItem>;
+                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
                         })}
                       </SelectContent>
                     </Select>
@@ -765,95 +1113,210 @@ const PasteurDashboard = () => {
             {/* 3 rangées de 4 cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {/* Ligne 1 */}
-              <div className="group text-center p-4 bg-gradient-to-br from-indigo-50 to-indigo-100 hover:bg-purple-600 rounded-lg border border-indigo-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-indigo-200 to-indigo-300 hover:bg-purple-600 rounded-lg border-2 border-indigo-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-800 group-hover:from-indigo-600 group-hover:to-indigo-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.culteSamediSoir || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Culte du Samedi Soir</div>
-                <Moon className="h-4 w-4 mx-auto mt-2 text-indigo-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Culte du Samedi Soir</div>
+                <Moon className="h-4 w-4 mx-auto mt-2 text-indigo-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 hover:bg-purple-600 rounded-lg border border-blue-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-blue-200 to-blue-300 hover:bg-purple-600 rounded-lg border-2 border-blue-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 group-hover:from-blue-600 group-hover:to-blue-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.culteDimancheMatin || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Culte du Dimanche Matin</div>
-                <Church className="h-4 w-4 mx-auto mt-2 text-blue-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Culte du Dimanche Matin</div>
+                <Church className="h-4 w-4 mx-auto mt-2 text-blue-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-cyan-50 to-cyan-100 hover:bg-purple-600 rounded-lg border border-cyan-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-cyan-200 to-cyan-300 hover:bg-purple-600 rounded-lg border-2 border-cyan-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-cyan-600 to-cyan-800 group-hover:from-cyan-600 group-hover:to-cyan-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.afterCulteDimanche || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">After Culte du Dimanche</div>
-                <Users className="h-4 w-4 mx-auto mt-2 text-cyan-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">After Culte du Dimanche</div>
+                <Users className="h-4 w-4 mx-auto mt-2 text-cyan-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-amber-50 to-amber-100 hover:bg-purple-600 rounded-lg border border-amber-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-amber-200 to-amber-300 hover:bg-purple-600 rounded-lg border-2 border-amber-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 group-hover:from-amber-600 group-hover:to-amber-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.tempsPriere || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Temps de Prière</div>
-                <Heart className="h-4 w-4 mx-auto mt-2 text-amber-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Temps de Prière</div>
+                <Heart className="h-4 w-4 mx-auto mt-2 text-amber-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-pink-50 to-pink-100 hover:bg-purple-600 rounded-lg border border-pink-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-pink-200 to-pink-300 hover:bg-purple-600 rounded-lg border-2 border-pink-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-pink-600 to-pink-800 group-hover:from-pink-600 group-hover:to-pink-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.personnesEvangelisees || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Personnes évangélisées</div>
-                <Target className="h-4 w-4 mx-auto mt-2 text-pink-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Personnes évangélisées</div>
+                <Target className="h-4 w-4 mx-auto mt-2 text-pink-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-emerald-50 to-emerald-100 hover:bg-purple-600 rounded-lg border border-emerald-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-emerald-200 to-emerald-300 hover:bg-purple-600 rounded-lg border-2 border-emerald-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-emerald-600 to-emerald-800 group-hover:from-emerald-600 group-hover:to-emerald-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.nouveauxConvertis || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Nouveaux Convertis</div>
-                <Heart className="h-4 w-4 mx-auto mt-2 text-emerald-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Nouveaux Convertis</div>
+                <Heart className="h-4 w-4 mx-auto mt-2 text-emerald-700 group-hover:text-white transition-colors" />
               </div>
               
               {/* Ligne 2 */}
-              <div className="group text-center p-4 bg-gradient-to-br from-rose-50 to-rose-100 hover:bg-purple-600 rounded-lg border border-rose-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-rose-200 to-rose-300 hover:bg-purple-600 rounded-lg border-2 border-rose-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-rose-600 to-rose-800 group-hover:from-rose-600 group-hover:to-rose-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.nouveauxArrivants || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Nouveaux Arrivants</div>
-                <UserPlus className="h-4 w-4 mx-auto mt-2 text-rose-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Nouveaux Arrivants</div>
+                <UserPlus className="h-4 w-4 mx-auto mt-2 text-rose-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-teal-50 to-teal-100 hover:bg-purple-600 rounded-lg border border-teal-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-teal-200 to-teal-300 hover:bg-purple-600 rounded-lg border-2 border-teal-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-teal-600 to-teal-800 group-hover:from-teal-600 group-hover:to-teal-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.sortiesEvangelisation || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Sorties d'Évangélisation</div>
-                <Megaphone className="h-4 w-4 mx-auto mt-2 text-teal-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Sorties d'Évangélisation</div>
+                <Megaphone className="h-4 w-4 mx-auto mt-2 text-teal-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 hover:bg-purple-600 rounded-lg border border-purple-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-purple-200 to-purple-300 hover:bg-purple-600 rounded-lg border-2 border-purple-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 group-hover:from-amber-500 group-hover:to-amber-700 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.comFratDisciples || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Com Frat Disciples</div>
-                <UserCheck className="h-4 w-4 mx-auto mt-2 text-purple-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Com Frat Disciples</div>
+                <UserCheck className="h-4 w-4 mx-auto mt-2 text-purple-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-violet-50 to-violet-100 hover:bg-purple-600 rounded-lg border border-violet-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-violet-200 to-violet-300 hover:bg-purple-600 rounded-lg border-2 border-violet-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-violet-600 to-violet-800 group-hover:from-amber-500 group-hover:to-amber-700 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.veillee || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Veillée</div>
-                <Moon className="h-4 w-4 mx-auto mt-2 text-violet-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Veillée</div>
+                <Moon className="h-4 w-4 mx-auto mt-2 text-violet-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-orange-50 to-orange-100 hover:bg-purple-600 rounded-lg border border-orange-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-orange-200 to-orange-300 hover:bg-purple-600 rounded-lg border-2 border-orange-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-orange-800 group-hover:from-orange-600 group-hover:to-orange-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.meditationBible || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Méditation Bible</div>
-                <Book className="h-4 w-4 mx-auto mt-2 text-orange-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Méditation Bible</div>
+                <Book className="h-4 w-4 mx-auto mt-2 text-orange-700 group-hover:text-white transition-colors" />
               </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-green-50 to-green-100 hover:bg-purple-600 rounded-lg border border-green-200 hover:border-purple-600 transition-colors cursor-pointer">
+              <div className="group text-center p-4 bg-gradient-to-br from-green-200 to-green-300 hover:bg-purple-600 rounded-lg border-2 border-green-400 hover:border-purple-600 transition-colors cursor-pointer">
                 <div className="text-2xl font-bold bg-gradient-to-r from-green-600 to-green-800 group-hover:from-green-600 group-hover:to-green-800 bg-clip-text text-transparent">
                   {globalStats.kpiAnnuels?.tempsPartage || 0}
                 </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors">Temps de Partage</div>
-                <HeartHandshake className="h-4 w-4 mx-auto mt-2 text-green-600 group-hover:text-white transition-colors" />
+                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Temps de Partage</div>
+                <HeartHandshake className="h-4 w-4 mx-auto mt-2 text-green-700 group-hover:text-white transition-colors" />
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Graphiques d'évolution des KPI */}
+        {chartData.length > 0 && (
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-purple-600" />
+                Évolution des KPI (12 derniers mois)
+              </CardTitle>
+              <CardDescription>
+                Tendances des indicateurs clés de performance sur les 12 derniers mois
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Graphique Présences aux Cultes */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Présences aux Cultes</h3>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="colorCulteSamedi" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorCulteDimanche" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorAfterCulte" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <Tooltip />
+                        <Legend />
+                        <Area type="monotone" dataKey="culteSamediSoir" name="Culte Samedi Soir" stroke="#6366f1" fillOpacity={1} fill="url(#colorCulteSamedi)" />
+                        <Area type="monotone" dataKey="culteDimancheMatin" name="Culte Dimanche Matin" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCulteDimanche)" />
+                        <Area type="monotone" dataKey="afterCulteDimanche" name="After Culte" stroke="#14b8a6" fillOpacity={1} fill="url(#colorAfterCulte)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Graphique Temps de Prière et Partage */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Temps de Prière et Partage</h3>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="tempsPriere" name="Temps de Prière" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="tempsPartage" name="Temps de Partage" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Graphique Nouveaux Convertis et Arrivants */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Nouveaux Convertis et Arrivants</h3>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="colorNouveauxConvertis" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorNouveauxArrivants" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <Tooltip />
+                        <Legend />
+                        <Area type="monotone" dataKey="nouveauxConvertis" name="Nouveaux Convertis" stroke="#ec4899" fillOpacity={1} fill="url(#colorNouveauxConvertis)" />
+                        <Area type="monotone" dataKey="nouveauxArrivants" name="Nouveaux Arrivants" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorNouveauxArrivants)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Graphique Évangélisation */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Évangélisation</h3>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="sortiesEvangelisation" name="Sorties d'Évangélisation" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="personnesEvangelisees" name="Personnes Évangélisées" stroke="#f97316" strokeWidth={2} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Recherche et filtres */}
         <Card className="bg-white border-gray-200 shadow-sm">
@@ -907,6 +1370,13 @@ const PasteurDashboard = () => {
                   Vue d'ensemble de toutes les familles sous votre supervision ({globalStats.totalFamilles} familles)
                 </CardDescription>
               </div>
+              <Button
+                onClick={openCreateDialog}
+                className="bg-gray-200 hover:bg-purple-600 text-gray-900 hover:text-white border-0 transition-colors"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Ajouter Nouvelle Famille
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -1006,14 +1476,14 @@ const PasteurDashboard = () => {
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="group hover:bg-purple-300 transition-colors cursor-pointer">
-                      <TableHead className="font-semibold group-hover:text-gray-900 transition-colors">Superviseur</TableHead>
-                      <TableHead className="font-semibold group-hover:text-gray-900 transition-colors">Famille</TableHead>
-                      <TableHead className="font-semibold text-center group-hover:text-gray-900 transition-colors">Membres</TableHead>
-                      <TableHead className="font-semibold text-center group-hover:text-gray-900 transition-colors">Objectif</TableHead>
-                      <TableHead className="font-semibold text-center group-hover:text-gray-900 transition-colors">Progression</TableHead>
-                      <TableHead className="font-semibold text-center group-hover:text-gray-900 transition-colors">Statut</TableHead>
-                      <TableHead className="font-semibold text-center group-hover:text-gray-900 transition-colors">Actions</TableHead>
+                    <TableRow className="group bg-purple-200 hover:bg-purple-300 transition-colors cursor-pointer">
+                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Superviseur</TableHead>
+                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Famille</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Membres</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Objectif</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Progression</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Statut</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1156,6 +1626,304 @@ const PasteurDashboard = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Modal de détails de la famille */}
+        <Dialog open={selectedFamille !== null} onOpenChange={(open) => !open && setSelectedFamille(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            {selectedFamille && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                    <Building2 className="h-6 w-6 text-purple-600" />
+                    {formatFamilleName(selectedFamille.famille?.nom || 'Famille sans nom')}
+                  </DialogTitle>
+                  <DialogDescription className="text-gray-600">
+                    {selectedFamille.famille?.identifiant_famille || 'N/A'}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-6 py-4">
+                  {/* Informations du superviseur */}
+                  <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <Users className="h-5 w-5 text-purple-600" />
+                        Superviseur
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-full bg-purple-200 flex items-center justify-center">
+                          <Users className="h-6 w-6 text-purple-600" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-gray-900 text-lg">
+                            {selectedFamille.superviseur.first_name} {selectedFamille.superviseur.last_name}
+                          </p>
+                          {selectedFamille.superviseur.email && (
+                            <p className="text-sm text-gray-600 mt-1">
+                              <Mail className="h-4 w-4 inline mr-1" />
+                              {selectedFamille.superviseur.email}
+                            </p>
+                          )}
+                          {selectedFamille.superviseur.titre && (
+                            <p className="text-xs text-gray-500 mt-1">{selectedFamille.superviseur.titre}</p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Statistiques de progression */}
+                  <Card className="bg-white border-gray-200">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-semibold text-gray-900">Progression</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="text-center p-4 bg-blue-50 rounded-lg">
+                          <div className="text-3xl font-bold text-blue-600">
+                            {selectedFamille.stats.nombreMembres}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">Membres actuels</div>
+                        </div>
+                        <div className="text-center p-4 bg-purple-50 rounded-lg">
+                          <div className="text-3xl font-bold text-purple-600">
+                            {selectedFamille.stats.objectif}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">Objectif</div>
+                        </div>
+                        <div className="text-center p-4 bg-green-50 rounded-lg">
+                          <div className="text-3xl font-bold text-green-600">
+                            {Math.round(selectedFamille.stats.progression)}%
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">Progression</div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between text-sm mb-2">
+                          <span className="text-gray-600">Barre de progression</span>
+                          <span className="font-medium text-gray-900">
+                            {selectedFamille.stats.nombreMembres} / {selectedFamille.stats.objectif}
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-4">
+                          <div
+                            className={`h-4 rounded-full flex items-center justify-center text-xs font-semibold text-white ${
+                              selectedFamille.stats.progression >= 100
+                                ? 'bg-green-500'
+                                : selectedFamille.stats.progression >= 50
+                                ? 'bg-purple-600'
+                                : 'bg-amber-500'
+                            }`}
+                            style={{ width: `${Math.min(selectedFamille.stats.progression, 100)}%` }}
+                          >
+                            {Math.round(selectedFamille.stats.progression)}%
+                          </div>
+                        </div>
+                      </div>
+
+                      {selectedFamille.stats.progression >= 100 && (
+                        <div className="mt-4 flex items-center gap-2 text-green-600">
+                          <CheckCircle2 className="h-5 w-5" />
+                          <span className="font-medium">Objectif atteint !</span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Actions */}
+                  <DialogFooter className="gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setSelectedFamille(null)}
+                      className="border-gray-200 hover:bg-gray-50"
+                    >
+                      Fermer
+                    </Button>
+                    {selectedFamille.famille && (
+                      <Button
+                        onClick={() => {
+                          navigate(`/familles/${selectedFamille.famille.id}`);
+                          setSelectedFamille(null);
+                        }}
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        Voir plus de détails
+                      </Button>
+                    )}
+                  </DialogFooter>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog création famille */}
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-gray-900">Créer une nouvelle famille de 70</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreateFamille} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="famille-nom">Nom de la famille</Label>
+                <Input
+                  id="famille-nom"
+                  value={createForm.nom}
+                  onChange={(e) =>
+                    setCreateForm((prev) => ({ ...prev, nom: e.target.value }))
+                  }
+                  placeholder="Ex: LES DÉTERMINÉS"
+                  className="bg-gray-50 border-gray-300 text-gray-900 placeholder:text-gray-400"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="famille-id">Identifiant</Label>
+                <Input
+                  id="famille-id"
+                  value={createForm.identifiant_famille}
+                  onChange={(e) =>
+                    setCreateForm((prev) => ({
+                      ...prev,
+                      identifiant_famille: e.target.value,
+                    }))
+                  }
+                  placeholder="Ex: FAM027"
+                  className="bg-gray-50 border-gray-300 text-gray-900 placeholder:text-gray-400"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="objectif">Objectif de disciples</Label>
+                  <Input
+                    id="objectif"
+                    type="number"
+                    min={1}
+                    value={createForm.objectif_disciples}
+                    onChange={(e) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        objectif_disciples: e.target.value,
+                      }))
+                    }
+                    className="bg-gray-50 border-gray-300 text-gray-900 placeholder:text-gray-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Statut</Label>
+                  <Select
+                    value={createForm.statut}
+                    onValueChange={(value) =>
+                      setCreateForm((prev) => ({ ...prev, statut: value }))
+                    }
+                  >
+                    <SelectTrigger className="bg-gray-50 border-gray-300 text-gray-900">
+                      <SelectValue placeholder="Sélectionner un statut" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="actif">Actif</SelectItem>
+                      <SelectItem value="inactif">Inactif</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Superviseur *</Label>
+                <Select
+                  value={createForm.superviseur_id}
+                  onValueChange={(value) =>
+                    setCreateForm((prev) => ({
+                      ...prev,
+                      superviseur_id: value,
+                    }))
+                  }
+                  required
+                >
+                  <SelectTrigger className="bg-gray-50 border-gray-300 text-gray-900">
+                    <SelectValue placeholder="Choisir un superviseur" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {superviseursOptions.map((sup) => (
+                      <SelectItem key={sup.id} value={sup.id}>
+                        {`${sup.first_name || ''} ${sup.last_name || ''}`.trim() ||
+                          sup.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter className="pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsCreateDialogOpen(false)}
+                  className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-purple-600 text-white hover:bg-purple-700"
+                  disabled={createLoading}
+                >
+                  {createLoading ? 'Création...' : 'Créer la famille'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Notifications pour rapports manquants - En fin de page */}
+        {missingReports.length > 0 && (
+          <Card className="bg-amber-50 border-amber-200 shadow-sm mb-4">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg font-semibold text-amber-900 flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-amber-600" />
+                    Rapports manquants ({missingReports.length})
+                  </CardTitle>
+              <CardDescription className="text-amber-700">
+                {(() => {
+                  const now = new Date();
+                  const previousMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+                  const previousYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+                  const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+                  const previousMonthName = monthNames[previousMonth];
+                  return `Les superviseurs suivants n'ont pas encore envoyé leur rapport mensuel pour ${previousMonthName} ${previousYear} :`;
+                })()}
+              </CardDescription>
+                </div>
+                {missingReports.length > 4 && (
+                  <Button
+                    onClick={() => setShowAllMissingReports(!showAllMissingReports)}
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    {showAllMissingReports ? 'Voir moins' : 'Voir Tout'}
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {(showAllMissingReports ? missingReports : missingReports.slice(0, 4)).map((superviseur) => (
+                  <div key={superviseur.id} className="flex items-center justify-between p-2 bg-white rounded border border-amber-200">
+                    <div>
+                      <p className="font-medium text-gray-900">{superviseur.name}</p>
+                      {superviseur.email && (
+                        <p className="text-sm text-gray-600">{superviseur.email}</p>
+                      )}
+                    </div>
+                    <Badge className="bg-amber-500 text-white">Rapport manquant</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </>
   );

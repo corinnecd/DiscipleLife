@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
-  Church, ChevronRight, Loader2, UserCircle, Eye, ArrowLeft, Camera, Sparkles, Zap, Trophy, Star
+  Church, ChevronRight, Loader2, UserCircle, Eye, ArrowLeft, Camera, Sparkles, Zap, Trophy, Star, AlertCircle, Clock
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,12 +36,38 @@ const SuperviseurDashboard = () => {
   const [pasteurAvatarFile, setPasteurAvatarFile] = useState(null);
   const [pasteurAvatarPreview, setPasteurAvatarPreview] = useState(null);
   const [uploadingPasteurAvatar, setUploadingPasteurAvatar] = useState(false);
+  const [reportReminder, setReportReminder] = useState(null); // { daysLeft: number, showReminder: boolean }
 
   useEffect(() => {
     if (user) {
       fetchSuperviseurData();
+      checkReportReminder();
     }
   }, [user]);
+
+  // Fonction pour vérifier le rappel de rapport (5 jours avant la fin du mois)
+  const checkReportReminder = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-indexed
+    
+    // Calculer le dernier jour du mois en cours
+    const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const currentDay = now.getDate();
+    
+    // Calculer le nombre de jours restants jusqu'à la fin du mois
+    const daysLeft = lastDayOfMonth - currentDay;
+    
+    // Afficher l'alerte si nous sommes à 5 jours ou moins de la fin du mois
+    if (daysLeft <= 5 && daysLeft >= 0) {
+      setReportReminder({
+        daysLeft,
+        showReminder: true
+      });
+    } else {
+      setReportReminder(null);
+    }
+  };
 
   const fetchSuperviseurData = async () => {
     try {
@@ -292,6 +318,41 @@ const SuperviseurDashboard = () => {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Retour
         </Button>
+
+        {/* Alerte de rappel pour le rapport mensuel (5 jours avant la fin du mois) */}
+        {reportReminder && reportReminder.showReminder && (
+          <Card className="bg-blue-50 border-blue-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-blue-900 flex items-center gap-2">
+                <Clock className="h-5 w-5 text-blue-600" />
+                Rappel : Rapport mensuel
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-blue-900 font-medium">
+                    {reportReminder.daysLeft === 0 
+                      ? "⏰ Le mois se termine aujourd'hui ! N'oubliez pas d'envoyer votre rapport mensuel."
+                      : reportReminder.daysLeft === 1
+                      ? "⏰ Le mois se termine demain ! N'oubliez pas d'envoyer votre rapport mensuel."
+                      : `⏰ Le mois se termine dans ${reportReminder.daysLeft} jours ! N'oubliez pas d'envoyer votre rapport mensuel.`
+                    }
+                  </p>
+                  <p className="text-sm text-blue-700 mt-2">
+                    Vous pouvez envoyer votre rapport depuis la page "Envoyer un rapport".
+                  </p>
+                </div>
+                <Button
+                  onClick={() => navigate('/send-report')}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  Envoyer le rapport
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Bandeau de bienvenue */}
         {famille && (

@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Users, Video, BarChart2, Megaphone, Send, Info, Church, AlertTriangle, Clock } from 'lucide-react';
+import { Users, Video, BarChart2, Megaphone, Send, Info, Church, AlertTriangle, Clock, Heart, UserPlus, Target, BookOpen, Moon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, getWeek, getQuarter, subWeeks, subMonths, subQuarters } from 'date-fns';
@@ -51,6 +51,12 @@ const SendReport = () => {
     afterCulteCount: 0, // After Culte
     sundaySharingCount: 0,
     saturdayPrayerCount: 0,
+    nouveauxConvertis: 0, // Nouveaux Convertis
+    nouveauxArrivants: 0, // Nouveaux Arrivants
+    sortiesEvangelisation: 0, // Sorties d'Évangélisation
+    comFratDisciples: 0, // Com Frat Disciples
+    veillee: 0, // Veillée
+    meditationBible: 0, // Méditation Bible
     notes: ''
   });
   
@@ -320,7 +326,13 @@ const SendReport = () => {
             saturday_evening_count: stats.saturdayEveningCount || 0,
             after_culte_count: stats.afterCulteCount || 0,
             sunday_sharing_count: stats.sundaySharingCount || 0,
-            saturday_prayer_count: stats.saturdayPrayerCount || 0
+            saturday_prayer_count: stats.saturdayPrayerCount || 0,
+            nouveaux_convertis: stats.nouveauxConvertis || 0,
+            nouveaux_arrivants: stats.nouveauxArrivants || 0,
+            sorties_evangelisation: stats.sortiesEvangelisation || 0,
+            com_frat_disciples: stats.comFratDisciples || 0,
+            veillee: stats.veillee || 0,
+            meditation_bible: stats.meditationBible || 0
         },
         status: 'submitted'
       };
@@ -429,7 +441,7 @@ const SendReport = () => {
           {/* Sélection du type de rapport */}
           <div className="bg-white p-2 rounded-xl border border-gray-300 shadow-sm">
             <Select value={reportType} onValueChange={setReportType}>
-              <SelectTrigger className="w-[160px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+              <SelectTrigger className="w-[160px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-0 focus:ring-offset-0 focus:outline-none">
                 <SelectValue placeholder="Type de rapport" />
               </SelectTrigger>
               <SelectContent className="bg-white text-gray-900 border-gray-200">
@@ -446,7 +458,7 @@ const SendReport = () => {
             {reportType === 'hebdomadaire' && (
               <>
                 <Select value={reportWeek} onValueChange={setReportWeek}>
-                  <SelectTrigger className="w-[140px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                  <SelectTrigger className="w-[140px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-0 focus:ring-offset-0 focus:outline-none">
                     <SelectValue placeholder="Semaine" />
                   </SelectTrigger>
                   <SelectContent className="bg-white text-gray-900 border-gray-200">
@@ -457,7 +469,7 @@ const SendReport = () => {
                 </Select>
                 <div className="w-[1px] bg-gray-300 my-1"></div>
                 <Select value={reportYearWeek} onValueChange={setReportYearWeek}>
-                  <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                  <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-0 focus:ring-offset-0 focus:outline-none">
                     <SelectValue placeholder="Année" />
                   </SelectTrigger>
                   <SelectContent className="bg-white text-gray-900 border-gray-200">
@@ -472,7 +484,7 @@ const SendReport = () => {
             {reportType === 'mensuel' && (
               <>
                 <Select value={reportMonth} onValueChange={setReportMonth}>
-                  <SelectTrigger className="w-[140px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                  <SelectTrigger className="w-[140px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-0 focus:ring-offset-0 focus:outline-none">
                     <SelectValue placeholder="Mois" />
                   </SelectTrigger>
                   <SelectContent className="bg-white text-gray-900 border-gray-200">
@@ -483,7 +495,7 @@ const SendReport = () => {
                 </Select>
                 <div className="w-[1px] bg-gray-300 my-1"></div>
                 <Select value={reportYear} onValueChange={setReportYear}>
-                  <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                  <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-0 focus:ring-offset-0 focus:outline-none">
                     <SelectValue placeholder="Année" />
                   </SelectTrigger>
                   <SelectContent className="bg-white text-gray-900 border-gray-200">
@@ -498,7 +510,7 @@ const SendReport = () => {
             {reportType === 'trimestriel' && (
               <>
                 <Select value={reportQuarter} onValueChange={setReportQuarter}>
-                  <SelectTrigger className="w-[180px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                  <SelectTrigger className="w-[180px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-0 focus:ring-offset-0 focus:outline-none">
                     <SelectValue placeholder="Trimestre" />
                   </SelectTrigger>
                   <SelectContent className="bg-white text-gray-900 border-gray-200">
@@ -509,7 +521,7 @@ const SendReport = () => {
                 </Select>
                 <div className="w-[1px] bg-gray-300 my-1"></div>
                 <Select value={reportYearQuarter} onValueChange={setReportYearQuarter}>
-                  <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                  <SelectTrigger className="w-[100px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-0 focus:ring-offset-0 focus:outline-none">
                     <SelectValue placeholder="Année" />
                   </SelectTrigger>
                   <SelectContent className="bg-white text-gray-900 border-gray-200">
@@ -524,7 +536,7 @@ const SendReport = () => {
             {reportType === 'annuel' && (
               <>
                 <Select value={reportYearAnnual} onValueChange={setReportYearAnnual}>
-                  <SelectTrigger className="w-[120px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-purple-500">
+                  <SelectTrigger className="w-[120px] bg-white text-gray-900 border-gray-300 hover:bg-gray-50 transition-colors focus:ring-0 focus:ring-offset-0 focus:outline-none">
                     <SelectValue placeholder="Année" />
                   </SelectTrigger>
                   <SelectContent className="bg-white text-gray-900 border-gray-200">
@@ -539,11 +551,32 @@ const SendReport = () => {
         </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          
-          {/* Stats Column */}
-          <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
+      {/* Témoignage / Notes Section - Horizontal */}
+      <Card className="bg-white border-gray-200 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-gray-900 text-lg">Témoignage / Notes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col md:flex-row gap-4">
+            <Textarea 
+              value={stats.notes} 
+              onChange={(e) => setStats({...stats, notes: e.target.value})}
+              placeholder="Partagez un témoignage marquant ou des défis rencontrés ce mois-ci..."
+              className="flex-1 bg-white border-gray-300 text-gray-900 resize-none min-h-[120px] md:min-h-[100px] focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
+            />
+            <Button 
+              onClick={handleSend} 
+              disabled={submitting}
+              className="w-full md:w-auto md:h-[100px] px-8 text-base font-bold bg-purple-600 hover:bg-purple-700 text-white self-end md:self-start focus:ring-0 focus:ring-offset-0 focus:outline-none"
+            >
+              {submitting ? "Envoi en cours..." : <><Send size={18} className="mr-2"/> Envoyer le Rapport</>}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Main Content - KPIs in grid (4 per row) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             
             <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -659,13 +692,13 @@ const SendReport = () => {
                </div>
                <CardContent className="p-6">
                   <p className="text-gray-900 font-medium text-sm mb-1">Personnes Évangélisées</p>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
                         min="0"
                         value={stats.evangelizedCount}
                         onChange={(e) => setStats({...stats, evangelizedCount: parseInt(e.target.value) || 0})}
-                        className="w-24 bg-white border-gray-300 text-red-600 text-xl font-bold h-10"
+                        className="w-24 bg-white border-gray-300 text-red-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
                      <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
                   </div>
@@ -678,13 +711,13 @@ const SendReport = () => {
                </div>
                <CardContent className="p-6">
                   <p className="text-gray-900 font-medium text-sm mb-1">Vidéos Visionnées</p>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
                         min="0"
                         value={stats.videoViews}
                         onChange={(e) => setStats({...stats, videoViews: parseInt(e.target.value) || 0})}
-                        className="w-24 bg-white border-gray-300 text-pink-600 text-xl font-bold h-10"
+                        className="w-24 bg-white border-gray-300 text-pink-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
                      <span className="text-gray-600 text-sm">modules</span>
                   </div>
@@ -697,45 +730,133 @@ const SendReport = () => {
                </div>
                <CardContent className="p-6">
                   <p className="text-gray-900 font-medium text-sm mb-1">Taux de Complétion</p>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
                         min="0"
                         max="100"
                         value={stats.completionRate}
                         onChange={(e) => setStats({...stats, completionRate: parseInt(e.target.value) || 0})}
-                        className="w-24 bg-white border-gray-300 text-orange-600 text-xl font-bold h-10"
+                        className="w-24 bg-white border-gray-300 text-orange-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
                      <span className="text-gray-600 text-sm">% global</span>
                   </div>
                </CardContent>
             </Card>
 
-          </div>
+            <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Heart size={80} className="text-green-400" />
+               </div>
+               <CardContent className="p-6">
+                  <p className="text-gray-900 font-medium text-sm mb-1">Nouveaux Convertis</p>
+                  <div className="flex flex-col gap-2">
+                     <Input 
+                        type="number"
+                        min="0"
+                        value={stats.nouveauxConvertis}
+                        onChange={(e) => setStats({...stats, nouveauxConvertis: parseInt(e.target.value) || 0})}
+                        className="w-24 bg-white border-gray-300 text-green-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
+                     />
+                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                  </div>
+               </CardContent>
+            </Card>
 
-          {/* Notes Column */}
-          <div className="md:col-span-4">
-             <Card className="bg-white border-gray-200 shadow-sm h-full flex flex-col">
-                <CardHeader>
-                   <CardTitle className="text-gray-900 text-lg">Témoignage / Notes</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 flex flex-col gap-4">
-                   <Textarea 
-                      value={stats.notes} 
-                      onChange={(e) => setStats({...stats, notes: e.target.value})}
-                      placeholder="Partagez un témoignage marquant ou des défis rencontrés ce mois-ci..."
-                      className="flex-1 bg-white border-gray-300 text-gray-900 resize-none min-h-[200px] focus:ring-purple-500"
-                   />
-                   <Button 
-                    onClick={handleSend} 
-                    disabled={submitting}
-                    className="w-full h-12 text-base font-bold bg-purple-600 hover:bg-purple-700 text-white"
-                   >
-                    {submitting ? "Envoi en cours..." : <><Send size={18} className="mr-2"/> Envoyer le Rapport</>}
-                   </Button>
-                </CardContent>
-             </Card>
-          </div>
+            <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <UserPlus size={80} className="text-red-400" />
+               </div>
+               <CardContent className="p-6">
+                  <p className="text-gray-900 font-medium text-sm mb-1">Nouveaux Arrivants</p>
+                  <div className="flex flex-col gap-2">
+                     <Input 
+                        type="number"
+                        min="0"
+                        value={stats.nouveauxArrivants}
+                        onChange={(e) => setStats({...stats, nouveauxArrivants: parseInt(e.target.value) || 0})}
+                        className="w-24 bg-white border-gray-300 text-red-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
+                     />
+                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                  </div>
+               </CardContent>
+            </Card>
+
+            <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Target size={80} className="text-teal-400" />
+               </div>
+               <CardContent className="p-6">
+                  <p className="text-gray-900 font-medium text-sm mb-1">Sorties d'Évangélisation</p>
+                  <div className="flex flex-col gap-2">
+                     <Input 
+                        type="number"
+                        min="0"
+                        value={stats.sortiesEvangelisation}
+                        onChange={(e) => setStats({...stats, sortiesEvangelisation: parseInt(e.target.value) || 0})}
+                        className="w-24 bg-white border-gray-300 text-teal-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
+                     />
+                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                  </div>
+               </CardContent>
+            </Card>
+
+            <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Users size={80} className="text-purple-400" />
+               </div>
+               <CardContent className="p-6">
+                  <p className="text-gray-900 font-medium text-sm mb-1">Com Frat Disciples</p>
+                  <div className="flex flex-col gap-2">
+                     <Input 
+                        type="number"
+                        min="0"
+                        value={stats.comFratDisciples}
+                        onChange={(e) => setStats({...stats, comFratDisciples: parseInt(e.target.value) || 0})}
+                        className="w-24 bg-white border-gray-300 text-purple-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
+                     />
+                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                  </div>
+               </CardContent>
+            </Card>
+
+            <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Moon size={80} className="text-purple-400" />
+               </div>
+               <CardContent className="p-6">
+                  <p className="text-gray-900 font-medium text-sm mb-1">Veillée</p>
+                  <div className="flex flex-col gap-2">
+                     <Input 
+                        type="number"
+                        min="0"
+                        value={stats.veillee}
+                        onChange={(e) => setStats({...stats, veillee: parseInt(e.target.value) || 0})}
+                        className="w-24 bg-white border-gray-300 text-purple-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
+                     />
+                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                  </div>
+               </CardContent>
+            </Card>
+
+            <Card className="bg-white border-gray-200 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <BookOpen size={80} className="text-orange-400" />
+               </div>
+               <CardContent className="p-6">
+                  <p className="text-gray-900 font-medium text-sm mb-1">Méditation Bible</p>
+                  <div className="flex flex-col gap-2">
+                     <Input 
+                        type="number"
+                        min="0"
+                        value={stats.meditationBible}
+                        onChange={(e) => setStats({...stats, meditationBible: parseInt(e.target.value) || 0})}
+                        className="w-24 bg-white border-gray-300 text-orange-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
+                     />
+                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                  </div>
+               </CardContent>
+            </Card>
 
       </div>
     </div>
