@@ -632,17 +632,8 @@ const PasteurDashboard = () => {
       const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
       const filename = `dashboard_pasteur_${timestamp}.pdf`;
       await exportElementToPDF('pasteur-dashboard-content', filename);
-      toast({
-        title: 'Export réussi',
-        description: 'Le dashboard a été exporté en PDF avec succès.',
-      });
     } catch (error) {
       console.error('Erreur lors de l\'export PDF:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Erreur d\'export',
-        description: 'Impossible d\'exporter le dashboard en PDF.',
-      });
     } finally {
       setExporting(false);
     }
@@ -664,28 +655,14 @@ const PasteurDashboard = () => {
       }));
 
       if (exportData.length === 0) {
-        toast({
-          variant: 'destructive',
-          title: 'Aucune donnée',
-          description: 'Aucune donnée à exporter.',
-        });
         return;
       }
 
       const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
       const filename = `dashboard_pasteur_${timestamp}`;
       exportToExcel(exportData, filename);
-      toast({
-        title: 'Export réussi',
-        description: 'Le dashboard a été exporté en CSV avec succès.',
-      });
     } catch (error) {
       console.error('Erreur lors de l\'export Excel:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Erreur d\'export',
-        description: 'Impossible d\'exporter le dashboard en CSV.',
-      });
     }
   };
 
@@ -1880,27 +1857,27 @@ const PasteurDashboard = () => {
         {missingReports.length > 0 && (
           <Card className="bg-amber-50 border-amber-200 shadow-sm mb-4">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="flex-1">
                   <CardTitle className="text-lg font-semibold text-amber-900 flex items-center gap-2">
                     <AlertCircle className="h-5 w-5 text-amber-600" />
                     Rapports manquants ({missingReports.length})
                   </CardTitle>
-              <CardDescription className="text-amber-700">
-                {(() => {
-                  const now = new Date();
-                  const previousMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-                  const previousYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-                  const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-                  const previousMonthName = monthNames[previousMonth];
-                  return `Les superviseurs suivants n'ont pas encore envoyé leur rapport mensuel pour ${previousMonthName} ${previousYear} :`;
-                })()}
-              </CardDescription>
+                  <CardDescription className="text-amber-700 mt-2">
+                    {(() => {
+                      const now = new Date();
+                      const previousMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+                      const previousYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+                      const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+                      const previousMonthName = monthNames[previousMonth];
+                      return `Les superviseurs suivants n'ont pas encore envoyé leur rapport mensuel pour ${previousMonthName} ${previousYear} :`;
+                    })()}
+                  </CardDescription>
                 </div>
                 {missingReports.length > 4 && (
                   <Button
                     onClick={() => setShowAllMissingReports(!showAllMissingReports)}
-                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                    className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
                   >
                     {showAllMissingReports ? 'Voir moins' : 'Voir Tout'}
                   </Button>

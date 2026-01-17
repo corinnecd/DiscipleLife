@@ -11,17 +11,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from '@/components/ui/use-toast';
-import { Calendar as CalendarIcon, CheckCircle2, XCircle, Loader2, Save, Clock, Church, Users, CalendarCheck, ChevronRight } from 'lucide-react';
-import { format } from 'date-fns';
+import { Calendar as CalendarIcon, CheckCircle2, XCircle, Loader2, Save, Clock, Church, Users, CalendarCheck, ChevronRight, Moon, Target, Download, Search, BarChart3, TrendingUp, AlertCircle } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, subMonths, eachMonthOfInterval } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { exportToExcel, exportElementToPDF } from '@/lib/ExportUtils';
 
 // Constants for Attendance Types
 const TYPES = {
   SUNDAY_WORSHIP: "sunday_worship",
   SUNDAY_SHARING: "sunday_sharing",
-  SATURDAY_PRAYER: "saturday_prayer"
+  SATURDAY_PRAYER: "saturday_prayer",
+  SATURDAY_EVENING_WORSHIP: "saturday_evening_worship",
+  AFTER_CULTE: "after_culte",
+  EVANGELIZATION_OUTING: "evangelization_outing"
 };
 
 const AttendanceTracking = () => {
@@ -33,6 +38,14 @@ const AttendanceTracking = () => {
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState(TYPES.SUNDAY_WORSHIP);
   const [history, setHistory] = useState([]);
+  const [allHistory, setAllHistory] = useState([]); // Pour la pagination et la recherche
+  const [stats, setStats] = useState({});
+  const [statsByType, setStatsByType] = useState([]);
+  
+  // Pagination & Search
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [searchTerm, setSearchTerm] = useState("");
   
   // Form State
   const [date, setDate] = useState(new Date());
@@ -57,16 +70,20 @@ const AttendanceTracking = () => {
   const fetchHistory = async () => {
     try {
       setLoading(true);
-      const { data: historyData, error: historyError } = await supabase
+      // Récupérer toutes les données pour la pagination et la recherche
+      const { data: allHistoryData, error: allHistoryError } = await supabase
         .from('attendance_tracking')
         .select('*')
         .eq('disciple_id', user.id)
         .eq('attendance_type', activeTab)
-        .order('attendance_date', { ascending: false })
-        .limit(10);
+        .order('attendance_date', { ascending: false });
 
-      if (historyError) throw historyError;
-      setHistory(historyData || []);
+      if (allHistoryError) throw allHistoryError;
+      
+      setAllHistory(allHistoryData || []);
+      
+      // Calculer les statistiques
+      calculateStats(allHistoryData || []);
 
     } catch (error) {
       console.error("Error fetching attendance history", error);
@@ -75,13 +92,105 @@ const AttendanceTracking = () => {
     }
   };
 
+  // Calculer les statistiques pour le type d'activité actif
+  const calculateStats = (historyData) => {
+    const total = historyData.length;
+    const present = historyData.filter(h => h.status === 'present').length;
+    const absent = historyData.filter(h => h.status === 'absent').length;
+    const attendanceRate = total > 0 ? ((present / total) * 100).toFixed(1) : 0;
+    
+    // Statistiques par mois (6 derniers mois)
+    const now = new Date();
+    const sixMonthsAgo = subMonths(now, 6);
+    const months = eachMonthOfInterval({ start: sixMonthsAgo, end: now });
+    
+    const monthlyStats = months.map(month => {
+      const monthStart = startOfMonth(month);
+      const monthEnd = endOfMonth(month);
+      const monthData = historyData.filter(h => {
+        const recordDate = new Date(h.attendance_date);
+        return recordDate >= monthStart && recordDate <= monthEnd;
+      });
+      return {
+        name: format(month, 'MMM yyyy', { locale: fr }),
+        présents: monthData.filter(h => h.status === 'present').length,
+        absents: monthData.filter(h => h.status === 'absent').length
+      };
+    }).reverse();
+
+    setStats({
+      total,
+      present,
+      absent,
+      attendanceRate
+    });
+    setStatsByType(monthlyStats);
+  };
+
+  // Récupérer les statistiques pour tous les types d'activité
+  useEffect(() => {
+    const fetchAllStats = async () => {
+      if (!user) return;
+      try {
+        const { data: allData, error } = await supabase
+          .from('attendance_tracking')
+          .select('*')
+          .eq('disciple_id', user.id);
+        
+        if (error) throw error;
+        
+        // Calculer les stats par type d'activité
+        const statsByTypeData = Object.values(TYPES).map(type => {
+          const typeData = (allData || []).filter(d => d.attendance_type === type);
+          const typeName = getTabTitle(type);
+          return {
+            name: typeName,
+            total: typeData.length,
+            present: typeData.filter(d => d.status === 'present').length,
+            absent: typeData.filter(d => d.status === 'absent').length
+          };
+        });
+      } catch (error) {
+        console.error("Error fetching all stats", error);
+      }
+    };
+    fetchAllStats();
+  }, [user]);
+
+  // Filtrer l'historique selon le terme de recherche
+  useEffect(() => {
+    const filtered = allHistory.filter(record => {
+      if (!searchTerm) return true;
+      const searchLower = searchTerm.toLowerCase();
+      const dateStr = format(new Date(record.attendance_date), "dd MMM yyyy", { locale: fr }).toLowerCase();
+      const statusStr = record.status === 'present' ? 'présent' : 'absent';
+      const churchName = (record.church_name || '').toLowerCase();
+      const reason = (record.absence_reason || '').toLowerCase();
+      
+      return dateStr.includes(searchLower) || 
+             statusStr.includes(searchLower) ||
+             churchName.includes(searchLower) ||
+             reason.includes(searchLower);
+    });
+    
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    setHistory(filtered.slice(startIndex, endIndex));
+  }, [searchTerm, allHistory, currentPage, itemsPerPage]);
+
+  // Réinitialiser la pagination quand on change d'onglet ou de recherche
+  useEffect(() => {
+    setCurrentPage(1);
+    setSearchTerm("");
+  }, [activeTab]);
+
   const validateForm = () => {
     if (!date) {
       toast({ title: "Erreur", description: "La date est requise.", variant: "destructive" });
       return false;
     }
 
-    if (activeTab === TYPES.SUNDAY_WORSHIP && status === 'present' && !churchName.trim()) {
+    if ((activeTab === TYPES.SUNDAY_WORSHIP || activeTab === TYPES.SATURDAY_EVENING_WORSHIP) && status === 'present' && !churchName.trim()) {
       toast({ title: "Erreur", description: "Le nom de l'église est requis pour le culte.", variant: "destructive" });
       return false;
     }
@@ -105,7 +214,7 @@ const AttendanceTracking = () => {
         attendance_date: format(date, 'yyyy-MM-dd'),
         status: status,
         absence_reason: status === 'absent' ? absenceReason : null,
-        church_name: (activeTab === TYPES.SUNDAY_WORSHIP && status === 'present') ? churchName : null
+        church_name: ((activeTab === TYPES.SUNDAY_WORSHIP || activeTab === TYPES.SATURDAY_EVENING_WORSHIP) && status === 'present') ? churchName : null
       };
 
       const { error } = await supabase
@@ -138,100 +247,303 @@ const AttendanceTracking = () => {
   const getTabTitle = (tab) => {
     switch (tab) {
       case TYPES.SUNDAY_WORSHIP: return "Culte Dimanche Matin";
-      case TYPES.SUNDAY_SHARING: return "Partage Dimanche (21H)";
-      case TYPES.SATURDAY_PRAYER: return "Prière Samedi (22H)";
+      case TYPES.SUNDAY_SHARING: return "Temps de Partage";
+      case TYPES.SATURDAY_PRAYER: return "Temps de Prière";
+      case TYPES.SATURDAY_EVENING_WORSHIP: return "Culte du Samedi Soir";
+      case TYPES.AFTER_CULTE: return "After Culte du Dimanche";
+      case TYPES.EVANGELIZATION_OUTING: return "Sortie d'Évangélisation";
       default: return "";
     }
   };
 
+  // Fonctions d'export
+  const handleExportExcel = () => {
+    const exportData = allHistory.map(record => ({
+      Date: format(new Date(record.attendance_date), "dd/MM/yyyy", { locale: fr }),
+      Type: getTabTitle(record.attendance_type),
+      Statut: record.status === 'present' ? 'Présent' : 'Absent',
+      "Nom Église": record.church_name || '-',
+      "Motif Absence": record.absence_reason || '-'
+    }));
+    
+    const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+    const filename = `presence_${getTabTitle(activeTab).replace(/\s+/g, '_')}_${timestamp}`;
+    exportToExcel(exportData, filename);
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      const filename = `presence_${getTabTitle(activeTab).replace(/\s+/g, '_')}_${timestamp}.pdf`;
+      await exportElementToPDF('attendance-tracking-content', filename);
+    } catch (error) {
+      console.error("Error exporting to PDF:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible d'exporter en PDF.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Calcul de la pagination
+  const totalPages = Math.ceil((searchTerm ? allHistory.filter(record => {
+    const searchLower = searchTerm.toLowerCase();
+    const dateStr = format(new Date(record.attendance_date), "dd MMM yyyy", { locale: fr }).toLowerCase();
+    const statusStr = record.status === 'present' ? 'présent' : 'absent';
+    const churchName = (record.church_name || '').toLowerCase();
+    const reason = (record.absence_reason || '').toLowerCase();
+    return dateStr.includes(searchLower) || statusStr.includes(searchLower) ||
+           churchName.includes(searchLower) || reason.includes(searchLower);
+  }).length : allHistory.length) / itemsPerPage);
+
+  // Rappels automatiques
+  const getReminderMessage = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = Dimanche, 6 = Samedi
+    
+    // Vérifier si c'est samedi (6) ou dimanche (0)
+    if (dayOfWeek === 6) {
+      return {
+        show: true,
+        message: "N'oubliez pas d'enregistrer votre présence pour le Culte du Samedi Soir ce soir !",
+        type: TYPES.SATURDAY_EVENING_WORSHIP
+      };
+    } else if (dayOfWeek === 0) {
+      return {
+        show: true,
+        message: "N'oubliez pas d'enregistrer votre présence pour le Culte du Dimanche Matin aujourd'hui !",
+        type: TYPES.SUNDAY_WORSHIP
+      };
+    }
+    return { show: false };
+  };
+
+  const reminder = getReminderMessage();
+
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
+    <div id="attendance-tracking-content" className="max-w-6xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">Suivi de Présence</h1>
           <p className="text-gray-600">Sélectionnez une activité pour enregistrer votre présence.</p>
         </div>
+        <div className="flex gap-2">
+          <Button onClick={handleExportExcel} size="sm" className="gap-2 bg-purple-600 hover:bg-blue-600 text-white">
+            <Download className="h-4 w-4" /> Excel
+          </Button>
+          <Button onClick={handleExportPDF} size="sm" className="gap-2 bg-purple-600 hover:bg-blue-600 text-white">
+            <Download className="h-4 w-4" /> PDF
+          </Button>
+        </div>
       </div>
 
+      {/* Rappels automatiques */}
+      {reminder.show && (
+        <Card className="bg-blue-50 border-blue-200 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-blue-600" />
+              <p className="text-blue-900 font-medium">{reminder.message}</p>
+              <Button 
+                onClick={() => setActiveTab(reminder.type)} 
+                size="sm" 
+                className="ml-auto bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Enregistrer maintenant
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Statistiques */}
+      {stats.total > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-purple-600">{stats.total}</div>
+                <div className="text-sm text-gray-600 mt-1">Total d'enregistrements</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-green-600">{stats.present}</div>
+                <div className="text-sm text-gray-600 mt-1">Présences</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-red-600">{stats.absent}</div>
+                <div className="text-sm text-gray-600 mt-1">Absences</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-blue-600">{stats.attendanceRate}%</div>
+                <div className="text-sm text-gray-600 mt-1">Taux de présence</div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Custom Button Selector */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* 1. Culte de Samedi Soir */}
+        <button
+          onClick={() => setActiveTab(TYPES.SATURDAY_EVENING_WORSHIP)}
+          className={cn(
+            "relative p-6 rounded-xl border transition-all duration-300 flex flex-col items-center justify-center gap-3 group overflow-hidden shadow-sm",
+            activeTab === TYPES.SATURDAY_EVENING_WORSHIP
+              ? "bg-white border-gray-200"
+              : "bg-white border-gray-200 hover:border-purple-600 hover:bg-purple-600 hover:text-white"
+          )}
+        >
+          <div className={cn(
+            "p-3 rounded-full transition-colors",
+            activeTab === TYPES.SATURDAY_EVENING_WORSHIP ? "bg-indigo-500/10 text-indigo-500" : "bg-indigo-500/10 text-indigo-500 group-hover:bg-white/20 group-hover:text-white"
+          )}>
+            <Moon size={24} />
+          </div>
+          <span className={cn(
+            "font-bold text-lg transition-colors",
+            activeTab === TYPES.SATURDAY_EVENING_WORSHIP ? "text-gray-900" : "text-gray-900 group-hover:text-white"
+          )}>
+            Culte du Samedi Soir
+          </span>
+        </button>
+
+        {/* 2. Culte du Dimanche Matin */}
         <button
           onClick={() => setActiveTab(TYPES.SUNDAY_WORSHIP)}
           className={cn(
             "relative p-6 rounded-xl border transition-all duration-300 flex flex-col items-center justify-center gap-3 group overflow-hidden shadow-sm",
             activeTab === TYPES.SUNDAY_WORSHIP
-              ? "bg-purple-600 border-purple-600 text-white"
-              : "bg-white border-gray-200 hover:border-purple-300 hover:bg-purple-50"
+              ? "bg-white border-gray-200"
+              : "bg-white border-gray-200 hover:border-purple-600 hover:bg-purple-600 hover:text-white"
           )}
         >
           <div className={cn(
             "p-3 rounded-full transition-colors",
-            activeTab === TYPES.SUNDAY_WORSHIP ? "bg-white/20 text-white" : "bg-purple-500/10 text-purple-500 group-hover:bg-purple-500/20"
+            activeTab === TYPES.SUNDAY_WORSHIP ? "bg-purple-500/10 text-purple-500" : "bg-purple-500/10 text-purple-500 group-hover:bg-white/20 group-hover:text-white"
           )}>
             <Church size={24} />
           </div>
           <span className={cn(
-            "font-bold text-lg",
-            activeTab === TYPES.SUNDAY_WORSHIP ? "text-white" : "text-gray-900 group-hover:text-purple-600"
+            "font-bold text-lg transition-colors",
+            activeTab === TYPES.SUNDAY_WORSHIP ? "text-gray-900" : "text-gray-900 group-hover:text-white"
           )}>
             Culte Dimanche Matin
           </span>
-          {activeTab === TYPES.SUNDAY_WORSHIP && (
-            <motion.div layoutId="active-indicator" className="absolute bottom-0 left-0 right-0 h-1 bg-white/50" />
-          )}
         </button>
 
+        {/* 3. After Culte Dimanche */}
         <button
-          onClick={() => setActiveTab(TYPES.SUNDAY_SHARING)}
+          onClick={() => setActiveTab(TYPES.AFTER_CULTE)}
           className={cn(
             "relative p-6 rounded-xl border transition-all duration-300 flex flex-col items-center justify-center gap-3 group overflow-hidden shadow-sm",
-            activeTab === TYPES.SUNDAY_SHARING
-              ? "bg-purple-600 border-purple-600 text-white"
-              : "bg-white border-gray-200 hover:border-purple-300 hover:bg-purple-50"
+            activeTab === TYPES.AFTER_CULTE
+              ? "bg-white border-gray-200"
+              : "bg-white border-gray-200 hover:border-purple-600 hover:bg-purple-600 hover:text-white"
           )}
         >
           <div className={cn(
             "p-3 rounded-full transition-colors",
-            activeTab === TYPES.SUNDAY_SHARING ? "bg-white/20 text-white" : "bg-purple-500/10 text-purple-500 group-hover:bg-purple-500/20"
+            activeTab === TYPES.AFTER_CULTE 
+              ? "bg-cyan-500/10 text-cyan-500 group-hover:bg-white/20 group-hover:text-white" 
+              : "bg-cyan-500/10 text-cyan-500 group-hover:bg-white/20 group-hover:text-white"
           )}>
             <Users size={24} />
           </div>
           <span className={cn(
-            "font-bold text-lg",
-            activeTab === TYPES.SUNDAY_SHARING ? "text-white" : "text-gray-900 group-hover:text-purple-600"
+            "font-bold text-lg transition-colors text-center",
+            activeTab === TYPES.AFTER_CULTE 
+              ? "text-gray-900 group-hover:text-white" 
+              : "text-gray-900 group-hover:text-white"
           )}>
-            Partage Dimanche (21H)
+            After Culte du Dimanche
           </span>
-          {activeTab === TYPES.SUNDAY_SHARING && (
-            <motion.div layoutId="active-indicator" className="absolute bottom-0 left-0 right-0 h-1 bg-white/50" />
-          )}
         </button>
 
+        {/* 4. Temps de Prière */}
         <button
           onClick={() => setActiveTab(TYPES.SATURDAY_PRAYER)}
           className={cn(
             "relative p-6 rounded-xl border transition-all duration-300 flex flex-col items-center justify-center gap-3 group overflow-hidden shadow-sm",
             activeTab === TYPES.SATURDAY_PRAYER
-              ? "bg-purple-600 border-purple-600 text-white"
-              : "bg-white border-gray-200 hover:border-purple-300 hover:bg-purple-50"
+              ? "bg-white border-gray-200"
+              : "bg-white border-gray-200 hover:border-purple-600 hover:bg-purple-600 hover:text-white"
           )}
         >
           <div className={cn(
             "p-3 rounded-full transition-colors",
-            activeTab === TYPES.SATURDAY_PRAYER ? "bg-white/20 text-white" : "bg-purple-500/10 text-purple-500 group-hover:bg-purple-500/20"
+            activeTab === TYPES.SATURDAY_PRAYER ? "bg-amber-500/10 text-amber-500" : "bg-amber-500/10 text-amber-500 group-hover:bg-white/20 group-hover:text-white"
           )}>
             <Clock size={24} />
           </div>
           <span className={cn(
-            "font-bold text-lg",
-            activeTab === TYPES.SATURDAY_PRAYER ? "text-white" : "text-gray-900 group-hover:text-purple-600"
+            "font-bold text-lg transition-colors",
+            activeTab === TYPES.SATURDAY_PRAYER ? "text-gray-900" : "text-gray-900 group-hover:text-white"
           )}>
-            Prière Samedi (22H)
+            Temps de Prière
           </span>
-          {activeTab === TYPES.SATURDAY_PRAYER && (
-            <motion.div layoutId="active-indicator" className="absolute bottom-0 left-0 right-0 h-1 bg-white/50" />
+        </button>
+
+        {/* 5. Temps de Partage */}
+        <button
+          onClick={() => setActiveTab(TYPES.SUNDAY_SHARING)}
+          className={cn(
+            "relative p-6 rounded-xl border transition-all duration-300 flex flex-col items-center justify-center gap-3 group overflow-hidden shadow-sm",
+            activeTab === TYPES.SUNDAY_SHARING
+              ? "bg-white border-gray-200"
+              : "bg-white border-gray-200 hover:border-purple-600 hover:bg-purple-600 hover:text-white"
           )}
+        >
+          <div className={cn(
+            "p-3 rounded-full transition-colors",
+            activeTab === TYPES.SUNDAY_SHARING ? "bg-pink-500/10 text-pink-500" : "bg-pink-500/10 text-pink-500 group-hover:bg-white/20 group-hover:text-white"
+          )}>
+            <Users size={24} />
+          </div>
+          <span className={cn(
+            "font-bold text-lg transition-colors",
+            activeTab === TYPES.SUNDAY_SHARING ? "text-gray-900" : "text-gray-900 group-hover:text-white"
+          )}>
+            Temps de Partage
+          </span>
+        </button>
+
+        {/* 6. Sortie d'Évangélisation */}
+        <button
+          onClick={() => setActiveTab(TYPES.EVANGELIZATION_OUTING)}
+          className={cn(
+            "relative p-6 rounded-xl border transition-all duration-300 flex flex-col items-center justify-center gap-3 group overflow-hidden shadow-sm",
+            activeTab === TYPES.EVANGELIZATION_OUTING
+              ? "bg-white border-gray-200"
+              : "bg-white border-gray-200 hover:border-purple-600 hover:bg-purple-600 hover:text-white"
+          )}
+        >
+          <div className={cn(
+            "p-3 rounded-full transition-colors",
+            activeTab === TYPES.EVANGELIZATION_OUTING ? "bg-emerald-500/10 text-emerald-500" : "bg-emerald-500/10 text-emerald-500 group-hover:bg-white/20 group-hover:text-white"
+          )}>
+            <Target size={24} />
+          </div>
+          <span className={cn(
+            "font-bold text-lg transition-colors text-center",
+            activeTab === TYPES.EVANGELIZATION_OUTING ? "text-gray-900" : "text-gray-900 group-hover:text-white"
+          )}>
+            Sortie d'Évangélisation
+          </span>
         </button>
       </div>
 
@@ -323,8 +635,8 @@ const AttendanceTracking = () => {
                   {/* Conditional Fields */}
                   <div className="space-y-4 pt-2">
                     
-                    {/* Church Name for Sunday Worship Present */}
-                    {activeTab === TYPES.SUNDAY_WORSHIP && status === 'present' && (
+                    {/* Church Name for Worship Present */}
+                    {(activeTab === TYPES.SUNDAY_WORSHIP || activeTab === TYPES.SATURDAY_EVENING_WORSHIP) && status === 'present' && (
                       <div className="space-y-2 animate-in slide-in-from-top-2 fade-in duration-300">
                         <Label className="text-gray-900 text-sm font-medium">Nom de l'église visitée</Label>
                         <Input 
@@ -375,11 +687,20 @@ const AttendanceTracking = () => {
             <div className="lg:col-span-7">
               <Card className="bg-white border-gray-200 shadow-sm h-full flex flex-col">
                 <CardHeader className="border-b border-gray-200 pb-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xl text-gray-900">Historique Récent</CardTitle>
-                    <Button variant="ghost" size="sm" className="text-gray-600 hover:text-purple-600">
-                      Voir tout <ChevronRight size={16} />
-                    </Button>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xl text-gray-900">Historique Récent</CardTitle>
+                    </div>
+                    {/* Barre de recherche */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Rechercher par date, statut, église ou motif..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10 bg-white border-gray-300 text-gray-900 focus:ring-purple-500"
+                      />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0 flex-1">
@@ -435,12 +756,68 @@ const AttendanceTracking = () => {
                     </div>
                   )}
                 </CardContent>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="border-t border-gray-200 p-4 flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      Page {currentPage} sur {totalPages} ({allHistory.length} entrées au total)
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        Précédent
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        Suivant
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </Card>
             </div>
 
           </div>
         </motion.div>
       </AnimatePresence>
+
+      {/* Graphique des statistiques - En fin de page */}
+      {statsByType.length > 0 && (
+        <Card className="bg-white border-gray-200 shadow-sm mt-8">
+          <CardHeader>
+            <CardTitle className="text-xl text-gray-900 flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-purple-600" />
+              Statistiques des 6 derniers mois
+            </CardTitle>
+            <CardDescription className="text-gray-600">
+              Évolution de votre présence pour {getTabTitle(activeTab)}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={statsByType}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" stroke="#888888" fontSize={12} />
+                  <YAxis stroke="#888888" fontSize={12} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="présents" fill="#10b981" name="Présents" />
+                  <Bar dataKey="absents" fill="#ef4444" name="Absents" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

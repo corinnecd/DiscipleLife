@@ -6,10 +6,12 @@ import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Users, Video, BarChart2, Megaphone, Send, Info, Church, AlertTriangle, Clock, Heart, UserPlus, Target, BookOpen, Moon } from 'lucide-react';
+import { Users, Video, BarChart2, Megaphone, Send, Info, Church, AlertTriangle, Clock, Heart, UserPlus, Target, BookOpen, Moon, Download, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, getWeek, getQuarter, subWeeks, subMonths, subQuarters } from 'date-fns';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, getWeek, getQuarter, subWeeks, subMonths, subQuarters, format } from 'date-fns';
+import { saveAs } from 'file-saver';
+import jsPDF from 'jspdf';
 
 const SendReport = () => {
   const { user } = useAuth();
@@ -183,20 +185,20 @@ const SendReport = () => {
               .in('disciple_id', allUserIds)
               .gte('attendance_date', periodStart)
               .lt('attendance_date', periodEnd),
-            // Pour samedi soir, on utilise saturday_prayer pour l'instant (à adapter selon vos besoins)
+            // Culte du Samedi Soir
             supabase
               .from('attendance_tracking')
               .select('*', { count: 'exact', head: true })
-              .eq('attendance_type', 'saturday_prayer')
+              .eq('attendance_type', 'saturday_evening_worship')
               .eq('status', 'present')
               .in('disciple_id', allUserIds)
               .gte('attendance_date', periodStart)
               .lt('attendance_date', periodEnd),
-            // After Culte = sunday_sharing
+            // After Culte du Dimanche
             supabase
               .from('attendance_tracking')
               .select('*', { count: 'exact', head: true })
-              .eq('attendance_type', 'sunday_sharing')
+              .eq('attendance_type', 'after_culte')
               .eq('status', 'present')
               .in('disciple_id', allUserIds)
               .gte('attendance_date', periodStart)
@@ -356,13 +358,43 @@ const SendReport = () => {
 
       if (error) throw error;
 
+      // Récupérer l'email du pasteur de tutelle
+      let pasteurEmail = '';
+      try {
+        // Récupérer le profil de l'utilisateur pour obtenir pasteur_id
+        const { data: userProfile } = await supabase
+          .from('profils')
+          .select('pasteur_id')
+          .eq('id', user.id)
+          .single();
+
+        if (userProfile && userProfile.pasteur_id) {
+          // Récupérer l'email du pasteur
+          const { data: pasteurProfile } = await supabase
+            .from('profils')
+            .select('email')
+            .eq('id', userProfile.pasteur_id)
+            .single();
+
+          if (pasteurProfile && pasteurProfile.email) {
+            pasteurEmail = pasteurProfile.email;
+          }
+        }
+      } catch (emailError) {
+        console.error('Erreur lors de la récupération de l\'email du pasteur:', emailError);
+      }
+
       const reportTypeLabel = reportType === 'hebdomadaire' ? 'hebdomadaire' : 
                               reportType === 'trimestriel' ? 'trimestriel' : 
                               reportType === 'annuel' ? 'annuel' : 'mensuel';
       
+      const descriptionMessage = pasteurEmail 
+        ? `Merci pour votre fidélité. Votre rapport a été envoyé à ${pasteurEmail}.`
+        : "Merci pour votre fidélité. Votre pasteur de tutelle a bien reçu vos données.";
+      
       toast({
         title: `Rapport ${reportTypeLabel} envoyé avec succès !`,
-        description: "Merci pour votre fidélité. Votre pasteur de tutelle a bien reçu vos données.",
+        description: descriptionMessage,
         className: "bg-green-600 text-white border-none"
       });
       
@@ -424,6 +456,277 @@ const SendReport = () => {
       default:
         return 'Transmettez vos statistiques et vos témoignages pour le mois sélectionné.';
     }
+  };
+
+  // Fonction pour obtenir la période du rapport
+  const getReportPeriod = () => {
+    switch (reportType) {
+      case 'hebdomadaire':
+        return `Semaine ${reportWeek} ${reportYearWeek}`;
+      case 'trimestriel':
+        return `Trimestre ${reportQuarter} ${reportYearQuarter}`;
+      case 'annuel':
+        return `Année ${reportYearAnnual}`;
+      default:
+        const monthName = months[parseInt(reportMonth)];
+        return `${monthName} ${reportYear}`;
+    }
+  };
+
+  // Fonction pour exporter en Excel avec UTF-8 BOM pour Excel
+  const handleExportExcel = () => {
+    // Fonction pour échapper les valeurs CSV
+    const escapeCSV = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      // Si contient des guillemets, virgules ou saut de ligne, échapper
+      if (str.includes('"') || str.includes(',') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Construire le CSV avec formatage correct : Colonne A = Indicateurs, Colonne B = Valeurs
+    const csvRows = [];
+    
+    // En-tête avec UTF-8 BOM pour Excel (Colonne A = Indicateurs, Colonne B = Valeurs)
+    csvRows.push('\ufeffIndicateurs,Valeurs');
+    
+    // Section Informations Générales
+    csvRows.push('Informations Générales,'); // Colonne A = titre section, Colonne B = vide
+    csvRows.push(`Type de rapport,${escapeCSV(getReportTitle())}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Période,${escapeCSV(getReportPeriod())}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Date d'export,${escapeCSV(format(new Date(), 'dd/MM/yyyy HH:mm'))}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(','); // Ligne vide (Colonne A et B vides)
+    
+    // Section Présences et Activités
+    csvRows.push('Présences et Activités,'); // Colonne A = titre section, Colonne B = vide
+    csvRows.push(`Nombre de Disciples,${discipleCount}`); // Colonne A = label, Colonne B = valeur numérique
+    csvRows.push(`Présence Culte Dimanche matin,${stats.sundayAttendanceCount}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Présence Culte du samedi soir,${stats.saturdayEveningCount || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Présence à l'After Culte,${stats.afterCulteCount || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Présences à la Prière,${stats.saturdayPrayerCount || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Présences au Partage,${stats.sundaySharingCount || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(','); // Ligne vide
+    
+    // Section Évangélisation
+    csvRows.push('Évangélisation,'); // Colonne A = titre section, Colonne B = vide
+    csvRows.push(`Personnes Évangélisées,${stats.evangelizedCount}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Nouveaux Convertis,${stats.nouveauxConvertis || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Nouveaux Arrivants,${stats.nouveauxArrivants || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Sorties d'Évangélisation,${stats.sortiesEvangelisation || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(','); // Ligne vide
+    
+    // Section Formation et Engagement
+    csvRows.push('Formation et Engagement,'); // Colonne A = titre section, Colonne B = vide
+    csvRows.push(`Vidéos Visionnées (modules),${stats.videoViews}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Taux de Complétion (%),${stats.completionRate}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(','); // Ligne vide
+    
+    // Section Activités Communautaires
+    csvRows.push('Activités Communautaires,'); // Colonne A = titre section, Colonne B = vide
+    csvRows.push(`Com Frat Disciples,${stats.comFratDisciples || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Veillée,${stats.veillee || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Méditation Bible,${stats.meditationBible || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(','); // Ligne vide
+    
+    // Section Témoignage / Notes
+    csvRows.push('Témoignage / Notes,'); // Colonne A = titre section, Colonne B = vide
+    if (stats.notes && stats.notes.trim().length > 0) {
+      csvRows.push(`${escapeCSV(stats.notes)},`); // Colonne A = témoignage, Colonne B = vide
+    } else {
+      csvRows.push('Aucun témoignage,'); // Colonne A = message, Colonne B = vide
+    }
+
+    // Créer le blob avec UTF-8 BOM pour Excel
+    const csvContent = csvRows.join('\r\n'); // Utiliser \r\n pour Excel (saut de ligne Windows)
+    const BOM = '\ufeff'; // UTF-8 BOM pour Excel
+    
+    // Créer le blob avec type correct pour Excel
+    const blob = new Blob([BOM + csvContent], { 
+      type: 'text/csv;charset=utf-8;' 
+    });
+    
+    // Sauvegarder le fichier
+    const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+    const filename = `rapport_${reportType}_${timestamp}.csv`;
+    
+    saveAs(blob, filename);
+  };
+
+  // Fonction pour créer un tableau dans le PDF
+  const createTable = (pdf, startY, headers, data, margin) => {
+    const lineHeight = 7;
+    const cellPadding = 3;
+    const col1Width = 120;
+    const col2Width = 50;
+    let yPos = startY;
+
+    // En-tête
+    pdf.setFillColor(139, 92, 246);
+    pdf.setDrawColor(139, 92, 246);
+    pdf.rect(margin, yPos, col1Width + col2Width, lineHeight, 'FD');
+    
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(headers[0], margin + cellPadding, yPos + 5);
+    pdf.text(headers[1], margin + col1Width + cellPadding, yPos + 5);
+    
+    yPos += lineHeight;
+
+    // Lignes de données
+    pdf.setTextColor(0, 0, 0);
+    pdf.setFont('helvetica', 'normal');
+    data.forEach((row, index) => {
+      if (yPos + lineHeight > pdf.internal.pageSize.getHeight() - margin) {
+        pdf.addPage();
+        yPos = margin;
+      }
+      
+      // Bordure de ligne
+      pdf.setDrawColor(200, 200, 200);
+      pdf.rect(margin, yPos, col1Width + col2Width, lineHeight, 'D');
+      
+      // Contenu
+      pdf.text(row[0] || '', margin + cellPadding, yPos + 5);
+      pdf.text(String(row[1] || ''), margin + col1Width + cellPadding, yPos + 5);
+      
+      yPos += lineHeight;
+    });
+
+    return yPos + 5;
+  };
+
+  // Fonction pour exporter en PDF
+  const handleExportPDF = () => {
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 20;
+    let yPosition = margin;
+
+    // Titre
+    pdf.setFontSize(18);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(getReportTitle(), margin, yPosition);
+    yPosition += 10;
+
+    // Période
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Période: ${getReportPeriod()}`, margin, yPosition);
+    yPosition += 8;
+    pdf.text(`Date d'export: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, margin, yPosition);
+    yPosition += 15;
+
+    // Section Présences et Activités
+    pdf.setFontSize(14);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Présences et Activités', margin, yPosition);
+    yPosition += 10;
+
+    pdf.setFontSize(10);
+    const presenceData = [
+      ['Nombre de Disciples', discipleCount],
+      ['Présence Culte Dimanche matin', stats.sundayAttendanceCount],
+      ['Présence Culte du samedi soir', stats.saturdayEveningCount || 0],
+      ['Présence à l\'After Culte', stats.afterCulteCount || 0],
+      ['Présences à la Prière', stats.saturdayPrayerCount || 0],
+      ['Présences au Partage', stats.sundaySharingCount || 0]
+    ];
+
+    yPosition = createTable(pdf, yPosition, ['Indicateurs', 'Valeurs'], presenceData, margin);
+
+    if (yPosition > pageHeight - 80) {
+      pdf.addPage();
+      yPosition = margin;
+    } else {
+      yPosition += 10;
+    }
+
+    // Section Évangélisation
+    pdf.setFontSize(14);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Évangélisation', margin, yPosition);
+    yPosition += 10;
+
+    pdf.setFontSize(10);
+    const evangelizationData = [
+      ['Personnes Évangélisées', stats.evangelizedCount],
+      ['Nouveaux Convertis', stats.nouveauxConvertis || 0],
+      ['Nouveaux Arrivants', stats.nouveauxArrivants || 0],
+      ['Sorties d\'Évangélisation', stats.sortiesEvangelisation || 0]
+    ];
+
+    yPosition = createTable(pdf, yPosition, ['Indicateurs', 'Valeurs'], evangelizationData, margin);
+
+    if (yPosition > pageHeight - 80) {
+      pdf.addPage();
+      yPosition = margin;
+    } else {
+      yPosition += 10;
+    }
+
+    // Section Formation et Engagement
+    pdf.setFontSize(14);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Formation et Engagement', margin, yPosition);
+    yPosition += 10;
+
+    pdf.setFontSize(10);
+    const formationData = [
+      ['Vidéos Visionnées (modules)', stats.videoViews],
+      ['Taux de Complétion (%)', stats.completionRate]
+    ];
+
+    yPosition = createTable(pdf, yPosition, ['Indicateurs', 'Valeurs'], formationData, margin);
+
+    if (yPosition > pageHeight - 80) {
+      pdf.addPage();
+      yPosition = margin;
+    } else {
+      yPosition += 10;
+    }
+
+    // Section Activités Communautaires
+    pdf.setFontSize(14);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Activités Communautaires', margin, yPosition);
+    yPosition += 10;
+
+    pdf.setFontSize(10);
+    const communityData = [
+      ['Com Frat Disciples', stats.comFratDisciples || 0],
+      ['Veillée', stats.veillee || 0],
+      ['Méditation Bible', stats.meditationBible || 0]
+    ];
+
+    yPosition = createTable(pdf, yPosition, ['Indicateurs', 'Valeurs'], communityData, margin);
+
+    if (yPosition > pageHeight - 80) {
+      pdf.addPage();
+      yPosition = margin;
+    } else {
+      yPosition += 10;
+    }
+
+    // Section Témoignage / Notes
+    if (stats.notes && stats.notes.trim().length > 0) {
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('Témoignage / Notes', margin, yPosition);
+      yPosition += 10;
+
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'normal');
+      const splitNotes = pdf.splitTextToSize(stats.notes, pageWidth - 2 * margin);
+      pdf.text(splitNotes, margin, yPosition);
+    }
+
+    // Sauvegarder le PDF
+    const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+    const filename = `rapport_${reportType}_${timestamp}.pdf`;
+    pdf.save(filename);
   };
 
   return (
@@ -554,24 +857,40 @@ const SendReport = () => {
       {/* Témoignage / Notes Section - Horizontal */}
       <Card className="bg-white border-gray-200 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-gray-900 text-lg">Témoignage / Notes</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-gray-900 text-lg">Témoignage / Notes</CardTitle>
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleExportExcel} 
+                className="px-3 py-2 h-auto text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white focus:ring-0 focus:ring-offset-0 focus:outline-none shrink-0"
+                title="Exporter en Excel"
+              >
+                <FileText size={14} className="mr-1"/> Excel
+              </Button>
+              <Button 
+                onClick={handleExportPDF} 
+                className="px-3 py-2 h-auto text-xs font-medium bg-red-600 hover:bg-red-700 text-white focus:ring-0 focus:ring-offset-0 focus:outline-none shrink-0"
+                title="Exporter en PDF"
+              >
+                <Download size={14} className="mr-1"/> PDF
+              </Button>
+              <Button 
+                onClick={handleSend} 
+                disabled={submitting}
+                className="px-4 py-2 h-auto text-sm font-bold bg-purple-600 hover:bg-purple-700 text-white focus:ring-0 focus:ring-offset-0 focus:outline-none shrink-0"
+              >
+                {submitting ? "Envoi en cours..." : <><Send size={16} className="mr-2"/> Envoyer le Rapport</>}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row gap-4">
-            <Textarea 
-              value={stats.notes} 
-              onChange={(e) => setStats({...stats, notes: e.target.value})}
-              placeholder="Partagez un témoignage marquant ou des défis rencontrés ce mois-ci..."
-              className="flex-1 bg-white border-gray-300 text-gray-900 resize-none min-h-[120px] md:min-h-[100px] focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
-            />
-            <Button 
-              onClick={handleSend} 
-              disabled={submitting}
-              className="w-full md:w-auto md:h-[100px] px-8 text-base font-bold bg-purple-600 hover:bg-purple-700 text-white self-end md:self-start focus:ring-0 focus:ring-offset-0 focus:outline-none"
-            >
-              {submitting ? "Envoi en cours..." : <><Send size={18} className="mr-2"/> Envoyer le Rapport</>}
-            </Button>
-          </div>
+          <Textarea 
+            value={stats.notes} 
+            onChange={(e) => setStats({...stats, notes: e.target.value})}
+            placeholder="Partagez un témoignage marquant ou des défis rencontrés ce mois-ci..."
+            className="w-full bg-white border-gray-300 text-gray-900 resize-none min-h-[120px] focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
+          />
         </CardContent>
       </Card>
 
@@ -583,10 +902,10 @@ const SendReport = () => {
                   <Users size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Total Disciples</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Total Disciples</p>
                   <p className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">{discipleCount}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-                    <Info size={12} /> Calculé automatiquement
+                    <Info size={12} /> <span className="font-bold capitalize">Calculé automatiquement</span>
                   </div>
                </CardContent>
             </Card>
@@ -626,10 +945,10 @@ const SendReport = () => {
                   <Church size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Présence Culte Dimanche matin</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Présence Culte Dimanche matin</p>
                   <p className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">{stats.sundayAttendanceCount}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
+                    <Info size={12} /> <span className="font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -639,10 +958,10 @@ const SendReport = () => {
                   <Church size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Présence Culte du samedi soir</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Présence Culte du samedi soir</p>
                   <p className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-800 bg-clip-text text-transparent">{stats.saturdayEveningCount || 0}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
+                    <Info size={12} /> <span className="font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -652,10 +971,10 @@ const SendReport = () => {
                   <Users size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Présence à l'After Culte</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Présence à l'After Culte</p>
                   <p className="text-4xl font-bold bg-gradient-to-r from-teal-600 to-teal-800 bg-clip-text text-transparent">{stats.afterCulteCount || 0}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
+                    <Info size={12} /> <span className="font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -665,10 +984,10 @@ const SendReport = () => {
                   <Clock size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Présences à la Prière</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Présences à la Prière</p>
                   <p className="text-4xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 bg-clip-text text-transparent">{stats.saturdayPrayerCount || 0}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
+                    <Info size={12} /> <span className="font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -678,10 +997,10 @@ const SendReport = () => {
                   <Users size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Présences au Partage</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Présences au Partage</p>
                   <p className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-800 bg-clip-text text-transparent">{stats.sundaySharingCount || 0}</p>
                   <div className="mt-4 flex items-center gap-2 text-xs text-gray-600">
-                    <Info size={12} /> {reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}
+                    <Info size={12} /> <span className="font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -691,7 +1010,7 @@ const SendReport = () => {
                   <Megaphone size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Personnes Évangélisées</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Personnes Évangélisées</p>
                   <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
@@ -700,7 +1019,7 @@ const SendReport = () => {
                         onChange={(e) => setStats({...stats, evangelizedCount: parseInt(e.target.value) || 0})}
                         className="w-24 bg-white border-gray-300 text-red-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
-                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                     <span className="text-gray-600 text-sm font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -710,7 +1029,7 @@ const SendReport = () => {
                   <Video size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Vidéos Visionnées</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Vidéos Visionnées</p>
                   <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
@@ -719,7 +1038,7 @@ const SendReport = () => {
                         onChange={(e) => setStats({...stats, videoViews: parseInt(e.target.value) || 0})}
                         className="w-24 bg-white border-gray-300 text-pink-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
-                     <span className="text-gray-600 text-sm">modules</span>
+                     <span className="text-gray-600 text-sm font-bold capitalize">Modules</span>
                   </div>
                </CardContent>
             </Card>
@@ -729,7 +1048,7 @@ const SendReport = () => {
                   <BarChart2 size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Taux de Complétion</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Taux de Complétion</p>
                   <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
@@ -739,7 +1058,7 @@ const SendReport = () => {
                         onChange={(e) => setStats({...stats, completionRate: parseInt(e.target.value) || 0})}
                         className="w-24 bg-white border-gray-300 text-orange-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
-                     <span className="text-gray-600 text-sm">% global</span>
+                     <span className="text-gray-600 text-sm font-bold capitalize">% Global</span>
                   </div>
                </CardContent>
             </Card>
@@ -749,7 +1068,7 @@ const SendReport = () => {
                   <Heart size={80} className="text-green-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Nouveaux Convertis</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Nouveaux Convertis</p>
                   <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
@@ -758,7 +1077,7 @@ const SendReport = () => {
                         onChange={(e) => setStats({...stats, nouveauxConvertis: parseInt(e.target.value) || 0})}
                         className="w-24 bg-white border-gray-300 text-green-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
-                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                     <span className="text-gray-600 text-sm font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -768,7 +1087,7 @@ const SendReport = () => {
                   <UserPlus size={80} className="text-red-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Nouveaux Arrivants</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Nouveaux Arrivants</p>
                   <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
@@ -777,7 +1096,7 @@ const SendReport = () => {
                         onChange={(e) => setStats({...stats, nouveauxArrivants: parseInt(e.target.value) || 0})}
                         className="w-24 bg-white border-gray-300 text-red-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
-                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                     <span className="text-gray-600 text-sm font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -787,7 +1106,7 @@ const SendReport = () => {
                   <Target size={80} className="text-teal-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Sorties d'Évangélisation</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Sorties d'Évangélisation</p>
                   <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
@@ -796,7 +1115,7 @@ const SendReport = () => {
                         onChange={(e) => setStats({...stats, sortiesEvangelisation: parseInt(e.target.value) || 0})}
                         className="w-24 bg-white border-gray-300 text-teal-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
-                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                     <span className="text-gray-600 text-sm font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -806,7 +1125,7 @@ const SendReport = () => {
                   <Users size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Com Frat Disciples</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Com Frat Disciples</p>
                   <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
@@ -815,7 +1134,7 @@ const SendReport = () => {
                         onChange={(e) => setStats({...stats, comFratDisciples: parseInt(e.target.value) || 0})}
                         className="w-24 bg-white border-gray-300 text-purple-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
-                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                     <span className="text-gray-600 text-sm font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -825,7 +1144,7 @@ const SendReport = () => {
                   <Moon size={80} className="text-purple-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Veillée</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Veillée</p>
                   <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
@@ -834,7 +1153,7 @@ const SendReport = () => {
                         onChange={(e) => setStats({...stats, veillee: parseInt(e.target.value) || 0})}
                         className="w-24 bg-white border-gray-300 text-purple-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
-                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                     <span className="text-gray-600 text-sm font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
@@ -844,7 +1163,7 @@ const SendReport = () => {
                   <BookOpen size={80} className="text-orange-400" />
                </div>
                <CardContent className="p-6">
-                  <p className="text-gray-900 font-medium text-sm mb-1">Méditation Bible</p>
+                  <p className="text-gray-900 font-medium text-sm mb-1 uppercase">Méditation Bible</p>
                   <div className="flex flex-col gap-2">
                      <Input 
                         type="number"
@@ -853,7 +1172,7 @@ const SendReport = () => {
                         onChange={(e) => setStats({...stats, meditationBible: parseInt(e.target.value) || 0})}
                         className="w-24 bg-white border-gray-300 text-orange-600 text-xl font-bold h-10 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-300"
                      />
-                     <span className="text-gray-600 text-sm">{reportType === 'hebdomadaire' ? 'cette semaine' : reportType === 'trimestriel' ? 'ce trimestre' : 'ce mois-ci'}</span>
+                     <span className="text-gray-600 text-sm font-bold capitalize">{reportType === 'hebdomadaire' ? 'Cette semaine' : reportType === 'trimestriel' ? 'Ce trimestre' : 'Ce mois-ci'}</span>
                   </div>
                </CardContent>
             </Card>
