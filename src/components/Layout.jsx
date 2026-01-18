@@ -29,6 +29,7 @@ import { useRole } from '@/context/RoleContext';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getInitials } from '@/lib/utils';
+import { supabase } from '@/lib/customSupabaseClient';
 
 const Layout = () => {
   const { user, signOut } = useAuth();
@@ -36,6 +37,30 @@ const Layout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
+
+  // Récupérer le profil complet de l'utilisateur
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (user?.id) {
+        try {
+          const { data, error } = await supabase
+            .from('profils')
+            .select('first_name, last_name, avatar_url')
+            .eq('id', user.id)
+            .maybeSingle();
+          
+          if (!error && data) {
+            setUserProfile(data);
+          }
+        } catch (error) {
+          console.error('Erreur lors de la récupération du profil:', error);
+        }
+      }
+    };
+
+    fetchUserProfile();
+  }, [user]);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -119,14 +144,18 @@ const Layout = () => {
           className="flex items-center gap-3 p-3 rounded-xl hover:bg-white cursor-pointer mb-2 transition-colors"
         >
           <Avatar className="h-9 w-9 border border-gray-200">
-            <AvatarImage src={user?.user_metadata?.avatar_url} />
+            <AvatarImage src={userProfile?.avatar_url || user?.user_metadata?.avatar_url} />
             <AvatarFallback className="bg-indigo-600 text-white text-xs">
-              {getInitials(user?.email)}
+              {getInitials(userProfile?.first_name && userProfile?.last_name 
+                ? `${userProfile.first_name} ${userProfile.last_name}` 
+                : user?.email)}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">
-              {user?.user_metadata?.first_name || 'Utilisateur'}
+              {userProfile?.first_name && userProfile?.last_name
+                ? `${userProfile.first_name} ${userProfile.last_name}`
+                : userProfile?.first_name || user?.user_metadata?.first_name || 'Utilisateur'}
             </p>
             <p className="text-xs text-gray-500 truncate">{role || 'Disciple'}</p>
             {user?.email && (

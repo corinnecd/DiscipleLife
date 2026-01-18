@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getWeek, getQuarter, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfMonth, endOfMonth, format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +43,7 @@ const PasteurDashboard = () => {
   const [familles, setFamilles] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFamille, setSelectedFamille] = useState(null);
+  const [familleModalDetails, setFamilleModalDetails] = useState({ members: [], reports: [], loading: false });
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [superviseursOptions, setSuperviseursOptions] = useState([]);
@@ -99,6 +101,43 @@ const PasteurDashboard = () => {
       checkMissingReports();
     }
   }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+
+  // Charger les détails (membres, rapports) lorsque le modal famille s'ouvre
+  useEffect(() => {
+    if (!selectedFamille?.famille?.id || !selectedFamille?.superviseur?.id) {
+      setFamilleModalDetails({ members: [], reports: [], loading: false });
+      return;
+    }
+    let cancelled = false;
+    setFamilleModalDetails((prev) => ({ ...prev, loading: true }));
+    const fetchDetails = async () => {
+      const famId = selectedFamille.famille.id;
+      const supId = selectedFamille.superviseur.id;
+      const [membersRes, reportsRes] = await Promise.all([
+        supabase
+          .from('profils')
+          .select('id, first_name, last_name, email, avatar_url, created_at')
+          .eq('famille_id', famId)
+          .eq('role', 'disciple')
+          .order('first_name'),
+        supabase
+          .from('reports')
+          .select('id, report_type, created_at, month, year, quarter, week_number, content, statistics_snapshot')
+          .eq('user_id', supId)
+          .eq('status', 'submitted')
+          .order('created_at', { ascending: false })
+          .limit(10),
+      ]);
+      if (cancelled) return;
+      setFamilleModalDetails({
+        members: membersRes.data || [],
+        reports: reportsRes.data || [],
+        loading: false,
+      });
+    };
+    fetchDetails();
+    return () => { cancelled = true; };
+  }, [selectedFamille?.famille?.id, selectedFamille?.superviseur?.id]);
 
   const fetchPasteurData = async () => {
     try {
@@ -785,7 +824,9 @@ const PasteurDashboard = () => {
                   animate={{ opacity: 1, y: 0 }}
                   className="text-4xl font-bold text-white mb-4"
                 >
-                  Bienvenue, <span className="bg-gradient-to-r from-pink-400 to-pink-600 bg-clip-text text-transparent">{pasteurNom.first_name} {pasteurNom.last_name}</span>
+                  Bienvenue, <span className="bg-gradient-to-r from-pink-400 to-pink-600 bg-clip-text text-transparent">
+                    {pasteurNom.first_name || ''}{pasteurNom.first_name && pasteurNom.last_name ? ' ' : ''}{pasteurNom.last_name || ''}
+                  </span>
                 </motion.h1>
                 <p className="text-xl text-white/90 mb-4 leading-relaxed">
                   Vous êtes le Pasteur Référent des Superviseurs de votre grande famille.
@@ -1535,10 +1576,8 @@ const PasteurDashboard = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => {
-                              // Naviguer vers le détail de la famille
-                              if (item.famille) {
-                                navigate(`/familles/${item.famille.id}`);
-                              }
+                              // Ouvrir le modal avec les détails de la famille
+                              setSelectedFamille(item);
                             }}
                             disabled={!item.famille}
                             className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 hover:border-0 border-0 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1606,16 +1645,31 @@ const PasteurDashboard = () => {
 
         {/* Modal de détails de la famille */}
         <Dialog open={selectedFamille !== null} onOpenChange={(open) => !open && setSelectedFamille(null)}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-gray-100">
             {selectedFamille && (
               <>
                 <DialogHeader>
-                  <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                  <DialogTitle className="text-2xl font-bold text-black flex items-center gap-3">
                     <Building2 className="h-6 w-6 text-purple-600" />
                     {formatFamilleName(selectedFamille.famille?.nom || 'Famille sans nom')}
                   </DialogTitle>
-                  <DialogDescription className="text-gray-600">
+                  <DialogDescription className="text-blue-600">
                     {selectedFamille.famille?.identifiant_famille || 'N/A'}
+                    {(selectedFamille.famille?.statut || selectedFamille.famille?.created_at) && (
+                      <span className="flex items-center gap-3 mt-2 flex-wrap">
+                        {selectedFamille.famille?.statut && (
+                          <Badge variant={selectedFamille.famille.statut === 'actif' ? 'default' : 'secondary'} className={selectedFamille.famille.statut === 'actif' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
+                            {selectedFamille.famille.statut === 'actif' ? 'Actif' : 'Inactif'}
+                          </Badge>
+                        )}
+                        {selectedFamille.famille?.created_at && (
+                          <span className="text-xs text-black flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5" />
+                            Créée le {format(new Date(selectedFamille.famille.created_at), 'd MMMM yyyy', { locale: fr })}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </DialogDescription>
                 </DialogHeader>
 
@@ -1629,22 +1683,37 @@ const PasteurDashboard = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 rounded-full bg-purple-200 flex items-center justify-center">
-                          <Users className="h-6 w-6 text-purple-600" />
+                      <div className="flex items-start gap-4 flex-wrap">
+                        <div className="w-12 h-12 rounded-full bg-purple-200 flex items-center justify-center overflow-hidden shrink-0">
+                          {selectedFamille.superviseur.avatar_url ? (
+                            <img src={selectedFamille.superviseur.avatar_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-lg font-semibold text-purple-600">
+                              {(selectedFamille.superviseur.first_name || '')[0]}{(selectedFamille.superviseur.last_name || '')[0]}
+                            </span>
+                          )}
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 text-lg">
                             {selectedFamille.superviseur.first_name} {selectedFamille.superviseur.last_name}
                           </p>
+                          {selectedFamille.superviseur.titre && (
+                            <p className="text-xs text-gray-500">{selectedFamille.superviseur.titre}</p>
+                          )}
                           {selectedFamille.superviseur.email && (
-                            <p className="text-sm text-gray-600 mt-1">
-                              <Mail className="h-4 w-4 inline mr-1" />
+                            <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
+                              <Mail className="h-4 w-4 shrink-0" />
                               {selectedFamille.superviseur.email}
                             </p>
                           )}
-                          {selectedFamille.superviseur.titre && (
-                            <p className="text-xs text-gray-500 mt-1">{selectedFamille.superviseur.titre}</p>
+                          {selectedFamille.superviseur.email && (
+                            <a
+                              href={`mailto:${selectedFamille.superviseur.email}`}
+                              className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-purple-600 hover:text-purple-700 hover:underline"
+                            >
+                              <Mail className="h-4 w-4" />
+                              Contacter
+                            </a>
                           )}
                         </div>
                       </div>
@@ -1685,9 +1754,9 @@ const PasteurDashboard = () => {
                             {selectedFamille.stats.nombreMembres} / {selectedFamille.stats.objectif}
                           </span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-4">
+                        <div className="w-full bg-gray-200 rounded-full h-4 relative">
                           <div
-                            className={`h-4 rounded-full flex items-center justify-center text-xs font-semibold text-white ${
+                            className={`h-4 rounded-full ${
                               selectedFamille.stats.progression >= 100
                                 ? 'bg-green-500'
                                 : selectedFamille.stats.progression >= 50
@@ -1695,9 +1764,10 @@ const PasteurDashboard = () => {
                                 : 'bg-amber-500'
                             }`}
                             style={{ width: `${Math.min(selectedFamille.stats.progression, 100)}%` }}
-                          >
+                          />
+                          <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-900">
                             {Math.round(selectedFamille.stats.progression)}%
-                          </div>
+                          </span>
                         </div>
                       </div>
 
@@ -1710,25 +1780,154 @@ const PasteurDashboard = () => {
                     </CardContent>
                   </Card>
 
+                  {/* Liste des membres */}
+                  <Card className="bg-white border-gray-200">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <UserPlus className="h-5 w-5 text-purple-600" />
+                        Membres ({familleModalDetails.members.length})
+                      </CardTitle>
+                      <CardDescription className="text-gray-600">
+                        Disciples de la famille
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {familleModalDetails.loading ? (
+                        <div className="flex items-center justify-center py-8 text-gray-500">
+                          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                          Chargement…
+                        </div>
+                      ) : familleModalDetails.members.length === 0 ? (
+                        <p className="text-sm text-gray-500 py-4">Aucun membre enregistré pour le moment.</p>
+                      ) : (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {familleModalDetails.members.map((m) => (
+                            <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+                              <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center shrink-0 overflow-hidden">
+                                {m.avatar_url ? (
+                                  <img src={m.avatar_url} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <span className="text-sm font-medium text-purple-600">
+                                    {(m.first_name || '')[0]}{(m.last_name || '')[0]}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-gray-900 truncate">
+                                  {m.first_name} {m.last_name}
+                                </p>
+                                {m.email && <p className="text-xs text-gray-500 truncate">{m.email}</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Historique des rapports */}
+                  <Card className="bg-white border-gray-200">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-purple-600" />
+                        Historique des rapports ({familleModalDetails.reports.length})
+                      </CardTitle>
+                      <CardDescription className="text-gray-600">
+                        Derniers rapports envoyés par le superviseur
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {familleModalDetails.loading ? (
+                        <div className="flex items-center justify-center py-6 text-gray-500">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        </div>
+                      ) : familleModalDetails.reports.length === 0 ? (
+                        <p className="text-sm text-gray-500 py-2">Aucun rapport envoyé pour le moment.</p>
+                      ) : (
+                        <ul className="space-y-2 max-h-40 overflow-y-auto">
+                          {familleModalDetails.reports.map((r) => {
+                            const typeLabel = { hebdomadaire: 'Hebdomadaire', mensuel: 'Mensuel', trimestriel: 'Trimestriel', annuel: 'Annuel' }[r.report_type] || r.report_type;
+                            const period = r.report_type === 'mensuel' && r.month != null
+                              ? `${['Janv.','Févr.','Mars','Avr.','Mai','Juin','Juil.','Août','Sept.','Oct.','Nov.','Déc.'][r.month]} ${r.year || ''}`
+                              : r.report_type === 'trimestriel' && r.quarter
+                              ? `T${r.quarter} ${r.year || ''}`
+                              : r.report_type === 'hebdomadaire' && r.week_number
+                              ? `Sem. ${r.week_number} ${r.year || ''}`
+                              : r.year || '';
+                            return (
+                              <li key={r.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-gray-400" />
+                                  <span className="text-sm font-medium text-gray-900">{typeLabel}</span>
+                                  {period && <span className="text-xs text-gray-500">— {period}</span>}
+                                </div>
+                                <span className="text-xs text-gray-500">
+                                  {format(new Date(r.created_at), 'd MMM yyyy', { locale: fr })}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Derniers indicateurs (dernier rapport) */}
+                  {familleModalDetails.reports.length > 0 && familleModalDetails.reports[0].statistics_snapshot && (
+                    <Card className="bg-white border-gray-200">
+                      <CardHeader>
+                        <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                          <BarChart3 className="h-5 w-5 text-purple-600" />
+                          Derniers indicateurs
+                        </CardTitle>
+                        <CardDescription className="text-gray-600">
+                          Extrait du rapport du {format(new Date(familleModalDetails.reports[0].created_at), "d MMMM yyyy", { locale: fr })}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {(() => {
+                          const s = familleModalDetails.reports[0].statistics_snapshot;
+                          const items = [
+                            { label: 'Disciples', value: s.disciples ?? '—', color: 'text-blue-600' },
+                            { label: 'Présence culte dim.', value: s.sunday_attendance_count ?? '—', color: 'text-indigo-600' },
+                            { label: 'Présence culte sam.', value: s.saturday_evening_count ?? '—', color: 'text-purple-600' },
+                            { label: 'Évangélisations', value: s.evangelization ?? '—', color: 'text-amber-600' },
+                            { label: 'Nouveaux convertis', value: s.nouveaux_convertis ?? '—', color: 'text-green-600' },
+                          ];
+                          return (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                              {items.map((i) => (
+                                <div key={i.label} className="bg-gray-50 rounded-lg p-3 text-center">
+                                  <div className={`text-lg font-bold ${i.color}`}>{i.value}</div>
+                                  <div className="text-xs text-gray-600 mt-0.5">{i.label}</div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </CardContent>
+                    </Card>
+                  )}
+
                   {/* Actions */}
                   <DialogFooter className="gap-2">
                     <Button
                       variant="outline"
                       onClick={() => setSelectedFamille(null)}
-                      className="border-gray-200 hover:bg-gray-50"
+                      className="border-gray-200 hover:bg-blue-600 hover:text-white"
                     >
                       Fermer
                     </Button>
                     {selectedFamille.famille && (
                       <Button
                         onClick={() => {
-                          navigate(`/familles/${selectedFamille.famille.id}`);
+                          navigate('/familles');
                           setSelectedFamille(null);
                         }}
                         className="bg-purple-600 hover:bg-purple-700 text-white"
                       >
                         <Eye className="h-4 w-4 mr-2" />
-                        Voir plus de détails
+                        Gérer les familles
                       </Button>
                     )}
                   </DialogFooter>

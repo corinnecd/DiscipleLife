@@ -6,12 +6,16 @@ import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Users, Video, BarChart2, Megaphone, Send, Info, Church, AlertTriangle, Clock, Heart, UserPlus, Target, BookOpen, Moon, Download, FileText } from 'lucide-react';
+import { Users, Video, BarChart2, Megaphone, Send, Info, Church, AlertTriangle, Clock, Heart, UserPlus, Target, BookOpen, Moon, Download, FileText, Eye, History, AlertCircle, TrendingUp, Calendar as CalendarIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, getWeek, getQuarter, subWeeks, subMonths, subQuarters, format } from 'date-fns';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, getWeek, getQuarter, subWeeks, subMonths, subQuarters, format, differenceInDays, startOfYear, endOfYear } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const SendReport = () => {
   const { user } = useAuth();
@@ -63,12 +67,87 @@ const SendReport = () => {
   });
   
   const [absentDisciples, setAbsentDisciples] = useState([]);
+  
+  // États pour les nouvelles fonctionnalités
+  const [previousReports, setPreviousReports] = useState([]);
+  const [showPreview, setShowPreview] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [reportReminder, setReportReminder] = useState(null);
+  const [chartData, setChartData] = useState([]);
+  const [successMessage, setSuccessMessage] = useState(null);
+  const [showEmptyReportConfirm, setShowEmptyReportConfirm] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchData();
+      fetchPreviousReports();
+      checkReportReminder();
     }
   }, [user, reportType, reportMonth, reportYear, reportWeek, reportYearWeek, reportQuarter, reportYearQuarter, reportYearAnnual]);
+
+  // Vérifier les rappels de rapports mensuels
+  const checkReportReminder = () => {
+    if (reportType === 'mensuel') {
+      const today = new Date();
+      const daysUntilMonthEnd = differenceInDays(endOfMonth(today), today);
+      
+      if (daysUntilMonthEnd <= 5 && daysUntilMonthEnd >= 0) {
+        setReportReminder({
+          show: true,
+          daysLeft: daysUntilMonthEnd,
+          message: daysUntilMonthEnd === 0 
+            ? "⏰ Le mois se termine aujourd'hui ! N'oubliez pas d'envoyer votre rapport mensuel."
+            : daysUntilMonthEnd === 1
+            ? "⏰ Le mois se termine demain ! N'oubliez pas d'envoyer votre rapport mensuel."
+            : `⏰ Le mois se termine dans ${daysUntilMonthEnd} jours ! N'oubliez pas d'envoyer votre rapport mensuel.`
+        });
+      } else {
+        setReportReminder(null);
+      }
+    } else {
+      setReportReminder(null);
+    }
+  };
+
+  // Récupérer les rapports précédents
+  const fetchPreviousReports = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reports')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setPreviousReports(data || []);
+    } catch (error) {
+      console.error("Error fetching previous reports:", error);
+    }
+  };
+
+  // Préparer les données pour les graphiques
+  useEffect(() => {
+    if (previousReports.length > 0) {
+      // Créer des données pour un graphique d'évolution des rapports
+      const chartDataPoints = previousReports
+        .filter(r => r.report_type === reportType)
+        .slice(0, 6)
+        .reverse()
+        .map((report, index) => {
+          const stats = report.statistics_snapshot || {};
+          return {
+            name: `Rapport ${index + 1}`,
+            présences: stats.sunday_attendance_count || 0,
+            présences_dimanche_matin: stats.sunday_attendance_count || 0,
+            présences_samedi_soir: stats.saturday_evening_count || 0,
+            présences_after_culte: stats.after_culte_count || 0,
+            évangélisations: stats.evangelization || 0
+          };
+        });
+      setChartData(chartDataPoints);
+    }
+  }, [previousReports, reportType]);
 
   const fetchData = async () => {
     try {
@@ -311,7 +390,24 @@ const SendReport = () => {
     }
   };
 
-  const handleSend = async () => {
+  // Validation avant envoi
+  const validateReport = () => {
+    // Validation optionnelle : vérifier que certaines données sont renseignées
+    const hasActivity = stats.sundayAttendanceCount > 0 || 
+                       stats.evangelizedCount > 0 || 
+                       stats.videoViews > 0 ||
+                       stats.saturdayEveningCount > 0 ||
+                       stats.afterCulteCount > 0;
+    
+    if (!hasActivity && !stats.notes.trim()) {
+      setShowEmptyReportConfirm(true);
+      return false;
+    }
+    
+    return true;
+  };
+
+  const performSend = async () => {
     setSubmitting(true);
     try {
       // Préparer les données selon le type de rapport
@@ -383,22 +479,20 @@ const SendReport = () => {
       } catch (emailError) {
         console.error('Erreur lors de la récupération de l\'email du pasteur:', emailError);
       }
-
-      const reportTypeLabel = reportType === 'hebdomadaire' ? 'hebdomadaire' : 
-                              reportType === 'trimestriel' ? 'trimestriel' : 
-                              reportType === 'annuel' ? 'annuel' : 'mensuel';
-      
-      const descriptionMessage = pasteurEmail 
-        ? `Merci pour votre fidélité. Votre rapport a été envoyé à ${pasteurEmail}.`
-        : "Merci pour votre fidélité. Votre pasteur de tutelle a bien reçu vos données.";
-      
-      toast({
-        title: `Rapport ${reportTypeLabel} envoyé avec succès !`,
-        description: descriptionMessage,
-        className: "bg-green-600 text-white border-none"
-      });
       
       setStats({ ...stats, notes: '' });
+      
+      // Message de confirmation
+      const successMsg = pasteurEmail 
+        ? `Rapport envoyé avec succès ! À ${pasteurEmail}`
+        : "Rapport envoyé avec succès !";
+      setSuccessMessage(successMsg);
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 5000);
+      
+      // Rafraîchir l'historique après envoi
+      fetchPreviousReports();
 
     } catch (error) {
       console.error("Error sending report", error);
@@ -410,6 +504,13 @@ const SendReport = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSend = async () => {
+    if (!validateReport()) {
+      return;
+    }
+    await performSend();
   };
 
   const months = [
@@ -733,10 +834,21 @@ const SendReport = () => {
     <div className="max-w-5xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{getReportTitle()}</h1>
-           <p className="text-gray-600 mt-1">{getReportDescription()}</p>
+      <div className="space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{getReportTitle()}</h1>
+            <p className="text-gray-600 mt-1">{getReportDescription()}</p>
+          </div>
+          {/* Bouton Historique */}
+          <Button 
+            onClick={() => setShowHistory(true)} 
+            variant="outline" 
+            size="sm"
+            className="gap-2 bg-white border-gray-300 text-gray-900 hover:bg-gray-50"
+          >
+            <History className="h-4 w-4" /> Voir l'historique
+          </Button>
         </div>
         
         {/* Type de rapport et Date Filters */}
@@ -854,6 +966,81 @@ const SendReport = () => {
         </div>
       </div>
 
+      {/* Rappel automatique pour rapports mensuels */}
+      {reportReminder && reportReminder.show && (
+        <Card className="bg-blue-50 border-blue-200 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-blue-600 shrink-0" />
+              <p className="text-blue-900 font-medium flex-1">{reportReminder.message}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Statistiques visuelles - Graphiques */}
+      {chartData.length > 0 && (
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-xl text-gray-900 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-purple-600" />
+              Évolution de vos rapports ({reportType})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" stroke="#888888" fontSize={12} />
+                  <YAxis stroke="#888888" fontSize={12} />
+                  <Tooltip />
+                  <Bar dataKey="présences" fill="#10b981" name="Présences" />
+                  <Bar dataKey="présences_dimanche_matin" fill="#3b82f6" name="Présence Culte Dimanche matin" />
+                  <Bar dataKey="présences_samedi_soir" fill="#8b5cf6" name="Présence Culte du samedi soir" />
+                  <Bar dataKey="présences_after_culte" fill="#14b8a6" name="Présence à l'After Culte" />
+                  <Bar dataKey="évangélisations" fill="#f59e0b" name="Évangélisations" />
+                  <Legend 
+                    wrapperStyle={{ 
+                      paddingTop: '10px'
+                    }}
+                    content={(props) => {
+                      const { payload } = props;
+                      if (!payload) return null;
+                      // Afficher les 3 premiers sur la première ligne
+                      const firstRow = payload.slice(0, 3);
+                      // Afficher les 2 derniers sur la deuxième ligne
+                      const secondRow = payload.slice(3);
+                      
+                      return (
+                        <div style={{ width: '100%' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '8px' }}>
+                            {firstRow.map((entry, index) => (
+                              <div key={`item-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ display: 'inline-block', width: '14px', height: '14px', backgroundColor: entry.color, marginRight: '4px' }}></span>
+                                <span style={{ fontSize: '12px', color: '#666' }}>{entry.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                            {secondRow.map((entry, index) => (
+                              <div key={`item-${index + 3}`} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ display: 'inline-block', width: '14px', height: '14px', backgroundColor: entry.color, marginRight: '4px' }}></span>
+                                <span style={{ fontSize: '12px', color: '#666' }}>{entry.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Témoignage / Notes Section - Horizontal */}
       <Card className="bg-white border-gray-200 shadow-sm">
         <CardHeader>
@@ -873,6 +1060,13 @@ const SendReport = () => {
                 title="Exporter en PDF"
               >
                 <Download size={14} className="mr-1"/> PDF
+              </Button>
+              <Button 
+                onClick={() => setShowPreview(true)} 
+                className="px-3 py-2 h-auto text-xs font-medium bg-green-600 hover:bg-white text-white hover:text-green-600 border-0 hover:border-2 hover:border-green-600 focus:ring-0 focus:ring-offset-0 focus:outline-none shrink-0"
+                title="Prévisualiser le rapport"
+              >
+                <Eye size={14} className="mr-1"/> Prévisualiser
               </Button>
               <Button 
                 onClick={handleSend} 
@@ -1178,6 +1372,181 @@ const SendReport = () => {
             </Card>
 
       </div>
+
+      {/* Modal de Prévisualisation */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 border-gray-200">
+          <DialogHeader>
+            <DialogTitle>Prévisualisation du Rapport</DialogTitle>
+            <DialogDescription>
+              Vérifiez les informations avant d'envoyer votre rapport pour {getReportPeriod()}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="font-semibold text-gray-900">Type de rapport:</p>
+                <p className="text-gray-600">{getReportTitle()}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">Période:</p>
+                <p className="text-gray-600">{getReportPeriod()}</p>
+              </div>
+            </div>
+            
+            <div>
+              <p className="font-semibold text-gray-900 mb-2">Statistiques:</p>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <p><span className="text-gray-600">Disciples:</span> <span className="font-bold text-purple-600">{discipleCount}</span></p>
+                <p><span className="text-gray-600">Évangélisations:</span> <span className="font-bold text-orange-600">{stats.evangelizedCount}</span></p>
+                <p><span className="text-gray-600">Vidéos:</span> <span className="font-bold text-yellow-600">{stats.videoViews}</span></p>
+                <p><span className="text-gray-600">Présences Dimanche:</span> <span className="font-bold text-blue-600">{stats.sundayAttendanceCount}</span></p>
+                <p><span className="text-gray-600">Présences Samedi soir:</span> <span className="font-bold text-indigo-600">{stats.saturdayEveningCount || 0}</span></p>
+                <p><span className="text-gray-600">After Culte:</span> <span className="font-bold text-teal-600">{stats.afterCulteCount || 0}</span></p>
+              </div>
+            </div>
+            
+            {stats.notes && (
+              <div>
+                <p className="font-semibold text-gray-900 mb-2">Témoignage / Notes:</p>
+                <p className="text-gray-600 bg-gray-50 p-3 rounded-lg">{stats.notes}</p>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowPreview(false)}
+              className="bg-white border-gray-300 text-gray-900 hover:bg-gray-50 hover:text-purple-600"
+            >
+              Annuler
+            </Button>
+            <Button 
+              onClick={async () => { 
+                setShowPreview(false);
+                await handleSend();
+              }} 
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              Confirmer et Envoyer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal d'Historique des Rapports */}
+      <Dialog open={showHistory} onOpenChange={setShowHistory}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 border-gray-200">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" /> Historique des Rapports
+            </DialogTitle>
+            <DialogDescription>
+              Consultez vos rapports précédents
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            {previousReports.length === 0 ? (
+              <p className="text-center text-gray-600 py-8">Aucun rapport envoyé pour le moment.</p>
+            ) : (
+              <div className="space-y-3">
+                {previousReports.map((report) => {
+                  const stats = report.statistics_snapshot || {};
+                  const reportPeriod = report.report_type === 'hebdomadaire' 
+                    ? `Semaine ${report.week_number} ${report.year}`
+                    : report.report_type === 'trimestriel'
+                    ? `Trimestre ${report.quarter} ${report.year}`
+                    : report.report_type === 'annuel'
+                    ? `Année ${report.year}`
+                    : `${months[report.month]} ${report.year}`;
+                  
+                  return (
+                    <Card key={report.id} className="bg-white border-gray-200 shadow-sm">
+                      <CardContent className="pt-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant={report.status === 'submitted' ? 'default' : 'secondary'}>
+                                {report.report_type}
+                              </Badge>
+                              <span className="text-sm text-gray-600">{reportPeriod}</span>
+                              <span className="text-xs text-gray-500">
+                                {format(new Date(report.created_at), "dd/MM/yyyy à HH:mm", { locale: fr })}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-sm mt-2">
+                              <p><span className="text-gray-600">Disciples:</span> <span className="font-bold">{stats.disciples || 0}</span></p>
+                              <p><span className="text-gray-600">Présences:</span> <span className="font-bold">{stats.sunday_attendance_count || 0}</span></p>
+                              <p><span className="text-gray-600">Évangélisations:</span> <span className="font-bold">{stats.evangelization || 0}</span></p>
+                            </div>
+                            {report.content && (
+                              <p className="text-sm text-gray-600 mt-2 line-clamp-2">{report.content}</p>
+                            )}
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                              setShowHistory(false);
+                              setShowPreview(true);
+                            }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              onClick={() => setShowHistory(false)}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              Fermer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation rapport vide */}
+      {showEmptyReportConfirm && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-green-600 text-white px-6 py-4 rounded-lg shadow-lg border-0">
+            <p className="font-medium">Votre rapport ne contient aucune activité ni note. Êtes-vous sûr de vouloir continuer ?</p>
+            <div className="flex gap-2 mt-3 justify-end">
+              <Button 
+                onClick={() => setShowEmptyReportConfirm(false)} 
+                className="bg-white text-gray-900 hover:bg-gray-100 hover:text-purple-600 border-0"
+              >
+                Annuler
+              </Button>
+              <Button 
+                onClick={() => { setShowEmptyReportConfirm(false); performSend(); }} 
+                className="bg-white text-green-600 hover:bg-green-50 font-medium border-0"
+              >
+                Confirmer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Message de confirmation personnalisé */}
+      {successMessage && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-green-600 text-white px-6 py-4 rounded-lg shadow-lg border-0">
+            <p className="font-medium">{successMessage}</p>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

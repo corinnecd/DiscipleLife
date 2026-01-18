@@ -95,15 +95,15 @@ const Profile = () => {
     }
   };
 
-  if (loading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-white" /></div>;
+  if (loading) return <div className="flex justify-center p-8 bg-gray-50 min-h-screen"><Loader2 className="animate-spin text-gray-600" /></div>;
 
   return (
-    <div className="max-w-2xl mx-auto p-4 md:p-8 space-y-6">
-       <h1 className="text-3xl font-bold text-white mb-6">Mon Profil</h1>
+    <div className="max-w-2xl mx-auto p-4 md:p-8 space-y-6 bg-gray-50 min-h-screen">
+       <h1 className="text-3xl font-bold text-gray-900 mb-6">Mon Profil</h1>
        
-       <Card className="bg-[#1a0b2e] border-white/10">
+       <Card className="bg-gray-100 border-gray-200">
           <CardHeader>
-             <CardTitle className="text-white text-lg">Informations Personnelles</CardTitle>
+             <CardTitle className="text-gray-900 text-lg">Informations Personnelles</CardTitle>
           </CardHeader>
           <CardContent>
              <form onSubmit={handleUpdate} className="space-y-6">
@@ -111,9 +111,9 @@ const Profile = () => {
                 {/* Avatar Section */}
                 <div className="flex flex-col items-center gap-4 py-4">
                    <div className="relative group">
-                      <Avatar className="h-24 w-24 border-2 border-white/10">
+                      <Avatar className="h-24 w-24 border-2 border-gray-300">
                          <AvatarImage src={avatarFile ? URL.createObjectURL(avatarFile) : profile.avatar_url} objectFit="cover" />
-                         <AvatarFallback className="bg-purple-900 text-2xl text-white">
+                         <AvatarFallback className="bg-purple-600 text-2xl text-white">
                             {getInitials(profile.first_name || user.email)}
                          </AvatarFallback>
                       </Avatar>
@@ -128,13 +128,13 @@ const Profile = () => {
                       </label>
                    </div>
                    <div className="text-center">
-                      <p className="text-sm font-medium text-white">{user.email}</p>
-                      <p className="text-xs text-gray-400 capitalize">{profile.role || 'Disciple'}</p>
+                      <p className="text-sm font-medium text-gray-900">{user.email}</p>
+                      <p className="text-xs text-gray-600 capitalize">{profile.role || 'Disciple'}</p>
                    </div>
                    
                    {uploadProgress > 0 && uploadProgress < 100 && (
                        <div className="w-full max-w-[200px] space-y-1">
-                           <div className="flex justify-between text-xs text-gray-400">
+                           <div className="flex justify-between text-xs text-gray-600">
                                <span>Optimisation...</span>
                                <span>{Math.round(uploadProgress)}%</span>
                            </div>
@@ -145,19 +145,19 @@ const Profile = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-300">Prénom</label>
+                      <label className="text-sm font-medium text-gray-900">Prénom</label>
                       <Input 
                          value={profile.first_name || ''} 
                          onChange={e => setProfile({...profile, first_name: e.target.value})}
-                         className="bg-black/20 border-white/10 text-white"
+                         className="bg-white border-gray-300 text-gray-900"
                       />
                    </div>
                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-300">Nom</label>
+                      <label className="text-sm font-medium text-gray-900">Nom</label>
                       <Input 
                          value={profile.last_name || ''} 
                          onChange={e => setProfile({...profile, last_name: e.target.value})}
-                         className="bg-black/20 border-white/10 text-white"
+                         className="bg-white border-gray-300 text-gray-900"
                       />
                    </div>
                 </div>

@@ -2,12 +2,25 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
-  Church, ChevronRight, Loader2, UserCircle, Eye, ArrowLeft, Camera, Sparkles, Zap, Trophy, Star, AlertCircle, Clock
+  Church, ChevronRight, Loader2, UserCircle, Eye, ArrowLeft, Camera, Sparkles, Zap, Trophy, Star, AlertCircle, Clock,
+  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, CheckCircle2, PlayCircle, GraduationCap
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getWeek, getQuarter, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfMonth, endOfMonth, format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { cn } from '@/lib/utils';
@@ -15,6 +28,9 @@ import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
 import { compressImage } from '@/lib/ImageCompression';
 import { useToast } from '@/components/ui/use-toast';
+import { 
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+} from 'recharts';
 
 const SuperviseurDashboard = () => {
   const { user } = useAuth();
@@ -38,12 +54,51 @@ const SuperviseurDashboard = () => {
   const [uploadingPasteurAvatar, setUploadingPasteurAvatar] = useState(false);
   const [reportReminder, setReportReminder] = useState(null); // { daysLeft: number, showReminder: boolean }
 
+  // Filtres de période pour les KPI
+  const [kpiPeriodType, setKpiPeriodType] = useState('annuel'); // annuel, trimestriel, mensuel, hebdomadaire
+  const [kpiSelectedYear, setKpiSelectedYear] = useState('2025');
+  const [kpiSelectedQuarter, setKpiSelectedQuarter] = useState(getQuarter(new Date()).toString());
+  const [kpiSelectedMonth, setKpiSelectedMonth] = useState(new Date().getMonth().toString());
+  const [kpiSelectedWeek, setKpiSelectedWeek] = useState(() => {
+    const now = new Date();
+    return getWeek(now, { weekStartsOn: 1 }).toString();
+  });
+  const [kpiSelectedYearForPeriod, setKpiSelectedYearForPeriod] = useState('2025');
+
+  // État pour les données des graphiques d'évolution
+  const [chartData, setChartData] = useState([]);
+  const [kpiData, setKpiData] = useState({
+    culteSamediSoir: 0,
+    culteDimancheMatin: 0,
+    afterCulteDimanche: 0,
+    tempsPriere: 0,
+    tempsPartage: 0,
+    nouveauxConvertis: 0,
+    nouveauxArrivants: 0,
+    sortiesEvangelisation: 0,
+    personnesEvangelisees: 0,
+    comFratDisciples: 0,
+    veillee: 0,
+    meditationBible: 0,
+    formationsTerminees: 0,
+    formationsEnCours: 0,
+    videosTerminees: 0
+  });
+
+  // État pour la liste des membres
+  const [membres, setMembres] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('tous'); // tous, actif, inactif
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [showAllMembres, setShowAllMembres] = useState(false);
+
   useEffect(() => {
     if (user) {
       fetchSuperviseurData();
       checkReportReminder();
     }
-  }, [user]);
+  }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
 
   // Fonction pour vérifier le rappel de rapport (5 jours avant la fin du mois)
   const checkReportReminder = () => {
@@ -158,12 +213,237 @@ const SuperviseurDashboard = () => {
         reste
       });
 
+      // 4. Récupérer les membres de la famille
+      const { data: membresData, error: membresError } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, email, avatar_url, statut_spirituel, created_at')
+        .eq('famille_id', familleData.id)
+        .eq('role', 'disciple')
+        .order('created_at', { ascending: false });
+
+      if (!membresError && membresData) {
+        setMembres(membresData || []);
+        
+        // Récupérer les statistiques de formations et vidéos des membres
+        const membreIds = membresData.map(m => m.id);
+        
+        if (membreIds.length > 0) {
+          // Formations terminées (is_completed = true)
+          const { count: formationsTermineesCount } = await supabase
+            .from('user_module_progression')
+            .select('*', { count: 'exact', head: true })
+            .in('user_id', membreIds)
+            .eq('is_completed', true);
+          
+          // Formations en cours (is_completed = false et progress > 0)
+          const { count: formationsEnCoursCount } = await supabase
+            .from('user_module_progression')
+            .select('*', { count: 'exact', head: true })
+            .in('user_id', membreIds)
+            .eq('is_completed', false)
+            .gt('progress', 0);
+          
+          // Vidéos terminées (is_completed = true dans video_progress)
+          const { count: videosTermineesCount } = await supabase
+            .from('video_progress')
+            .select('*', { count: 'exact', head: true })
+            .in('disciple_id', membreIds)
+            .eq('is_completed', true);
+          
+          setKpiData(prev => ({
+            ...prev,
+            formationsTerminees: formationsTermineesCount || 0,
+            formationsEnCours: formationsEnCoursCount || 0,
+            videosTerminees: videosTermineesCount || 0
+          }));
+        }
+      }
+
+      // 5. Récupérer les rapports du superviseur pour les graphiques
+      const { data: rapportsData, error: rapportsError } = await supabase
+        .from('reports')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (!rapportsError && rapportsData) {
+        // Filtrer les rapports selon la période sélectionnée
+        const rapportsFiltres = rapportsData.filter(r => {
+          const selectedYear = parseInt(kpiSelectedYearForPeriod);
+          const reportDate = new Date(r.created_at);
+          const reportYear = r.year || reportDate.getFullYear();
+          
+          if (kpiPeriodType === 'annuel') {
+            return reportYear === selectedYear;
+          } else if (kpiPeriodType === 'trimestriel') {
+            const selectedQuarter = parseInt(kpiSelectedQuarter);
+            if (r.report_type === 'trimestriel') {
+              return r.quarter === selectedQuarter && reportYear === selectedYear;
+            }
+            const reportQuarter = getQuarter(reportDate);
+            return reportQuarter === selectedQuarter && reportYear === selectedYear;
+          } else if (kpiPeriodType === 'mensuel') {
+            const selectedMonth = parseInt(kpiSelectedMonth);
+            if (r.report_type === 'mensuel') {
+              return r.month === selectedMonth && reportYear === selectedYear;
+            }
+            return reportDate.getMonth() === selectedMonth && reportYear === selectedYear;
+          } else if (kpiPeriodType === 'hebdomadaire') {
+            const selectedWeek = parseInt(kpiSelectedWeek);
+            if (r.report_type === 'hebdomadaire') {
+              return r.week_number === selectedWeek && reportYear === selectedYear;
+            }
+            const reportWeek = getWeek(reportDate, { weekStartsOn: 1 });
+            return reportWeek === selectedWeek && reportYear === selectedYear;
+          }
+          return false;
+        });
+
+        // Calculer les KPIs pour la période sélectionnée
+        let culteSamediSoir = 0;
+        let culteDimancheMatin = 0;
+        let afterCulteDimanche = 0;
+        let tempsPriere = 0;
+        let tempsPartage = 0;
+        let nouveauxConvertis = 0;
+        let nouveauxArrivants = 0;
+        let sortiesEvangelisation = 0;
+        let personnesEvangelisees = 0;
+        let comFratDisciples = 0;
+        let veillee = 0;
+        let meditationBible = 0;
+
+        rapportsFiltres.forEach(report => {
+          const stats = report.statistics_snapshot || {};
+          culteSamediSoir += stats.saturday_evening_count || 0;
+          culteDimancheMatin += stats.sunday_attendance_count || 0;
+          afterCulteDimanche += stats.after_culte_count || 0;
+          tempsPriere += stats.saturday_prayer_count || 0;
+          tempsPartage += stats.sunday_sharing_count || 0;
+          nouveauxConvertis += stats.nouveaux_convertis || 0;
+          nouveauxArrivants += stats.nouveaux_arrivants || 0;
+          sortiesEvangelisation += stats.evangelization || 0;
+          personnesEvangelisees += stats.evangelization || 0;
+          comFratDisciples += stats.com_frat_disciples || 0;
+          veillee += stats.veillee || 0;
+          meditationBible += stats.meditation_bible || 0;
+        });
+
+        setKpiData(prev => ({
+          ...prev,
+          culteSamediSoir,
+          culteDimancheMatin,
+          afterCulteDimanche,
+          tempsPriere,
+          tempsPartage,
+          nouveauxConvertis,
+          nouveauxArrivants,
+          sortiesEvangelisation,
+          personnesEvangelisees,
+          comFratDisciples,
+          veillee,
+          meditationBible
+        }));
+
+        // Générer les données pour les graphiques d'évolution (tous les rapports soumis)
+        await generateChartData(rapportsData || []);
+      }
+
     } catch (error) {
       console.error('Erreur lors du chargement des données superviseur:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  // Fonction pour générer les données historiques des graphiques
+  const generateChartData = async (reportsData) => {
+    if (!reportsData || reportsData.length === 0) {
+      setChartData([]);
+      return;
+    }
+
+    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jui", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+    const chartMap = {};
+
+    // Grouper les rapports par mois
+    reportsData.forEach(report => {
+      const reportDate = new Date(report.created_at);
+      const monthKey = `${reportDate.getFullYear()}-${String(reportDate.getMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = `${months[reportDate.getMonth()]} ${reportDate.getFullYear()}`;
+
+      if (!chartMap[monthKey]) {
+        chartMap[monthKey] = {
+          name: monthLabel,
+          mois: monthKey,
+          culteSamediSoir: 0,
+          culteDimancheMatin: 0,
+          afterCulteDimanche: 0,
+          tempsPriere: 0,
+          tempsPartage: 0,
+          nouveauxConvertis: 0,
+          nouveauxArrivants: 0,
+          sortiesEvangelisation: 0,
+          personnesEvangelisees: 0,
+          comFratDisciples: 0,
+          veillee: 0,
+          meditationBible: 0
+        };
+      }
+
+      const stats = report.statistics_snapshot || {};
+      chartMap[monthKey].culteSamediSoir += stats.saturday_evening_count || 0;
+      chartMap[monthKey].culteDimancheMatin += stats.sunday_attendance_count || 0;
+      chartMap[monthKey].afterCulteDimanche += stats.after_culte_count || 0;
+      chartMap[monthKey].tempsPriere += stats.saturday_prayer_count || 0;
+      chartMap[monthKey].tempsPartage += stats.sunday_sharing_count || 0;
+      chartMap[monthKey].nouveauxConvertis += stats.nouveaux_convertis || 0;
+      chartMap[monthKey].nouveauxArrivants += stats.nouveaux_arrivants || 0;
+      chartMap[monthKey].sortiesEvangelisation += stats.evangelization || 0;
+      chartMap[monthKey].personnesEvangelisees += stats.evangelization || 0;
+      chartMap[monthKey].comFratDisciples += stats.com_frat_disciples || 0;
+      chartMap[monthKey].veillee += stats.veillee || 0;
+      chartMap[monthKey].meditationBible += stats.meditation_bible || 0;
+    });
+
+    // Convertir en tableau et trier par date
+    const dataArray = Object.values(chartMap).sort((a, b) => a.mois.localeCompare(b.mois));
+    
+    // Prendre les 12 derniers mois
+    setChartData(dataArray.slice(-12));
+  };
+
+  // Filtrer les membres
+  const filteredMembres = membres.filter(membre => {
+    const matchesSearch = searchTerm === '' || 
+      `${membre.first_name} ${membre.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (membre.email && membre.email.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchesStatus = statusFilter === 'tous' || 
+      (statusFilter === 'actif' && membre.statut_spirituel !== 'inactif') ||
+      (statusFilter === 'inactif' && membre.statut_spirituel === 'inactif');
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  // Limiter à 12 membres si showAllMembres est false
+  const displayedMembres = showAllMembres ? filteredMembres : filteredMembres.slice(0, 12);
+  
+  // Pagination uniquement si on affiche tous les membres
+  const totalPages = showAllMembres ? Math.ceil(filteredMembres.length / itemsPerPage) : 1;
+  const paginatedMembres = showAllMembres 
+    ? displayedMembres.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+      )
+    : displayedMembres;
+
+  // Réinitialiser la page si nécessaire
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [totalPages, currentPage]);
 
   const handleFamilleAvatarChange = (e) => {
     const file = e.target.files?.[0];
@@ -673,6 +953,524 @@ const SuperviseurDashboard = () => {
                 Statistiques
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Section KPI avec filtres de période */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-semibold text-gray-900">
+                {(() => {
+                  const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+                  if (kpiPeriodType === 'annuel') {
+                    return `KPI Annuels ${kpiSelectedYearForPeriod}`;
+                  } else if (kpiPeriodType === 'trimestriel') {
+                    return `KPI Trimestriels T${kpiSelectedQuarter} ${kpiSelectedYearForPeriod}`;
+                  } else if (kpiPeriodType === 'mensuel') {
+                    const monthName = months[parseInt(kpiSelectedMonth)];
+                    return `KPI Mensuels ${monthName} ${kpiSelectedYearForPeriod}`;
+                  } else {
+                    const selectedYear = parseInt(kpiSelectedYearForPeriod);
+                    const selectedWeek = parseInt(kpiSelectedWeek);
+                    const jan1 = new Date(selectedYear, 0, 1);
+                    const firstWeekStart = startOfWeek(jan1, { weekStartsOn: 1 });
+                    const targetWeekStart = new Date(firstWeekStart);
+                    targetWeekStart.setDate(firstWeekStart.getDate() + (selectedWeek - 1) * 7);
+                    const monthIndex = targetWeekStart.getMonth();
+                    const monthName = months[monthIndex];
+                    return `KPI Hebdomadaires Sem ${kpiSelectedWeek} ${monthName} ${kpiSelectedYearForPeriod}`;
+                  }
+                })()}
+              </CardTitle>
+              <div className="flex flex-wrap gap-2 items-center">
+                <Select value={kpiPeriodType} onValueChange={setKpiPeriodType}>
+                  <SelectTrigger className="w-[140px] bg-gray-200 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900 hover:bg-gray-300">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200">
+                    <SelectItem value="hebdomadaire" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Hebdomadaire</SelectItem>
+                    <SelectItem value="mensuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Mensuel</SelectItem>
+                    <SelectItem value="trimestriel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestriel</SelectItem>
+                    <SelectItem value="annuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Annuel</SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                {kpiPeriodType === 'annuel' && (
+                  <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
+                    <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      {Array.from({ length: 5 }, (_, i) => {
+                        const year = new Date().getFullYear() - i;
+                        return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {kpiPeriodType === 'trimestriel' && (
+                  <>
+                    <Select value={kpiSelectedQuarter} onValueChange={setKpiSelectedQuarter}>
+                      <SelectTrigger className="w-[120px] bg-purple-600 border-0 text-white focus:ring-0 focus:ring-offset-0 focus:outline-none hover:bg-purple-700 [&>span]:text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {[1, 2, 3, 4].map(q => (
+                          <SelectItem key={q} value={q.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">T{q}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
+                      <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {Array.from({ length: 5 }, (_, i) => {
+                          const year = new Date().getFullYear() - i;
+                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+
+                {kpiPeriodType === 'mensuel' && (
+                  <>
+                    <Select value={kpiSelectedMonth} onValueChange={setKpiSelectedMonth}>
+                      <SelectTrigger className="w-[140px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200 max-h-[200px]">
+                        {["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"].map((month, index) => (
+                          <SelectItem key={index} value={index.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-600">{month}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
+                      <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {Array.from({ length: 5 }, (_, i) => {
+                          const year = new Date().getFullYear() - i;
+                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+
+                {kpiPeriodType === 'hebdomadaire' && (
+                  <>
+                    <Select value={kpiSelectedWeek} onValueChange={setKpiSelectedWeek}>
+                      <SelectTrigger className="w-[120px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200 max-h-[200px]">
+                        {Array.from({ length: 52 }, (_, i) => (
+                          <SelectItem key={i + 1} value={(i + 1).toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Semaine {i + 1}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
+                      <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200">
+                        {Array.from({ length: 7 }, (_, i) => {
+                          const year = 2025 + i;
+                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+              </div>
+            </div>
+            <CardDescription className="mt-2">
+              Indicateurs de performance pour la période sélectionnée
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* 3 rangées de 4 cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Ligne 1 */}
+              <div className="group text-center p-4 bg-gradient-to-br from-indigo-200 to-indigo-300 hover:bg-purple-600 rounded-lg border-2 border-indigo-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-800 group-hover:from-indigo-600 group-hover:to-indigo-800 bg-clip-text text-transparent">
+                  {kpiData.culteSamediSoir || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Culte du Samedi Soir</div>
+                <Moon className="h-5 w-5 mx-auto mt-2 text-indigo-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-blue-200 to-blue-300 hover:bg-purple-600 rounded-lg border-2 border-blue-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 group-hover:from-blue-600 group-hover:to-blue-800 bg-clip-text text-transparent">
+                  {kpiData.culteDimancheMatin || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Culte du Dimanche Matin</div>
+                <Church className="h-5 w-5 mx-auto mt-2 text-blue-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-cyan-200 to-cyan-300 hover:bg-purple-600 rounded-lg border-2 border-cyan-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-cyan-600 to-cyan-800 group-hover:from-cyan-600 group-hover:to-cyan-800 bg-clip-text text-transparent">
+                  {kpiData.afterCulteDimanche || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">After Culte du Dimanche</div>
+                <Users className="h-5 w-5 mx-auto mt-2 text-cyan-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-amber-200 to-amber-300 hover:bg-purple-600 rounded-lg border-2 border-amber-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 group-hover:from-amber-600 group-hover:to-amber-800 bg-clip-text text-transparent">
+                  {kpiData.tempsPriere || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Temps de Prière</div>
+                <Heart className="h-5 w-5 mx-auto mt-2 text-amber-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-pink-200 to-pink-300 hover:bg-purple-600 rounded-lg border-2 border-pink-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-pink-600 to-pink-800 group-hover:from-pink-600 group-hover:to-pink-800 bg-clip-text text-transparent">
+                  {kpiData.personnesEvangelisees || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Personnes évangélisées</div>
+                <Target className="h-5 w-5 mx-auto mt-2 text-pink-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-emerald-200 to-emerald-300 hover:bg-purple-600 rounded-lg border-2 border-emerald-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-emerald-800 group-hover:from-emerald-600 group-hover:to-emerald-800 bg-clip-text text-transparent">
+                  {kpiData.nouveauxConvertis || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Nouveaux Convertis</div>
+                <Heart className="h-5 w-5 mx-auto mt-2 text-emerald-700 group-hover:text-white transition-colors" />
+              </div>
+              
+              {/* Ligne 2 */}
+              <div className="group text-center p-4 bg-gradient-to-br from-rose-200 to-rose-300 hover:bg-purple-600 rounded-lg border-2 border-rose-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-rose-600 to-rose-800 group-hover:from-rose-600 group-hover:to-rose-800 bg-clip-text text-transparent">
+                  {kpiData.nouveauxArrivants || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Nouveaux Arrivants</div>
+                <UserPlus className="h-5 w-5 mx-auto mt-2 text-rose-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-teal-200 to-teal-300 hover:bg-purple-600 rounded-lg border-2 border-teal-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-teal-600 to-teal-800 group-hover:from-teal-600 group-hover:to-teal-800 bg-clip-text text-transparent">
+                  {kpiData.sortiesEvangelisation || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Sorties d'Évangélisation</div>
+                <Megaphone className="h-5 w-5 mx-auto mt-2 text-teal-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-purple-200 to-purple-300 hover:bg-purple-600 rounded-lg border-2 border-purple-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 group-hover:from-amber-500 group-hover:to-amber-700 bg-clip-text text-transparent">
+                  {kpiData.comFratDisciples || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Com Frat Disciples</div>
+                <UserCheck className="h-5 w-5 mx-auto mt-2 text-purple-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-violet-200 to-violet-300 hover:bg-purple-600 rounded-lg border-2 border-violet-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-violet-600 to-violet-800 group-hover:from-amber-500 group-hover:to-amber-700 bg-clip-text text-transparent">
+                  {kpiData.veillee || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Veillée</div>
+                <Moon className="h-5 w-5 mx-auto mt-2 text-violet-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-orange-200 to-orange-300 hover:bg-purple-600 rounded-lg border-2 border-orange-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-orange-800 group-hover:from-orange-600 group-hover:to-orange-800 bg-clip-text text-transparent">
+                  {kpiData.meditationBible || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Méditation Bible</div>
+                <Book className="h-5 w-5 mx-auto mt-2 text-orange-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-green-200 to-green-300 hover:bg-purple-600 rounded-lg border-2 border-green-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-800 group-hover:from-green-600 group-hover:to-green-800 bg-clip-text text-transparent">
+                  {kpiData.tempsPartage || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Temps de Partage</div>
+                <HeartHandshake className="h-5 w-5 mx-auto mt-2 text-green-700 group-hover:text-white transition-colors" />
+              </div>
+              
+              {/* Ligne 4 - Nouvelles cartes */}
+              <div className="group text-center p-4 bg-gradient-to-br from-blue-200 to-blue-300 hover:bg-purple-600 rounded-lg border-2 border-blue-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 group-hover:from-blue-600 group-hover:to-blue-800 bg-clip-text text-transparent">
+                  {kpiData.formationsTerminees || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Formations Terminées</div>
+                <CheckCircle2 className="h-5 w-5 mx-auto mt-2 text-blue-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-yellow-200 to-yellow-300 hover:bg-purple-600 rounded-lg border-2 border-yellow-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-yellow-600 to-yellow-800 group-hover:from-yellow-600 group-hover:to-yellow-800 bg-clip-text text-transparent">
+                  {kpiData.formationsEnCours || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Formations en Cours</div>
+                <GraduationCap className="h-5 w-5 mx-auto mt-2 text-yellow-700 group-hover:text-white transition-colors" />
+              </div>
+              <div className="group text-center p-4 bg-gradient-to-br from-red-200 to-red-300 hover:bg-purple-600 rounded-lg border-2 border-red-400 hover:border-purple-600 transition-colors cursor-pointer">
+                <div className="text-4xl font-bold bg-gradient-to-r from-red-600 to-red-800 group-hover:from-red-600 group-hover:to-red-800 bg-clip-text text-transparent">
+                  {kpiData.videosTerminees || 0}
+                </div>
+                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Vidéos Terminées</div>
+                <PlayCircle className="h-5 w-5 mx-auto mt-2 text-red-700 group-hover:text-white transition-colors" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Graphiques d'évolution des KPI */}
+        {chartData.length > 0 && (
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-purple-600" />
+                Évolution des KPI (12 derniers mois)
+              </CardTitle>
+              <CardDescription>
+                Tendances des indicateurs clés de performance sur les 12 derniers mois
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Graphique Présences aux Cultes */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Présences aux Cultes</h3>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="colorCulteSamedi" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorCulteDimanche" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorAfterCulte" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <Tooltip />
+                        <Legend />
+                        <Area type="monotone" dataKey="culteSamediSoir" name="Culte Samedi Soir" stroke="#6366f1" fillOpacity={1} fill="url(#colorCulteSamedi)" />
+                        <Area type="monotone" dataKey="culteDimancheMatin" name="Culte Dimanche Matin" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCulteDimanche)" />
+                        <Area type="monotone" dataKey="afterCulteDimanche" name="After Culte" stroke="#14b8a6" fillOpacity={1} fill="url(#colorAfterCulte)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Graphique Temps de Prière et Partage */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Temps de Prière et Partage</h3>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="tempsPriere" name="Temps de Prière" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="tempsPartage" name="Temps de Partage" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Graphique Nouveaux Convertis et Arrivants */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Nouveaux Convertis et Arrivants</h3>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="colorNouveauxConvertis" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorNouveauxArrivants" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <Tooltip />
+                        <Legend />
+                        <Area type="monotone" dataKey="nouveauxConvertis" name="Nouveaux Convertis" stroke="#ec4899" fillOpacity={1} fill="url(#colorNouveauxConvertis)" />
+                        <Area type="monotone" dataKey="nouveauxArrivants" name="Nouveaux Arrivants" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorNouveauxArrivants)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Graphique Évangélisation */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Évangélisation</h3>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="sortiesEvangelisation" name="Sorties d'Évangélisation" stroke="#14b8a6" strokeWidth={2} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="personnesEvangelisees" name="Personnes évangélisées" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Liste des membres de la famille */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Users className="h-5 w-5 text-purple-600" />
+                  Membres de la famille ({filteredMembres.length})
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Liste complète des disciples de votre famille
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowAllMembres(!showAllMembres);
+                  setCurrentPage(1);
+                }}
+                className="bg-white border-gray-200 text-gray-900 hover:bg-blue-600 hover:text-white shrink-0"
+              >
+                {showAllMembres ? 'Voir moins' : 'Voir tout'}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Barre de recherche et filtres */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+              <div className="flex-1">
+                <Input
+                  placeholder="Rechercher par nom ou email..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full bg-gray-200 border-gray-300 text-gray-900 placeholder:text-gray-600"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={(value) => {
+                setStatusFilter(value);
+                setCurrentPage(1);
+              }}>
+                <SelectTrigger className="w-[180px] bg-white border-gray-200 text-gray-900 [&>svg]:text-purple-600 [&>span]:text-gray-900">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-gray-200">
+                  <SelectItem value="tous" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Tous les statuts</SelectItem>
+                  <SelectItem value="actif" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Actifs</SelectItem>
+                  <SelectItem value="inactif" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Inactifs</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Table des membres */}
+            {paginatedMembres.length > 0 ? (
+              <>
+                <div className="rounded-md border border-gray-200">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-purple-200 hover:bg-purple-300 text-gray-900">
+                        <TableHead className="w-[60px]">Photo</TableHead>
+                        <TableHead>Nom</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Statut spirituel</TableHead>
+                        <TableHead>Date d'inscription</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedMembres.map((membre) => (
+                        <TableRow key={membre.id} className="hover:bg-gray-50">
+                          <TableCell>
+                            <Avatar className="w-10 h-10">
+                              <AvatarImage src={membre.avatar_url} alt={`${membre.first_name} ${membre.last_name}`} />
+                              <AvatarFallback className="bg-purple-100 text-purple-600">
+                                {membre.first_name?.charAt(0) || ''}{membre.last_name?.charAt(0) || ''}
+                              </AvatarFallback>
+                            </Avatar>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {membre.first_name} {membre.last_name}
+                          </TableCell>
+                          <TableCell className="text-gray-600">
+                            {membre.email || '-'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={membre.statut_spirituel === 'inactif' ? 'destructive' : 'default'}
+                              className={
+                                membre.statut_spirituel === 'inactif' 
+                                  ? 'bg-red-100 text-red-800' 
+                                  : 'bg-green-100 text-green-800'
+                              }
+                            >
+                              {membre.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-gray-600">
+                            {membre.created_at ? format(new Date(membre.created_at), 'dd/MM/yyyy', { locale: fr }) : '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-gray-600">
+                      Page {currentPage} sur {totalPages} ({filteredMembres.length} membre{filteredMembres.length > 1 ? 's' : ''})
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="bg-white border-gray-200 text-gray-900 hover:bg-gray-50"
+                      >
+                        Précédent
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className="bg-white border-gray-200 text-gray-900 hover:bg-gray-50"
+                      >
+                        Suivant
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-12">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">
+                  {searchTerm || statusFilter !== 'tous' 
+                    ? 'Aucun membre ne correspond à vos critères de recherche.'
+                    : 'Aucun membre dans cette famille pour le moment.'}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
