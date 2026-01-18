@@ -1410,8 +1410,7 @@ const PasteurDashboard = () => {
                 {filteredFamilles.map((item) => (
                   <div
                     key={item.superviseur.id}
-                    className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => setSelectedFamille(item)}
+                    className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-2">
@@ -1467,6 +1466,21 @@ const PasteurDashboard = () => {
                         <span>Objectif atteint</span>
                       </div>
                     )}
+
+                    {/* Bouton Voir détails */}
+                    <div className="mt-4 pt-3 border-t border-gray-200">
+                      <Button
+                        size="sm"
+                        className="w-full bg-purple-600 text-white hover:bg-blue-600 border-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFamille(item);
+                        }}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        Voir détails
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1575,7 +1589,8 @@ const PasteurDashboard = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               // Ouvrir le modal avec les détails de la famille
                               setSelectedFamille(item);
                             }}

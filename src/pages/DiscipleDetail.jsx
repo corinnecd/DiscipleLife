@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Mail, Phone, Calendar, MessageSquare, MapPin, Activity, X, Flame, Trash2, Loader2, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, Calendar, MessageSquare, MapPin, Activity, X, Flame, Trash2, Loader2, TrendingUp, Users, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -91,6 +91,8 @@ const DiscipleDetail = () => {
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState('');
+  const [disciplesSuivis, setDisciplesSuivis] = useState([]);
+  const [loadingDisciplesSuivis, setLoadingDisciplesSuivis] = useState(false);
 
   // Modal Form State
   const [prayerRequest, setPrayerRequest] = useState('');
@@ -99,6 +101,12 @@ const DiscipleDetail = () => {
   useEffect(() => {
     fetchDiscipleDetails();
   }, [id]);
+
+  useEffect(() => {
+    if (disciple && disciple.id) {
+      fetchDisciplesSuivis();
+    }
+  }, [disciple]);
 
   const fetchDiscipleDetails = async () => {
     // Validate UUID format to prevent DB errors
@@ -147,6 +155,60 @@ const DiscipleDetail = () => {
       navigate('/disciples');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDisciplesSuivis = async () => {
+    if (!disciple || !disciple.id || disciple.is_demo) return;
+
+    setLoadingDisciplesSuivis(true);
+    try {
+      // Récupérer tous les disciples qui ont ce disciple comme parent
+      const { data: disciplesData, error: disciplesError } = await supabase
+        .from('cercle_personnes')
+        .select('id, first_name, last_name, name, parent_disciple_id')
+        .eq('parent_disciple_id', disciple.id);
+
+      if (disciplesError) throw disciplesError;
+
+      if (!disciplesData || disciplesData.length === 0) {
+        setDisciplesSuivis([]);
+        return;
+      }
+
+      // Pour chaque disciple, compter combien de disciples ils suivent eux-mêmes
+      const disciplesIds = disciplesData.map(d => d.id);
+      const { data: sousDisciplesData, error: sousDisciplesError } = await supabase
+        .from('cercle_personnes')
+        .select('parent_disciple_id')
+        .in('parent_disciple_id', disciplesIds);
+
+      if (sousDisciplesError) throw sousDisciplesError;
+
+      // Créer un map pour compter les disciples suivis par chaque disciple
+      const disciplesSuivisMap = {};
+      if (sousDisciplesData) {
+        sousDisciplesData.forEach(sousDisciple => {
+          const parentId = sousDisciple.parent_disciple_id;
+          disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
+        });
+      }
+
+      // Enrichir les données avec le nombre de disciples suivis
+      const disciplesAvecCompte = disciplesData.map(discipleItem => ({
+        id: discipleItem.id,
+        first_name: discipleItem.first_name || '',
+        last_name: discipleItem.last_name || '',
+        name: discipleItem.name || `${discipleItem.first_name || ''} ${discipleItem.last_name || ''}`.trim(),
+        disciplesSuivis: disciplesSuivisMap[discipleItem.id] || 0
+      }));
+
+      setDisciplesSuivis(disciplesAvecCompte);
+    } catch (error) {
+      console.error('Erreur lors de la récupération des disciples suivis:', error);
+      setDisciplesSuivis([]);
+    } finally {
+      setLoadingDisciplesSuivis(false);
     }
   };
 
@@ -425,6 +487,64 @@ const DiscipleDetail = () => {
         </Card>
       </div>
 
+      {/* Liste des Disciples Suivis */}
+      <Card className="bg-white border-gray-200 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
+            <UserCheck className="h-5 w-5 text-purple-600" />
+            Liste des Disciples de {disciple.name || `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() || 'ce disciple'}
+            {disciplesSuivis.length > 0 && (
+              <span className="text-sm font-normal text-gray-500">
+                ({disciplesSuivis.length} disciple{disciplesSuivis.length > 1 ? 's' : ''})
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loadingDisciplesSuivis ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
+              <span className="ml-2 text-gray-600">Chargement...</span>
+            </div>
+          ) : disciplesSuivis.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+              <p>Aucun disciple suivi par ce disciple pour le moment.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Prénom Nom</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit lui-même</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {disciplesSuivis.map((discipleSuivi) => (
+                    <tr key={discipleSuivi.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td className="py-3 px-4 text-sm text-gray-900">
+                        {discipleSuivi.first_name} {discipleSuivi.last_name}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">
+                        {discipleSuivi.disciplesSuivis > 0 ? (
+                          <span className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-purple-600" />
+                            {discipleSuivi.disciplesSuivis} Disciple{discipleSuivi.disciplesSuivis > 1 ? 's' : ''}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Add Prayer Request Modal */}
       <AnimatePresence>
         {isPrayerModalOpen && (
@@ -442,15 +562,15 @@ const DiscipleDetail = () => {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
                     transition={{ type: "spring", duration: 0.5, bounce: 0.3 }}
-                    className="relative w-full max-w-md bg-[#1a0b2e] border border-white/10 rounded-2xl shadow-2xl z-10 p-6"
+                    className="relative w-full max-w-md bg-gray-100 border border-gray-200 rounded-2xl shadow-2xl z-10 p-6"
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-xl font-bold text-white">Ajouter une requête</h3>
+                        <h3 className="text-xl font-bold text-gray-900">Ajouter une requête</h3>
                         <Button 
                             variant="ghost" 
                             size="icon" 
-                            className="text-gray-400 hover:text-white"
+                            className="text-gray-600 hover:text-gray-900"
                             onClick={() => setIsPrayerModalOpen(false)}
                         >
                             <X size={20} />
@@ -459,35 +579,35 @@ const DiscipleDetail = () => {
 
                     <form onSubmit={handlePrayerSubmit} className="space-y-6">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-300">Je prie pour...</label>
-                            <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/10">
+                            <label className="text-sm font-medium text-gray-900">Je prie pour...</label>
+                            <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200">
                                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-sm font-bold text-white">
                                     {disciple.name.charAt(0).toUpperCase()}
                                 </div>
-                                <span className="text-white font-medium">{disciple.name}</span>
+                                <span className="text-gray-900 font-medium">{disciple.name}</span>
                             </div>
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-300">Décrivez votre requête...</label>
+                            <label className="text-sm font-medium text-gray-900">Décrivez votre requête...</label>
                             <Textarea 
                                 value={prayerRequest}
                                 onChange={(e) => setPrayerRequest(e.target.value)}
                                 placeholder="Entrez votre sujet de prière ici..." 
-                                className="bg-white/5 border-white/10 text-white min-h-[120px] resize-none focus:ring-teal-500"
+                                className="bg-white border-gray-300 text-gray-900 min-h-[120px] resize-none focus:ring-teal-500"
                                 required
                             />
                         </div>
 
-                        <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                        <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-xl">
                             <input 
                                 type="checkbox" 
                                 id="modal-urgent-toggle"
                                 checked={isUrgent}
                                 onChange={(e) => setIsUrgent(e.target.checked)}
-                                className="h-5 w-5 rounded border-red-500/50 bg-transparent text-red-500 focus:ring-red-500 focus:ring-offset-0"
+                                className="h-5 w-5 rounded border-red-500 bg-white text-red-500 focus:ring-red-500 focus:ring-offset-0"
                             />
-                            <label htmlFor="modal-urgent-toggle" className="text-sm font-medium text-red-200 flex items-center gap-2 cursor-pointer select-none flex-1">
+                            <label htmlFor="modal-urgent-toggle" className="text-sm font-medium text-red-700 flex items-center gap-2 cursor-pointer select-none flex-1">
                                 <Flame size={16} className="text-red-500 fill-red-500/20" /> Requête urgente !
                             </label>
                         </div>

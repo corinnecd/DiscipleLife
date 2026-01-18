@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from '@/components/ui/use-toast';
-import { Calendar as CalendarIcon, CheckCircle2, XCircle, Loader2, Save, Clock, Church, Users, CalendarCheck, ChevronRight, Moon, Target, Download, Search, BarChart3, TrendingUp, AlertCircle } from 'lucide-react';
+import { Calendar as CalendarIcon, CheckCircle2, XCircle, Loader2, Save, Clock, Church, Users, CalendarCheck, ChevronRight, Moon, Target, Download, Search, BarChart3, TrendingUp, AlertCircle, ArrowLeft } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths, eachMonthOfInterval } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -32,6 +33,7 @@ const TYPES = {
 const AttendanceTracking = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   // State
   const [loading, setLoading] = useState(true);
@@ -326,7 +328,17 @@ const AttendanceTracking = () => {
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">Suivi de Présence</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(-1)}
+              className="p-2 hover:bg-gray-100 text-gray-700 hover:text-gray-900"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h1 className="text-2xl font-bold text-gray-900">Suivi de Présence</h1>
+          </div>
           <p className="text-gray-600">Sélectionnez une activité pour enregistrer votre présence.</p>
         </div>
         <div className="flex gap-2">

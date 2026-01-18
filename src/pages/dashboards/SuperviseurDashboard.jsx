@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
   Church, ChevronRight, Loader2, UserCircle, Eye, ArrowLeft, Camera, Sparkles, Zap, Trophy, Star, AlertCircle, Clock,
-  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, CheckCircle2, PlayCircle, GraduationCap
+  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, CheckCircle2, PlayCircle, GraduationCap, Download, FileText, History
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getWeek, getQuarter, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfMonth, endOfMonth, format } from 'date-fns';
@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -28,6 +29,7 @@ import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
 import { compressImage } from '@/lib/ImageCompression';
 import { useToast } from '@/components/ui/use-toast';
+import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { 
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
@@ -67,6 +69,9 @@ const SuperviseurDashboard = () => {
 
   // État pour les données des graphiques d'évolution
   const [chartData, setChartData] = useState([]);
+  const [exporting, setExporting] = useState(false);
+  const [rapports, setRapports] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [kpiData, setKpiData] = useState({
     culteSamediSoir: 0,
     culteDimancheMatin: 0,
@@ -92,6 +97,9 @@ const SuperviseurDashboard = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [showAllMembres, setShowAllMembres] = useState(false);
+
+  // État pour la liste des superviseurs de la famille
+  const [superviseursFamille, setSuperviseursFamille] = useState([]);
 
   useEffect(() => {
     if (user) {
@@ -347,12 +355,67 @@ const SuperviseurDashboard = () => {
 
         // Générer les données pour les graphiques d'évolution (tous les rapports soumis)
         await generateChartData(rapportsData || []);
+        
+        // Stocker les rapports pour l'historique
+        setRapports(rapportsData || []);
+      }
+
+      // 6. Récupérer les autres superviseurs de la famille (même pasteur_id)
+      if (superviseurData?.pasteur_id) {
+        const { data: superviseursData, error: superviseursError } = await supabase
+          .from('profils')
+          .select('id, first_name, last_name, email, avatar_url, titre')
+          .eq('pasteur_id', superviseurData.pasteur_id)
+          .eq('role', 'superviseur')
+          .neq('id', user.id) // Exclure le superviseur actuel
+          .order('first_name', { ascending: true });
+
+        if (!superviseursError && superviseursData) {
+          setSuperviseursFamille(superviseursData || []);
+        }
       }
 
     } catch (error) {
       console.error('Erreur lors du chargement des données superviseur:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fonction pour exporter en PDF
+  const handleExportPDF = async () => {
+    setExporting(true);
+    try {
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      const filename = `dashboard_superviseur_${timestamp}.pdf`;
+      await exportElementToPDF('superviseur-dashboard-content', filename);
+    } catch (error) {
+      console.error('Erreur lors de l\'export PDF:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Fonction pour exporter en Excel (CSV)
+  const handleExportExcel = () => {
+    try {
+      // Préparer les données pour l'export
+      const exportData = membres.map(membre => ({
+        'Nom': `${membre.first_name} ${membre.last_name}`,
+        'Email': membre.email || '',
+        'Statut spirituel': membre.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
+        'Date d\'inscription': membre.created_at ? format(new Date(membre.created_at), 'dd/MM/yyyy', { locale: fr }) : '-'
+      }));
+
+      if (exportData.length === 0) {
+        return;
+      }
+
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      const filename = `dashboard_superviseur_${timestamp}`;
+      exportToExcel(exportData, filename);
+    } catch (error) {
+      console.error('Erreur lors de l\'export Excel:', error);
     }
   };
 
@@ -588,7 +651,7 @@ const SuperviseurDashboard = () => {
         <title>Tableau de bord Superviseur - DiscipleLife</title>
       </Helmet>
       
-      <div className="space-y-6 p-6 bg-gray-50 min-h-screen">
+      <div id="superviseur-dashboard-content" className="space-y-6 p-6 bg-gray-50 min-h-screen">
         {/* Bouton retour */}
         <Button
           variant="ghost"
@@ -652,6 +715,28 @@ const SuperviseurDashboard = () => {
                 <p className="text-lg text-white/90 leading-relaxed">
                   Un espace de partage, de soutien et de croissance spirituelle, où chacun est accompagné dans sa marche avec Dieu afin de devenir de véritables disciples de Christ.
                 </p>
+              </div>
+              {/* Boutons d'export */}
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleExportPDF}
+                  disabled={exporting}
+                  className="bg-white/20 hover:bg-white/30 text-white border border-white/30"
+                >
+                  {exporting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {exporting ? 'Export...' : 'PDF'}
+                </Button>
+                <Button
+                  onClick={handleExportExcel}
+                  className="bg-white/20 hover:bg-white/30 text-white border border-white/30"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Excel
+                </Button>
               </div>
               {/* Icône/Personnage représentant la famille - Positionnée à droite et en bas */}
               <div className="flex-shrink-0 self-end mt-8 md:mt-12 mr-4 md:mr-8">
@@ -870,6 +955,49 @@ const SuperviseurDashboard = () => {
           </Card>
         </div>
 
+        {/* Liste des superviseurs de la famille */}
+        {superviseursFamille.length > 0 && (
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-gray-900">
+                <Users className="h-5 w-5 text-purple-600" />
+                Superviseurs de la famille
+              </CardTitle>
+              <CardDescription className="text-gray-600">
+                Autres superviseurs sous la même tutelle pastorale
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {superviseursFamille.map((superviseur) => (
+                  <div
+                    key={superviseur.id}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-purple-300 transition-colors"
+                  >
+                    <Avatar className="h-10 w-10 border border-gray-200">
+                      <AvatarImage src={superviseur.avatar_url} alt={`${superviseur.first_name} ${superviseur.last_name}`} />
+                      <AvatarFallback className="bg-purple-100 text-purple-600 text-sm">
+                        {superviseur.first_name?.charAt(0) || ''}{superviseur.last_name?.charAt(0) || ''}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm truncate">
+                        {superviseur.first_name} {superviseur.last_name}
+                      </p>
+                      {superviseur.titre && (
+                        <p className="text-xs text-gray-500">{superviseur.titre}</p>
+                      )}
+                      {superviseur.email && (
+                        <p className="text-xs text-gray-600 truncate">{superviseur.email}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Statistiques rapides */}
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="bg-white border-gray-200 shadow-sm">
@@ -951,6 +1079,14 @@ const SuperviseurDashboard = () => {
               >
                 <TrendingUp className="h-4 w-4 mr-2 text-purple-600 group-hover:text-white transition-colors" />
                 Statistiques
+              </Button>
+              <Button
+                variant="outline"
+                className="group justify-start bg-white border-gray-200 hover:bg-amber-500 hover:border-amber-500 text-gray-900 hover:text-white transition-colors"
+                onClick={() => setShowHistory(true)}
+              >
+                <History className="h-4 w-4 mr-2 text-purple-600 group-hover:text-white transition-colors" />
+                Voir l'historique
               </Button>
             </div>
           </CardContent>
@@ -1473,6 +1609,79 @@ const SuperviseurDashboard = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Modal Historique des rapports */}
+        <Dialog open={showHistory} onOpenChange={setShowHistory}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 border-gray-200">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="h-5 w-5 text-purple-600" />
+                Historique des rapports
+              </DialogTitle>
+              <DialogDescription>
+                Consultez vos rapports précédents
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 mt-4">
+              {rapports.length === 0 ? (
+                <p className="text-center text-gray-600 py-8">Aucun rapport envoyé pour le moment.</p>
+              ) : (
+                <div className="space-y-3">
+                  {rapports.slice(0, 10).map((report) => {
+                    const stats = report.statistics_snapshot || {};
+                    const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+                    const reportPeriod = report.report_type === 'hebdomadaire' 
+                      ? `Semaine ${report.week_number} ${report.year}`
+                      : report.report_type === 'trimestriel'
+                      ? `Trimestre ${report.quarter} ${report.year}`
+                      : report.report_type === 'annuel'
+                      ? `Année ${report.year}`
+                      : `${months[report.month]} ${report.year}`;
+                    
+                    return (
+                      <Card key={report.id} className="bg-white border-gray-200 shadow-sm">
+                        <CardContent className="pt-4">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge variant={report.status === 'submitted' ? 'default' : 'secondary'} className="bg-purple-100 text-purple-800">
+                                  {report.report_type}
+                                </Badge>
+                                <span className="text-sm text-gray-600">{reportPeriod}</span>
+                                <span className="text-xs text-gray-500">
+                                  {format(new Date(report.created_at), "dd/MM/yyyy à HH:mm", { locale: fr })}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-sm mt-2">
+                                <p><span className="text-gray-600">Disciples:</span> <span className="font-bold text-purple-600">{stats.disciples || 0}</span></p>
+                                <p><span className="text-gray-600">Présences:</span> <span className="font-bold text-blue-600">{stats.sunday_attendance_count || 0}</span></p>
+                                <p><span className="text-gray-600">Évangélisations:</span> <span className="font-bold text-orange-600">{stats.evangelization || 0}</span></p>
+                              </div>
+                              {report.content && (
+                                <p className="text-sm text-gray-600 mt-2 line-clamp-2">{report.content}</p>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowHistory(false)}
+                className="bg-white border-gray-200 text-gray-900 hover:bg-gray-50"
+              >
+                Fermer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </>
   );

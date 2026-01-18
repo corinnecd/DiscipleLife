@@ -8,11 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft } from 'lucide-react';
+import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft, Mail, Calendar, Building2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
 import { getInitials } from '@/lib/utils';
 import { compressImage } from '@/lib/ImageCompression';
@@ -39,10 +41,14 @@ const FamillesDisciples = () => {
     superviseur_id: '',
   });
   const [deleteLoadingId, setDeleteLoadingId] = useState(null);
+  const [superviseursFamille, setSuperviseursFamille] = useState([]);
+  const [membresFamille, setMembresFamille] = useState([]);
 
   useEffect(() => {
     if (user) {
       fetchFamilles();
+      fetchSuperviseursFamille();
+      fetchMembresFamille();
     }
   }, [user, role]);
 
@@ -214,6 +220,186 @@ const FamillesDisciples = () => {
     if (progression >= 80) return 'text-green-600';
     if (progression >= 50) return 'text-yellow-600';
     return 'text-red-600';
+  };
+
+  const fetchSuperviseursFamille = async () => {
+    // Récupérer les autres superviseurs de la famille (même pasteur_id) si l'utilisateur est superviseur
+    if (!hasSuperviseurView || !user) return;
+
+    try {
+      // Récupérer le pasteur_id du superviseur connecté
+      const { data: superviseurData, error: superviseurError } = await supabase
+        .from('profils')
+        .select('pasteur_id')
+        .eq('id', user.id)
+        .single();
+
+      if (superviseurError || !superviseurData?.pasteur_id) {
+        return;
+      }
+
+      // Récupérer les autres superviseurs avec le même pasteur_id
+      const { data: superviseursData, error: superviseursError } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, email, avatar_url, titre')
+        .eq('pasteur_id', superviseurData.pasteur_id)
+        .eq('role', 'superviseur')
+        .neq('id', user.id) // Exclure le superviseur actuel
+        .order('first_name', { ascending: true });
+
+      if (!superviseursError && superviseursData) {
+        setSuperviseursFamille(superviseursData || []);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération des superviseurs de la famille:', error);
+    }
+  };
+
+  const fetchMembresFamille = async () => {
+    // Récupérer tous les membres de la famille si l'utilisateur est superviseur
+    if (!hasSuperviseurView || !user) return;
+
+    try {
+      // 1. Récupérer la famille du superviseur
+      const { data: familleData, error: familleError } = await supabase
+        .from('familles_disciples')
+        .select('id, superviseur_id')
+        .eq('superviseur_id', user.id)
+        .maybeSingle();
+
+      if (familleError || !familleData) {
+        return;
+      }
+
+      const familleId = familleData.id;
+      const superviseurId = familleData.superviseur_id;
+
+      // 2. Récupérer le superviseur
+      const { data: superviseurData, error: superviseurError } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, role, titre')
+        .eq('id', superviseurId)
+        .single();
+
+      const membres = [];
+
+      // 3. Ajouter le superviseur (sera mis à jour avec le nombre de disciples directs plus tard)
+      if (superviseurData) {
+        membres.push({
+          id: superviseurData.id,
+          first_name: superviseurData.first_name,
+          last_name: superviseurData.last_name,
+          titre: 'Superviseur',
+          affiliation: null,
+          type: 'superviseur',
+          disciplesSuivis: 0 // Sera mis à jour après récupération des disciples
+        });
+      }
+
+      // 4. Récupérer les membres de la famille depuis profils
+      const { data: profilsData, error: profilsError } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, role, titre, famille_id')
+        .eq('famille_id', familleId);
+
+      if (!profilsError && profilsData) {
+        profilsData.forEach(profil => {
+          // Ne pas ajouter le superviseur deux fois
+          if (profil.id === superviseurId) return;
+
+          let titre = 'Disciple';
+          if (profil.role === 'mentor') titre = 'Mentor';
+          else if (profil.role === 'disciple_pillier') titre = 'Disciple Pillier';
+          else if (profil.role === 'tutore') titre = 'Tutoré';
+          else if (profil.titre) titre = profil.titre;
+
+          membres.push({
+            id: profil.id,
+            first_name: profil.first_name,
+            last_name: profil.last_name,
+            titre: titre,
+            affiliation: superviseurData ? `${superviseurData.first_name} ${superviseurData.last_name}` : null,
+            type: 'profil',
+            disciplesSuivis: 0 // Pour les membres de profils, on ne compte pas pour l'instant
+          });
+        });
+      }
+
+      // 5. Récupérer les disciples depuis cercle_personnes (liés au superviseur)
+      const { data: disciplesData, error: disciplesError } = await supabase
+        .from('cercle_personnes')
+        .select('id, first_name, last_name, parent_disciple_id, user_id')
+        .eq('user_id', superviseurId);
+
+      if (!disciplesError && disciplesData) {
+        // Récupérer les infos des parents pour l'affiliation
+        const parentIds = disciplesData
+          .map(d => d.parent_disciple_id)
+          .filter(id => id !== null);
+
+        let parentsMap = {};
+        if (parentIds.length > 0) {
+          const { data: parentsData } = await supabase
+            .from('cercle_personnes')
+            .select('id, first_name, last_name')
+            .in('id', parentIds);
+
+          if (parentsData) {
+            parentsData.forEach(parent => {
+              parentsMap[parent.id] = `${parent.first_name || ''} ${parent.last_name || ''}`.trim();
+            });
+          }
+        }
+
+        // Compter combien de disciples suit chaque membre (pour la colonne "Suit lui-même")
+        const disciplesSuivisMap = {};
+        disciplesData.forEach(disciple => {
+          if (disciple.parent_disciple_id) {
+            disciplesSuivisMap[disciple.parent_disciple_id] = (disciplesSuivisMap[disciple.parent_disciple_id] || 0) + 1;
+          }
+        });
+
+        // Pour le superviseur, compter tous les disciples directs
+        const disciplesDirects = disciplesData.filter(d => !d.parent_disciple_id).length;
+        if (superviseurData) {
+          const membreSuperviseur = membres.find(m => m.id === superviseurData.id);
+          if (membreSuperviseur) {
+            membreSuperviseur.disciplesSuivis = disciplesDirects;
+          }
+        }
+
+        disciplesData.forEach(disciple => {
+          const isDirect = !disciple.parent_disciple_id;
+          let affiliation = null;
+          
+          if (disciple.parent_disciple_id) {
+            // Disciple indirect - affiliation avec le parent disciple
+            affiliation = parentsMap[disciple.parent_disciple_id] || 'Discipline indirect';
+          } else {
+            // Disciple direct - affiliation avec le superviseur de la famille
+            if (superviseurData) {
+              const nomSuperviseur = `${superviseurData.first_name || ''} ${superviseurData.last_name || ''}`.trim();
+              affiliation = nomSuperviseur || null;
+            }
+          }
+
+          membres.push({
+            id: disciple.id,
+            first_name: disciple.first_name,
+            last_name: disciple.last_name,
+            titre: 'Disciple',
+            affiliation: affiliation,
+            type: isDirect ? 'disciple_direct' : 'disciple_indirect',
+            isDirect: isDirect,
+            disciplesSuivis: disciplesSuivisMap[disciple.id] || 0
+          });
+        });
+      }
+
+      setMembresFamille(membres);
+    } catch (error) {
+      console.error('Erreur lors de la récupération des membres de la famille:', error);
+    }
   };
 
   const openCreateDialog = async () => {
@@ -459,8 +645,7 @@ const FamillesDisciples = () => {
             return (
               <Card 
                 key={famille.id} 
-                className="bg-white border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => setSelectedFamille(famille)}
+                className="bg-white border-gray-200 hover:shadow-lg transition-shadow"
               >
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -721,6 +906,293 @@ const FamillesDisciples = () => {
             </form>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Dialog détails de la famille */}
+      <Dialog open={selectedFamille !== null} onOpenChange={(open) => !open && setSelectedFamille(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-gray-100">
+          {selectedFamille && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold text-black flex items-center gap-3">
+                  <Building2 className="h-6 w-6 text-purple-600" />
+                  {selectedFamille.nom || 'Famille sans nom'}
+                </DialogTitle>
+                <DialogDescription className="text-blue-600 font-bold">
+                  {selectedFamille.identifiant_famille || 'N/A'}
+                  {(selectedFamille.statut || selectedFamille.created_at) && (
+                    <span className="flex items-center gap-3 mt-2 flex-wrap">
+                      {selectedFamille.statut && (
+                        <Badge variant={selectedFamille.statut === 'actif' ? 'default' : 'secondary'} className={selectedFamille.statut === 'actif' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
+                          {selectedFamille.statut === 'actif' ? 'Actif' : 'Inactif'}
+                        </Badge>
+                      )}
+                      {selectedFamille.created_at && (
+                        <span className="text-xs text-black flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          Créée le {format(new Date(selectedFamille.created_at), 'd MMMM yyyy', { locale: fr })}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6 py-4">
+                {/* Informations du superviseur */}
+                {selectedFamille.superviseur && (
+                  <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <Users className="h-5 w-5 text-purple-600" />
+                        Superviseur
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-start gap-4 flex-wrap">
+                        <div className="w-12 h-12 rounded-full bg-purple-200 flex items-center justify-center overflow-hidden shrink-0">
+                          {selectedFamille.superviseur.avatar_url ? (
+                            <img src={selectedFamille.superviseur.avatar_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-lg font-semibold text-purple-600">
+                              {(selectedFamille.superviseur.first_name || '')[0]}{(selectedFamille.superviseur.last_name || '')[0]}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 text-lg">
+                            {selectedFamille.superviseur.first_name} {selectedFamille.superviseur.last_name}
+                          </p>
+                          {selectedFamille.superviseur.email && (
+                            <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
+                              <Mail className="h-4 w-4 shrink-0" />
+                              {selectedFamille.superviseur.email}
+                            </p>
+                          )}
+                          {selectedFamille.superviseur.email && (
+                            <a
+                              href={`mailto:${selectedFamille.superviseur.email}`}
+                              className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-purple-600 hover:text-purple-700 hover:underline"
+                            >
+                              <Mail className="h-4 w-4" />
+                              Contacter
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Statistiques de progression */}
+                <Card className="bg-white border-gray-200">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-semibold text-gray-900">Progression</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="text-center p-4 bg-blue-50 rounded-lg">
+                        <div className="text-3xl font-bold text-blue-600">
+                          {selectedFamille.nombre_disciples_actuels || 0}
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">Membres actuels</div>
+                      </div>
+                      <div className="text-center p-4 bg-purple-50 rounded-lg">
+                        <div className="text-3xl font-bold text-purple-600">
+                          {selectedFamille.objectif_disciples || 70}
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">Objectif</div>
+                      </div>
+                      <div className="text-center p-4 bg-green-50 rounded-lg">
+                        <div className="text-3xl font-bold text-green-600">
+                          {calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70)}%
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">Progression</div>
+                      </div>
+                    </div>
+
+                    {/* Barre de progression */}
+                    <div className="mt-6">
+                      <div className="flex justify-between text-xs text-gray-600 mb-1">
+                        <span>Progression</span>
+                        <span className="font-medium">{calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div
+                          className={`h-3 rounded-full ${
+                            calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70) >= 100
+                              ? 'bg-green-500'
+                              : calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70) >= 50
+                              ? 'bg-purple-600'
+                              : 'bg-amber-500'
+                          }`}
+                          style={{ width: `${Math.min(calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70), 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between mt-2 text-xs text-gray-600">
+                        <span>{selectedFamille.nombre_disciples_actuels || 0} / {selectedFamille.objectif_disciples || 70}</span>
+                        <Target className="w-4 h-4" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setSelectedFamille(null)}
+                  className="bg-white border-gray-200 text-gray-900 hover:bg-blue-600 hover:text-white"
+                >
+                  Fermer
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Liste des superviseurs de la famille */}
+      {superviseursFamille.length > 0 && (
+        <Card className="bg-white border-gray-200 shadow-sm mt-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-gray-900">
+              <Users className="h-5 w-5 text-purple-600" />
+              Superviseurs de la famille
+            </CardTitle>
+            <CardDescription className="text-gray-600">
+              Autres superviseurs sous la même tutelle pastorale
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {superviseursFamille.map((superviseur) => (
+                <div
+                  key={superviseur.id}
+                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-purple-300 transition-colors"
+                >
+                  <Avatar className="h-10 w-10 border border-gray-200">
+                    <AvatarImage src={superviseur.avatar_url} alt={`${superviseur.first_name} ${superviseur.last_name}`} />
+                    <AvatarFallback className="bg-purple-100 text-purple-600 text-sm">
+                      {superviseur.first_name?.charAt(0) || ''}{superviseur.last_name?.charAt(0) || ''}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm truncate">
+                      {superviseur.first_name} {superviseur.last_name}
+                    </p>
+                    {superviseur.titre && (
+                      <p className="text-xs text-gray-500">{superviseur.titre}</p>
+                    )}
+                    {superviseur.email && (
+                      <p className="text-xs text-gray-600 truncate">{superviseur.email}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Liste des membres de la famille */}
+      {membresFamille.length > 0 && (
+        <Card className="bg-white border-gray-200 shadow-sm mt-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-gray-900">
+              <Users className="h-5 w-5 text-purple-600" />
+              Membres de la famille
+            </CardTitle>
+            <CardDescription className="text-gray-600">
+              Liste complète des membres avec leurs suivis
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-8">
+            {/* Section Disciples Directs */}
+            {membresFamille.filter(m => m.isDirect || m.type === 'disciple_direct').length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <UserCheck className="h-5 w-5 text-purple-600" />
+                  Disciples Directs ({membresFamille.filter(m => m.isDirect || m.type === 'disciple_direct').length})
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Prénom Nom</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Titre</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Est suivi par</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit lui-même</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {membresFamille
+                        .filter(m => m.isDirect || m.type === 'disciple_direct')
+                        .map((membre) => (
+                          <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                            <td className="py-3 px-4 text-sm text-gray-900">
+                              {membre.first_name} {membre.last_name}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">
+                              {membre.titre}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">
+                              {membre.affiliation || '-'}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">
+                              {membre.disciplesSuivis > 0 ? `${membre.disciplesSuivis} Disciple${membre.disciplesSuivis > 1 ? 's' : ''}` : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Section Autres Membres */}
+            {membresFamille.filter(m => !m.isDirect && m.type !== 'disciple_direct').length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Users className="h-5 w-5 text-purple-600" />
+                  Autres Membres de la Famille ({membresFamille.filter(m => !m.isDirect && m.type !== 'disciple_direct').length})
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Prénom Nom</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Titre</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Est suivi par</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit lui-même</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {membresFamille
+                        .filter(m => !m.isDirect && m.type !== 'disciple_direct')
+                        .map((membre) => (
+                          <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                            <td className="py-3 px-4 text-sm text-gray-900">
+                              {membre.first_name} {membre.last_name}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">
+                              {membre.titre}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">
+                              {membre.affiliation || '-'}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">
+                              {membre.disciplesSuivis > 0 ? `${membre.disciplesSuivis} Disciple${membre.disciplesSuivis > 1 ? 's' : ''}` : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </>
   );
