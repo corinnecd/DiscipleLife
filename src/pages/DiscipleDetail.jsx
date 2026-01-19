@@ -364,9 +364,9 @@ const DiscipleDetail = () => {
       <Button 
         variant="ghost" 
         className="text-gray-400 hover:text-white pl-0 gap-2"
-        onClick={() => navigate('/disciples')}
+        onClick={() => navigate(-1)}
       >
-        <ArrowLeft size={18} /> Retour à la liste
+        <ArrowLeft size={18} /> Retour
       </Button>
 
       {/* Header Profile */}

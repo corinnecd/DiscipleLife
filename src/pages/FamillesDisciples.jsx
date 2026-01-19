@@ -12,7 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft, Mail, Calendar, Building2 } from 'lucide-react';
+import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
+import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft, Mail, Calendar, Building2, Search, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
@@ -43,8 +44,16 @@ const FamillesDisciples = () => {
   });
   const [deleteLoadingId, setDeleteLoadingId] = useState(null);
   const [superviseursFamille, setSuperviseursFamille] = useState([]);
+  const [nombreMembresParSuperviseur, setNombreMembresParSuperviseur] = useState({}); // { superviseurId: nombreMembres }
   const [membresFamille, setMembresFamille] = useState([]);
   const [nombreMembresReel, setNombreMembresReel] = useState(0);
+  const [membresDisciplesCount, setMembresDisciplesCount] = useState({}); // { memberId: nombreDeDisciples }
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState(''); // Filtre par date d'inscription
+  const [progressionFilter, setProgressionFilter] = useState('tous'); // tous, avec, sans
+  const [selectedMembreForDisciples, setSelectedMembreForDisciples] = useState(null);
+  const [disciplesList, setDisciplesList] = useState([]);
+  const [loadingDisciplesList, setLoadingDisciplesList] = useState(false);
 
   // Calculer le nombre réel de membres quand une famille est sélectionnée
   useEffect(() => {
@@ -322,7 +331,7 @@ const FamillesDisciples = () => {
       // Récupérer les autres superviseurs avec le même pasteur_id
       const { data: superviseursData, error: superviseursError } = await supabase
         .from('profils')
-        .select('id, first_name, last_name, email, avatar_url, titre')
+        .select('id, first_name, last_name, email, avatar_url')
         .eq('pasteur_id', superviseurData.pasteur_id)
         .eq('role', 'superviseur')
         .neq('id', user.id) // Exclure le superviseur actuel
@@ -330,6 +339,50 @@ const FamillesDisciples = () => {
 
       if (!superviseursError && superviseursData) {
         setSuperviseursFamille(superviseursData || []);
+        
+        // Pour chaque superviseur, récupérer le nombre de membres de sa famille
+        const membresCountMap = {};
+        if (superviseursData.length > 0) {
+          const membresPromises = superviseursData.map(async (superviseur) => {
+            try {
+              // Récupérer la famille du superviseur
+              const { data: familleSuperviseur, error: familleError } = await supabase
+                .from('familles_disciples')
+                .select('id')
+                .eq('superviseur_id', superviseur.id)
+                .maybeSingle();
+
+              if (familleError || !familleSuperviseur) {
+                return { superviseurId: superviseur.id, count: 0 };
+              }
+
+              // Compter les membres depuis profils
+              const { count: membresProfils } = await supabase
+                .from('profils')
+                .select('id', { count: 'exact', head: true })
+                .eq('famille_id', familleSuperviseur.id);
+
+              // Compter les membres depuis cercle_personnes
+              const { count: membresCercle } = await supabase
+                .from('cercle_personnes')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', superviseur.id);
+
+              const totalMembres = (membresProfils || 0) + (membresCercle || 0);
+              return { superviseurId: superviseur.id, count: totalMembres };
+            } catch (error) {
+              console.error(`Erreur calcul membres pour superviseur ${superviseur.id}:`, error);
+              return { superviseurId: superviseur.id, count: 0 };
+            }
+          });
+
+          const countResults = await Promise.all(membresPromises);
+          countResults.forEach(({ superviseurId, count }) => {
+            membresCountMap[superviseurId] = count;
+          });
+        }
+        
+        setNombreMembresParSuperviseur(membresCountMap);
       }
     } catch (error) {
       console.error('Erreur lors de la récupération des superviseurs de la famille:', error);
@@ -361,7 +414,7 @@ const FamillesDisciples = () => {
       // D'abord essayer depuis profils
       const { data: superviseurFromProfils, error: superviseurError } = await supabase
         .from('profils')
-        .select('id, first_name, last_name, role, titre')
+        .select('id, first_name, last_name, role')
         .eq('id', superviseurId)
         .maybeSingle();
 
@@ -433,7 +486,7 @@ const FamillesDisciples = () => {
       // 4. Récupérer les membres de la famille depuis profils
       const { data: profilsData, error: profilsError } = await supabase
         .from('profils')
-        .select('id, first_name, last_name, role, titre, famille_id, date_entree_famille')
+        .select('id, first_name, last_name, role, famille_id, date_entree_famille')
         .eq('famille_id', familleId);
 
       if (!profilsError && profilsData) {
@@ -605,8 +658,145 @@ const FamillesDisciples = () => {
       }
 
       setMembresFamille(membres);
+      
+      // Récupérer le nombre de disciples suivis par chaque membre
+      const disciplesCountMap = {};
+      for (const membre of membres) {
+        // Compter les disciples dans cercle_personnes où user_id = membre.id
+        const { count: disciplesCount } = await supabase
+          .from('cercle_personnes')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', membre.id);
+        
+        disciplesCountMap[membre.id] = disciplesCount || 0;
+      }
+      setMembresDisciplesCount(disciplesCountMap);
     } catch (error) {
       console.error('Erreur lors de la récupération des membres de la famille:', error);
+    }
+  };
+
+  // Fonction pour récupérer les disciples d'un membre (même logique que DiscipleDetail.jsx)
+  const fetchDisciplesOfMembre = async (membreId, membreName) => {
+    if (!membreId) return;
+
+    setLoadingDisciplesList(true);
+    setSelectedMembreForDisciples({ id: membreId, name: membreName });
+    
+    try {
+      // Récupérer tous les disciples qui ont ce membre comme user_id (mentor/superviseur)
+      const { data: disciplesData, error: disciplesError } = await supabase
+        .from('cercle_personnes')
+        .select('id, first_name, last_name, name, email, avatar_url, circle_type, created_at, parent_disciple_id')
+        .eq('user_id', membreId)
+        .order('created_at', { ascending: false });
+
+      if (disciplesError) throw disciplesError;
+
+      if (!disciplesData || disciplesData.length === 0) {
+        setDisciplesList([]);
+        return;
+      }
+
+      // Pour chaque disciple, compter combien de disciples ils suivent eux-mêmes
+      const disciplesIds = disciplesData.map(d => d.id);
+      const { data: sousDisciplesData, error: sousDisciplesError } = await supabase
+        .from('cercle_personnes')
+        .select('parent_disciple_id')
+        .in('parent_disciple_id', disciplesIds);
+
+      if (sousDisciplesError) throw sousDisciplesError;
+
+      // Créer un map pour compter les disciples suivis par chaque disciple
+      const disciplesSuivisMap = {};
+      if (sousDisciplesData) {
+        sousDisciplesData.forEach(sousDisciple => {
+          const parentId = sousDisciple.parent_disciple_id;
+          disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
+        });
+      }
+
+      // Enrichir les données avec le nombre de disciples suivis
+      const disciplesAvecCompte = disciplesData.map(discipleItem => ({
+        id: discipleItem.id,
+        first_name: discipleItem.first_name || '',
+        last_name: discipleItem.last_name || '',
+        name: discipleItem.name || `${discipleItem.first_name || ''} ${discipleItem.last_name || ''}`.trim(),
+        email: discipleItem.email || null,
+        avatar_url: discipleItem.avatar_url || null,
+        circle_type: discipleItem.circle_type || null,
+        created_at: discipleItem.created_at || null,
+        disciplesSuivis: disciplesSuivisMap[discipleItem.id] || 0
+      }));
+
+      setDisciplesList(disciplesAvecCompte);
+    } catch (error) {
+      console.error('Erreur lors de la récupération des disciples suivis:', error);
+      setDisciplesList([]);
+    } finally {
+      setLoadingDisciplesList(false);
+    }
+  };
+
+  // Fonction d'export pour la liste des disciples
+  const handleExportDisciplesList = async (format) => {
+    if (!selectedMembreForDisciples || disciplesList.length === 0) return;
+    
+    try {
+      const exportData = disciplesList.map(disciple => ({
+        'Prénom': disciple.first_name || '',
+        'Nom': disciple.last_name || '',
+        'Email': disciple.email || '',
+        'Type de cercle': disciple.circle_type || '',
+        'Disciples suivis': disciple.disciplesSuivis || 0,
+        'Date d\'ajout': disciple.created_at ? format(new Date(disciple.created_at), 'dd/MM/yyyy', { locale: fr }) : ''
+      }));
+
+      const filename = `disciples_${selectedMembreForDisciples.name.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
+      
+      if (format === 'pdf') {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = `
+          <h2>Disciples de ${selectedMembreForDisciples.name}</h2>
+          <p>Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p>
+          <p>Total: ${disciplesList.length} disciple(s)</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Prénom</th><th>Nom</th><th>Email</th><th>Type</th><th>Disciples suivis</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${disciplesList.map(d => `
+                <tr>
+                  <td>${d.first_name || ''}</td>
+                  <td>${d.last_name || ''}</td>
+                  <td>${d.email || ''}</td>
+                  <td>${d.circle_type || ''}</td>
+                  <td>${d.disciplesSuivis || 0}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+        document.body.appendChild(tempDiv);
+        await exportElementToPDF(tempDiv, filename);
+        document.body.removeChild(tempDiv);
+      } else {
+        exportToExcel(exportData, filename);
+      }
+      
+      toast({
+        title: 'Export réussi',
+        description: `La liste des disciples a été exportée en ${format.toUpperCase()}`,
+      });
+    } catch (error) {
+      console.error('Erreur export:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible d\'exporter la liste',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -1274,7 +1464,7 @@ const FamillesDisciples = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-gray-900">
               <Users className="h-5 w-5 text-purple-600" />
-              Superviseurs de la famille
+              Autres Superviseurs de la famille
             </CardTitle>
             <CardDescription className="text-gray-600">
               Autres superviseurs sous la même tutelle pastorale
@@ -1303,6 +1493,14 @@ const FamillesDisciples = () => {
                     {superviseur.email && (
                       <p className="text-xs text-gray-600 truncate">{superviseur.email}</p>
                     )}
+                    {nombreMembresParSuperviseur[superviseur.id] !== undefined && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <Users className="h-3 w-3 text-purple-600" />
+                        <span className="text-xs font-semibold text-purple-600">
+                          {nombreMembresParSuperviseur[superviseur.id] || 0} membre{nombreMembresParSuperviseur[superviseur.id] !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1324,12 +1522,141 @@ const FamillesDisciples = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-8">
+            {/* Barre de recherche et filtres */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Search className="h-5 w-5 text-purple-600" />
+                <h3 className="text-sm font-semibold text-gray-900">Recherche et Filtres</h3>
+              </div>
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 z-10" />
+                    <Input
+                      placeholder="Rechercher par prénom, nom, nombre de disciples... (ex: >=5, <=10, >3, <2)"
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                      }}
+                      className="w-full pl-10 pr-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-500 focus:border-purple-500 focus:ring-purple-500"
+                    />
+                    {searchTerm && (
+                      <button
+                        onClick={() => {
+                          setSearchTerm('');
+                        }}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 hover:text-red-700 transition-colors"
+                        type="button"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <Label className="text-xs text-gray-600 mb-1 block">Date d'entrée dans la famille</Label>
+                    <Input
+                      type="date"
+                      value={dateFilter}
+                      onChange={(e) => {
+                        setDateFilter(e.target.value);
+                      }}
+                      className="w-full bg-white border-gray-300 text-gray-900"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Fonction de filtrage et tri */}
+            {(() => {
+              // Fonction helper pour détecter et appliquer les opérateurs de comparaison
+              const checkNombreDisciples = (searchTerm, nombreDisciples) => {
+                const trimmed = searchTerm.trim();
+                
+                // Détecter >= ou ≥
+                if (trimmed.startsWith('>=') || trimmed.startsWith('≥')) {
+                  const num = parseInt(trimmed.substring(2).trim());
+                  if (!isNaN(num)) {
+                    return nombreDisciples >= num;
+                  }
+                }
+                
+                // Détecter <= ou ≤
+                if (trimmed.startsWith('<=') || trimmed.startsWith('≤')) {
+                  const num = parseInt(trimmed.substring(2).trim());
+                  if (!isNaN(num)) {
+                    return nombreDisciples <= num;
+                  }
+                }
+                
+                // Détecter >
+                if (trimmed.startsWith('>')) {
+                  const num = parseInt(trimmed.substring(1).trim());
+                  if (!isNaN(num)) {
+                    return nombreDisciples > num;
+                  }
+                }
+                
+                // Détecter <
+                if (trimmed.startsWith('<')) {
+                  const num = parseInt(trimmed.substring(1).trim());
+                  if (!isNaN(num)) {
+                    return nombreDisciples < num;
+                  }
+                }
+                
+                // Recherche exacte si c'est un nombre simple
+                const searchNum = parseInt(trimmed);
+                if (!isNaN(searchNum)) {
+                  return nombreDisciples === searchNum;
+                }
+                
+                return false;
+              };
+
+              const filteredAndSorted = membresFamille
+                .map(membre => ({
+                  ...membre,
+                  nombreDisciples: membresDisciplesCount[membre.id] || membre.disciplesSuivis || 0
+                }))
+                .filter(membre => {
+                  // Recherche simultanée dans prénom, nom, et nombre de disciples
+                  const matchesSearch = searchTerm === '' || (() => {
+                    const searchLower = searchTerm.toLowerCase();
+                    // Recherche dans prénom
+                    const matchesPrenom = membre.first_name?.toLowerCase().includes(searchLower) || false;
+                    // Recherche dans nom
+                    const matchesNom = membre.last_name?.toLowerCase().includes(searchLower) || false;
+                    // Recherche dans nombre de disciples avec opérateurs de comparaison
+                    const matchesNombre = checkNombreDisciples(searchTerm, membre.nombreDisciples);
+                    
+                    return matchesPrenom || matchesNom || matchesNombre;
+                  })();
+                  
+                  // Filtre par date d'entrée dans la famille
+                  const matchesDate = !dateFilter || (() => {
+                    if (!membre.dateEntreeFamille && !membre.created_at) return false;
+                    const membreDate = new Date(membre.dateEntreeFamille || membre.created_at).toISOString().split('T')[0];
+                    return membreDate === dateFilter;
+                  })();
+                  
+                  return matchesSearch && matchesDate;
+                })
+                .sort((a, b) => (b.nombreDisciples || 0) - (a.nombreDisciples || 0)); // Tri décroissant par nombre de disciples
+              
+              const disciplesDirects = filteredAndSorted.filter(m => m.isDirect || m.type === 'disciple_direct');
+              const autresMembres = filteredAndSorted.filter(m => !m.isDirect && m.type !== 'disciple_direct');
+              
+              return (
+                <>
             {/* Section Disciples Directs */}
-            {membresFamille.filter(m => m.isDirect || m.type === 'disciple_direct').length > 0 && (
+            {disciplesDirects.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <UserCheck className="h-5 w-5 text-purple-600" />
-                  Disciples Directs ({membresFamille.filter(m => m.isDirect || m.type === 'disciple_direct').length})
+                  Disciples Directs ({disciplesDirects.length})
                 </h3>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -1339,14 +1666,12 @@ const FamillesDisciples = () => {
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Nom</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Titre</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Disciple depuis le</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-900">Nombre de Disciples</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Est suivi par</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {membresFamille
-                        .filter(m => m.isDirect || m.type === 'disciple_direct')
-                        .map((membre) => (
+                      {disciplesDirects.map((membre) => (
                           <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-200 transition-colors">
                             <td 
                               className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
@@ -1369,12 +1694,15 @@ const FamillesDisciples = () => {
                                 : '-'
                               }
                             </td>
-                            <td className="py-3 px-4 text-sm text-gray-600">
-                              {membre.disciplesSuivis > 0 ? (
-                                <span><span className="font-bold text-blue-600">{membre.disciplesSuivis}</span> Disciple{membre.disciplesSuivis > 1 ? 's' : ''}</span>
-                              ) : (
-                                <span><span className="font-bold text-blue-600">0</span> Disciple</span>
-                              )}
+                            <td className="text-center py-3 px-4 text-sm">
+                              <button
+                                onClick={() => {
+                                  fetchDisciplesOfMembre(membre.id, `${membre.first_name} ${membre.last_name}`);
+                                }}
+                                className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 hover:border-blue-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                              >
+                                {membre.nombreDisciples || 0}
+                              </button>
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
                               {membre.affiliation || '-'}
@@ -1388,11 +1716,11 @@ const FamillesDisciples = () => {
             )}
 
             {/* Section Autres Membres */}
-            {membresFamille.filter(m => !m.isDirect && m.type !== 'disciple_direct').length > 0 && (
+            {autresMembres.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <Users className="h-5 w-5 text-purple-600" />
-                  Autres Membres de la Famille ({membresFamille.filter(m => !m.isDirect && m.type !== 'disciple_direct').length})
+                  Autres Membres de la Famille ({autresMembres.length})
                 </h3>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -1402,14 +1730,12 @@ const FamillesDisciples = () => {
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Nom</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Titre</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Disciple depuis le</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-900">Nombre de Disciples</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Est suivi par</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {membresFamille
-                        .filter(m => !m.isDirect && m.type !== 'disciple_direct')
-                        .map((membre) => (
+                      {autresMembres.map((membre) => (
                           <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-200 transition-colors">
                             <td 
                               className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
@@ -1432,12 +1758,15 @@ const FamillesDisciples = () => {
                                 : '-'
                               }
                             </td>
-                            <td className="py-3 px-4 text-sm text-gray-600">
-                              {membre.disciplesSuivis > 0 ? (
-                                <span><span className="font-bold text-blue-600">{membre.disciplesSuivis}</span> Disciple{membre.disciplesSuivis > 1 ? 's' : ''}</span>
-                              ) : (
-                                <span><span className="font-bold text-blue-600">0</span> Disciple</span>
-                              )}
+                            <td className="text-center py-3 px-4 text-sm">
+                              <button
+                                onClick={() => {
+                                  fetchDisciplesOfMembre(membre.id, `${membre.first_name} ${membre.last_name}`);
+                                }}
+                                className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 hover:border-blue-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                              >
+                                {membre.nombreDisciples || 0}
+                              </button>
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
                               {membre.affiliation || '-'}
@@ -1449,9 +1778,130 @@ const FamillesDisciples = () => {
                 </div>
               </div>
             )}
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
       )}
+
+      {/* Modal Liste des Disciples */}
+      <Dialog open={selectedMembreForDisciples !== null} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedMembreForDisciples(null);
+          setDisciplesList([]);
+        }
+      }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 border-gray-200">
+          <DialogHeader>
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <DialogTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-purple-600" />
+                  Disciples de {selectedMembreForDisciples?.name}
+                </DialogTitle>
+                <DialogDescription>
+                  Liste des disciples suivis par ce membre ({disciplesList.length})
+                </DialogDescription>
+              </div>
+              {disciplesList.length > 0 && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportDisciplesList('excel')}
+                    className="bg-white border-gray-200 text-gray-900 hover:bg-green-600 hover:text-white"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Excel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportDisciplesList('pdf')}
+                    className="bg-white border-gray-200 text-gray-900 hover:bg-red-600 hover:text-white"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    PDF
+                  </Button>
+                </div>
+              )}
+            </div>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            {loadingDisciplesList ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+              </div>
+            ) : disciplesList.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">Aucun disciple suivi par ce membre.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {disciplesList.map((disciple) => (
+                  <div
+                    key={disciple.id}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                    onClick={() => {
+                      navigate(`/disciples/${disciple.id}`);
+                      setSelectedMembreForDisciples(null);
+                    }}
+                  >
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage src={disciple.avatar_url} />
+                      <AvatarFallback className="bg-purple-100 text-purple-600">
+                        {disciple.first_name?.charAt(0)}{disciple.last_name?.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {disciple.first_name} {disciple.last_name}
+                      </p>
+                      {disciple.email && (
+                        <p className="text-xs text-gray-600 truncate">{disciple.email}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        {disciple.circle_type && (
+                          <Badge variant="outline" className="text-xs">
+                            {disciple.circle_type}
+                          </Badge>
+                        )}
+                        {disciple.disciplesSuivis !== undefined && (
+                          <span className="text-xs text-gray-600 flex items-center gap-1">
+                            <Users className="h-3 w-3 text-purple-600" />
+                            {disciple.disciplesSuivis > 0 ? (
+                              <span>{disciple.disciplesSuivis} Disciple{disciple.disciplesSuivis > 1 ? 's' : ''}</span>
+                            ) : (
+                              <span>0 Disciple</span>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Eye className="h-4 w-4 text-gray-400 hover:text-purple-600" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedMembreForDisciples(null);
+                setDisciplesList([]);
+              }}
+              className="bg-white border-gray-200 text-gray-900 hover:bg-gray-50"
+            >
+              Fermer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
