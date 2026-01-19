@@ -31,7 +31,7 @@ import { compressImage } from '@/lib/ImageCompression';
 import { useToast } from '@/components/ui/use-toast';
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { 
-  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar
 } from 'recharts';
 
 const SuperviseurDashboard = () => {
@@ -69,9 +69,35 @@ const SuperviseurDashboard = () => {
 
   // État pour les données des graphiques d'évolution
   const [chartData, setChartData] = useState([]);
+  const [chartDataPreviousYear, setChartDataPreviousYear] = useState([]); // Pour comparaison année
+  const [formationVideoChartData, setFormationVideoChartData] = useState([]); // Évolution formations/vidéos
+  const [statutsSpirituelsData, setStatutsSpirituelsData] = useState([]); // Données pour camembert statuts
   const [exporting, setExporting] = useState(false);
   const [rapports, setRapports] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  
+  // État pour activité récente
+  const [activiteRecente, setActiviteRecente] = useState({
+    inscriptionsSemaine: [],
+    inscriptionsMois: [],
+    inscriptionsTrimestre: [],
+    dernieresInscriptions: [],
+    derniersRapports: [],
+    activitesFamille: []
+  });
+  
+  // État pour statistiques comparatives
+  const [statsComparatives, setStatsComparatives] = useState({
+    moyenneAutresFamilles: null,
+    classement: null,
+    totalFamilles: 0
+  });
+  
+  // État pour notifications/alertes
+  const [alertes, setAlertes] = useState({
+    disciplesInactifs: [],
+    membresSansProgression: []
+  });
   const [kpiData, setKpiData] = useState({
     culteSamediSoir: 0,
     culteDimancheMatin: 0,
@@ -92,6 +118,7 @@ const SuperviseurDashboard = () => {
 
   // État pour la liste des membres
   const [membres, setMembres] = useState([]);
+  const [membresProgression, setMembresProgression] = useState({}); // { memberId: { formations: 0, videos: 0 } }
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('tous'); // tous, actif, inactif
   const [currentPage, setCurrentPage] = useState(1);
@@ -208,29 +235,78 @@ const SuperviseurDashboard = () => {
         }
       }
 
-      // 3. Calculer les statistiques
-      const nombreMembres = familleData.nombre_disciples_actuels || 0;
-      const objectif = familleData.objectif_disciples || 70;
-      const progression = Math.min((nombreMembres / objectif) * 100, 100);
-      const reste = Math.max(objectif - nombreMembres, 0);
-
-      setStats({
-        nombreMembres,
-        objectif,
-        progression,
-        reste
-      });
-
-      // 4. Récupérer les membres de la famille
+      // 3. Récupérer les membres de la famille pour calculer le nombre réel
+      // Les membres sont dans 'profils' avec famille_id (tous les rôles: superviseur, mentors, disciples)
+      // ET dans 'cercle_personnes' avec user_id = superviseur_id (les 41 disciples de test sont ici)
+      // On compte les deux sources pour avoir le total réel
+      
+      // 3a. Membres depuis profils avec famille_id (tous les rôles)
       const { data: membresData, error: membresError } = await supabase
         .from('profils')
-        .select('id, first_name, last_name, email, avatar_url, statut_spirituel, created_at')
+        .select('id, first_name, last_name, email, avatar_url, statut_spirituel, created_at, role')
         .eq('famille_id', familleData.id)
-        .eq('role', 'disciple')
         .order('created_at', { ascending: false });
 
-      if (!membresError && membresData) {
-        setMembres(membresData || []);
+      // 3b. Membres depuis cercle_personnes liés au superviseur
+      // (Les 41 disciples créés par la migration 072 sont dans cette table)
+      const { data: disciplesData, error: disciplesError } = await supabase
+        .from('cercle_personnes')
+        .select('id')
+        .eq('user_id', user.id);
+
+      // Vérifier les erreurs
+      if (membresError) {
+        console.error('Erreur récupération membres profils:', membresError);
+      }
+      if (disciplesError) {
+        console.error('Erreur récupération disciples cercle_personnes:', disciplesError);
+      }
+
+      // 3c. Calculer le nombre total de membres
+      // On additionne les deux sources : membres dans profils + disciples dans cercle_personnes
+      const membresProfilsArray = membresData || [];
+      const disciplesCercleArray = disciplesData || [];
+      const nombreMembresProfils = membresProfilsArray.length;
+      const nombreMembresCercle = disciplesCercleArray.length;
+      // Total = profils de la famille + tous les disciples du superviseur dans cercle_personnes
+      const nombreMembres = nombreMembresProfils + nombreMembresCercle;
+      
+      // Log pour debug détaillé
+      console.log('📊 Calcul membres famille:', {
+        superviseurId: user.id,
+        familleId: familleData.id,
+        familleNom: familleData.nom,
+        membresProfilsCount: nombreMembresProfils,
+        membresCercleCount: nombreMembresCercle,
+        totalCalculated: nombreMembres,
+        rawDataProfils: membresData,
+        rawDataCercle: disciplesData
+      });
+
+      // 3d. Calculer les statistiques
+      const objectif = familleData.objectif_disciples || 70;
+      const progression = nombreMembres > 0 ? Math.min((nombreMembres / objectif) * 100, 100) : 0;
+      const reste = Math.max(objectif - nombreMembres, 0);
+
+      console.log('📈 Stats à définir:', { nombreMembres, objectif, progression, reste });
+      console.log('🔍 Vérification - nombreMembres est:', typeof nombreMembres, nombreMembres);
+
+      // Forcer la mise à jour des stats avec les valeurs calculées
+      const newStats = {
+        nombreMembres: Number(nombreMembres) || 0,
+        objectif: Number(objectif) || 70,
+        progression: Number(progression) || 0,
+        reste: Number(reste) || 70
+      };
+      
+      console.log('✅ Nouveaux stats à appliquer:', newStats);
+      setStats(newStats);
+
+      // 4. Filtrer et afficher uniquement les membres de profils avec role='disciple' pour la liste
+      const membresDisciples = (membresData || []).filter(m => m.role === 'disciple');
+      
+      if (!membresError) {
+        setMembres(membresDisciples || []);
         
         // Récupérer les statistiques de formations et vidéos des membres
         const membreIds = membresData.map(m => m.id);
@@ -264,6 +340,29 @@ const SuperviseurDashboard = () => {
             formationsEnCours: formationsEnCoursCount || 0,
             videosTerminees: videosTermineesCount || 0
           }));
+          
+          // Calculer la progression individuelle pour chaque membre
+          const progressionMap = {};
+          for (const memberId of membreIds) {
+            const { count: formationsCount } = await supabase
+              .from('user_module_progression')
+              .select('id', { count: 'exact', head: true })
+              .eq('user_id', memberId)
+              .eq('is_completed', true);
+            
+            const { count: videosCount } = await supabase
+              .from('video_progress')
+              .select('id', { count: 'exact', head: true })
+              .eq('disciple_id', memberId)
+              .eq('is_completed', true);
+            
+            progressionMap[memberId] = {
+              formations: formationsCount || 0,
+              videos: videosCount || 0,
+              total: (formationsCount || 0) + (videosCount || 0)
+            };
+          }
+          setMembresProgression(progressionMap);
         }
       }
 
@@ -358,6 +457,43 @@ const SuperviseurDashboard = () => {
         
         // Stocker les rapports pour l'historique
         setRapports(rapportsData || []);
+      }
+      
+      // 6. Récupérer les données supplémentaires
+      console.log('📊 Récupération des données supplémentaires...');
+      try {
+        await generateFormationVideoChartData();
+        console.log('✅ Données formations/vidéos générées');
+      } catch (error) {
+        console.error('❌ Erreur génération formations/vidéos:', error);
+      }
+      
+      try {
+        await calculateStatutsSpirituels();
+        console.log('✅ Statuts spirituels calculés');
+      } catch (error) {
+        console.error('❌ Erreur calcul statuts spirituels:', error);
+      }
+      
+      try {
+        await fetchActiviteRecente();
+        console.log('✅ Activité récente récupérée');
+      } catch (error) {
+        console.error('❌ Erreur récupération activité récente:', error);
+      }
+      
+      try {
+        await fetchStatsComparatives();
+        console.log('✅ Statistiques comparatives récupérées');
+      } catch (error) {
+        console.error('❌ Erreur récupération stats comparatives:', error);
+      }
+      
+      try {
+        await fetchAlertes();
+        console.log('✅ Alertes récupérées');
+      } catch (error) {
+        console.error('❌ Erreur récupération alertes:', error);
       }
 
       // 6. Récupérer les autres superviseurs de la famille (même pasteur_id)
@@ -474,6 +610,344 @@ const SuperviseurDashboard = () => {
     
     // Prendre les 12 derniers mois
     setChartData(dataArray.slice(-12));
+    
+    // Générer aussi les données de l'année précédente pour comparaison
+    const currentYear = new Date().getFullYear();
+    const previousYearData = dataArray.filter(d => {
+      const year = parseInt(d.mois.split('-')[0]);
+      return year === currentYear - 1;
+    });
+    setChartDataPreviousYear(previousYearData);
+  };
+  
+  // Fonction pour générer les données d'évolution des formations/vidéos
+  const generateFormationVideoChartData = async () => {
+    if (!famille || !user) return;
+    
+    try {
+      // Récupérer les membres de la famille
+      const { data: membresData } = await supabase
+        .from('profils')
+        .select('id, created_at')
+        .eq('famille_id', famille.id);
+      
+      const { data: disciplesData } = await supabase
+        .from('cercle_personnes')
+        .select('id, created_at')
+        .eq('user_id', user.id);
+      
+      const allMemberIds = [
+        ...(membresData || []).map(m => m.id),
+        ...(disciplesData || []).map(d => d.id)
+      ];
+      
+      if (allMemberIds.length === 0) {
+        setFormationVideoChartData([]);
+        return;
+      }
+      
+      // Récupérer les formations terminées par mois
+      const { data: formationsData } = await supabase
+        .from('user_module_progression')
+        .select('user_id, completed_at, created_at')
+        .in('user_id', allMemberIds)
+        .eq('is_completed', true)
+        .order('completed_at', { ascending: true });
+      
+      // Récupérer les vidéos terminées par mois
+      const { data: videosData } = await supabase
+        .from('video_progress')
+        .select('disciple_id, completed_at, created_at')
+        .in('disciple_id', allMemberIds)
+        .eq('is_completed', true)
+        .order('completed_at', { ascending: true });
+      
+      const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jui", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+      const chartMap = {};
+      
+      // Grouper les formations par mois
+      (formationsData || []).forEach(formation => {
+        const date = new Date(formation.completed_at || formation.created_at);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const monthLabel = `${months[date.getMonth()]} ${date.getFullYear()}`;
+        
+        if (!chartMap[monthKey]) {
+          chartMap[monthKey] = {
+            name: monthLabel,
+            mois: monthKey,
+            formations: 0,
+            videos: 0
+          };
+        }
+        chartMap[monthKey].formations += 1;
+      });
+      
+      // Grouper les vidéos par mois
+      (videosData || []).forEach(video => {
+        const date = new Date(video.completed_at || video.created_at);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const monthLabel = `${months[date.getMonth()]} ${date.getFullYear()}`;
+        
+        if (!chartMap[monthKey]) {
+          chartMap[monthKey] = {
+            name: monthLabel,
+            mois: monthKey,
+            formations: 0,
+            videos: 0
+          };
+        }
+        chartMap[monthKey].videos += 1;
+      });
+      
+      const dataArray = Object.values(chartMap).sort((a, b) => a.mois.localeCompare(b.mois));
+      setFormationVideoChartData(dataArray.slice(-12));
+    } catch (error) {
+      console.error('Erreur génération données formations/vidéos:', error);
+    }
+  };
+  
+  // Fonction pour calculer les statuts spirituels pour le camembert
+  const calculateStatutsSpirituels = async () => {
+    if (!famille || !user) return;
+    
+    try {
+      const { data: membresData } = await supabase
+        .from('profils')
+        .select('statut_spirituel')
+        .eq('famille_id', famille.id);
+      
+      const statutsMap = {
+        'actif': 0,
+        'inactif': 0,
+        'nouveau_converti': 0,
+        'disciple_affermi': 0,
+        'autre': 0
+      };
+      
+      (membresData || []).forEach(membre => {
+        const statut = membre.statut_spirituel || 'autre';
+        if (statutsMap.hasOwnProperty(statut)) {
+          statutsMap[statut] += 1;
+        } else {
+          statutsMap['autre'] += 1;
+        }
+      });
+      
+      const colors = ['#10b981', '#ef4444', '#3b82f6', '#8b5cf6', '#6b7280'];
+      const labels = {
+        'actif': 'Actifs',
+        'inactif': 'Inactifs',
+        'nouveau_converti': 'Nouveaux Convertis',
+        'disciple_affermi': 'Disciples Affermis',
+        'autre': 'Autres'
+      };
+      
+      const data = Object.entries(statutsMap)
+        .filter(([_, value]) => value > 0)
+        .map(([key, value], index) => ({
+          name: labels[key] || 'Autre',
+          value: value,
+          color: colors[index % colors.length]
+        }));
+      
+      setStatutsSpirituelsData(data);
+    } catch (error) {
+      console.error('Erreur calcul statuts spirituels:', error);
+    }
+  };
+  
+  // Fonction pour récupérer l'activité récente
+  const fetchActiviteRecente = async () => {
+    if (!famille || !user) return;
+    
+    try {
+      // Calculer les dates de début pour chaque période
+      const maintenant = new Date();
+      const debutSemaine = startOfWeek(maintenant, { weekStartsOn: 1 });
+      const debutMois = startOfMonth(maintenant);
+      const debutTrimestre = startOfQuarter(maintenant);
+      
+      // Récupérer toutes les inscriptions de la famille
+      const { data: toutesInscriptions } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, created_at, avatar_url')
+        .eq('famille_id', famille.id)
+        .order('created_at', { ascending: false });
+      
+      // Filtrer par période
+      const inscriptionsSemaine = (toutesInscriptions || []).filter(inscription => {
+        const dateInscription = new Date(inscription.created_at);
+        return dateInscription >= debutSemaine;
+      });
+      
+      const inscriptionsMois = (toutesInscriptions || []).filter(inscription => {
+        const dateInscription = new Date(inscription.created_at);
+        return dateInscription >= debutMois;
+      });
+      
+      const inscriptionsTrimestre = (toutesInscriptions || []).filter(inscription => {
+        const dateInscription = new Date(inscription.created_at);
+        return dateInscription >= debutTrimestre;
+      });
+      
+      // Dernières inscriptions (5 derniers membres)
+      const dernieresInscriptions = (toutesInscriptions || []).slice(0, 5);
+      
+      // Derniers rapports (5 derniers)
+      const { data: rapportsRecents } = await supabase
+        .from('reports')
+        .select('id, created_at, report_type, month, quarter, week_number, year')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      // Activités récentes (combinaison des deux triées par date)
+      const activites = [
+        ...(dernieresInscriptions || []).map(i => ({
+          type: 'inscription',
+          label: `${i.first_name} ${i.last_name} a rejoint la famille`,
+          date: i.created_at,
+          id: i.id,
+          avatar: i.avatar_url
+        })),
+        ...(rapportsRecents || []).map(r => ({
+          type: 'rapport',
+          label: `Rapport ${r.report_type} envoyé`,
+          date: r.created_at,
+          id: r.id
+        }))
+      ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+      
+      setActiviteRecente({
+        inscriptionsSemaine: inscriptionsSemaine || [],
+        inscriptionsMois: inscriptionsMois || [],
+        inscriptionsTrimestre: inscriptionsTrimestre || [],
+        dernieresInscriptions: dernieresInscriptions || [],
+        derniersRapports: rapportsRecents || [],
+        activitesFamille: activites
+      });
+    } catch (error) {
+      console.error('Erreur récupération activité récente:', error);
+    }
+  };
+  
+  // Fonction pour récupérer les statistiques comparatives
+  const fetchStatsComparatives = async () => {
+    if (!famille) return;
+    
+    try {
+      // Récupérer toutes les familles avec leurs statistiques
+      const { data: toutesFamilles } = await supabase
+        .from('familles_disciples')
+        .select('id, nom, nombre_disciples_actuels, objectif_disciples, superviseur_id');
+      
+      if (!toutesFamilles || toutesFamilles.length === 0) return;
+      
+      // Calculer les nombres réels de membres pour chaque famille
+      const famillesAvecStats = await Promise.all(
+        toutesFamilles.map(async (f) => {
+          const { count: membresProfils } = await supabase
+            .from('profils')
+            .select('id', { count: 'exact', head: true })
+            .eq('famille_id', f.id);
+          
+          const { count: membresCercle } = await supabase
+            .from('cercle_personnes')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', f.superviseur_id);
+          
+          const totalMembres = (membresProfils || 0) + (membresCercle || 0);
+          return {
+            ...f,
+            nombreMembresReel: totalMembres
+          };
+        })
+      );
+      
+      // Calculer la moyenne
+      const sommeMembres = famillesAvecStats.reduce((sum, f) => sum + f.nombreMembresReel, 0);
+      const moyenne = Math.round(sommeMembres / famillesAvecStats.length);
+      
+      // Trouver le classement de la famille actuelle
+      const familleActuelle = famillesAvecStats.find(f => f.id === famille.id);
+      const classement = famillesAvecStats
+        .sort((a, b) => b.nombreMembresReel - a.nombreMembresReel)
+        .findIndex(f => f.id === famille.id) + 1;
+      
+      setStatsComparatives({
+        moyenneAutresFamilles: moyenne,
+        classement: classement,
+        totalFamilles: famillesAvecStats.length
+      });
+    } catch (error) {
+      console.error('Erreur récupération stats comparatives:', error);
+    }
+  };
+  
+  // Fonction pour récupérer les alertes
+  const fetchAlertes = async () => {
+    if (!famille || !user) return;
+    
+    try {
+      // Disciples inactifs depuis plus de 30 jours
+      const dateLimite = new Date();
+      dateLimite.setDate(dateLimite.getDate() - 30);
+      
+      const { data: membresInactifs } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, last_activity, created_at')
+        .eq('famille_id', famille.id)
+        .or(`last_activity.lt.${dateLimite.toISOString()},last_activity.is.null`)
+        .order('created_at', { ascending: false });
+      
+      // Membres sans progression de formation (aucune formation terminée ni en cours)
+      const { data: tousMembres } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name')
+        .eq('famille_id', famille.id);
+      
+      const { data: disciplesData } = await supabase
+        .from('cercle_personnes')
+        .select('id, first_name, last_name')
+        .eq('user_id', user.id);
+      
+      const allMemberIds = [
+        ...(tousMembres || []).map(m => m.id),
+        ...(disciplesData || []).map(d => d.id)
+      ];
+      
+      const membresSansProgression = [];
+      if (allMemberIds.length > 0) {
+        for (const memberId of allMemberIds) {
+          const { count: formations } = await supabase
+            .from('user_module_progression')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', memberId)
+            .gt('progress', 0);
+          
+          const { count: videos } = await supabase
+            .from('video_progress')
+            .select('id', { count: 'exact', head: true })
+            .eq('disciple_id', memberId)
+            .gt('progress', 0);
+          
+          if ((formations || 0) === 0 && (videos || 0) === 0) {
+            const membre = tousMembres?.find(m => m.id === memberId) || 
+                          disciplesData?.find(d => d.id === memberId);
+            if (membre) {
+              membresSansProgression.push(membre);
+            }
+          }
+        }
+      }
+      
+      setAlertes({
+        disciplesInactifs: membresInactifs || [],
+        membresSansProgression: membresSansProgression.slice(0, 10) // Limiter à 10
+      });
+    } catch (error) {
+      console.error('Erreur récupération alertes:', error);
+    }
   };
 
   // Filtrer les membres
@@ -700,24 +1174,25 @@ const SuperviseurDashboard = () => {
         {/* Bandeau de bienvenue */}
         {famille && (
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-950 via-purple-950 to-purple-900 border border-gray-200 shadow-lg p-8 md:p-12">
-            <div className="relative z-10 flex items-start justify-between gap-6">
-              <div className="flex-1 max-w-3xl">
-                <motion.h1 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-4xl font-bold text-white mb-4 whitespace-nowrap"
-                >
-                  BIENVENUE dans la Famille de {superviseurNom.titre === 'Pasteur' ? 'Pasteur ' : ''}{superviseurNom.first_name} {superviseurNom.last_name} « <span className="text-amber-400">{famille.nom}</span> »
-                </motion.h1>
-                <p className="text-xl text-white/90 mb-4 leading-relaxed">
-                  Ici, vous êtes chez vous.
-                </p>
-                <p className="text-lg text-white/90 leading-relaxed">
-                  Un espace de partage, de soutien et de croissance spirituelle, où chacun est accompagné dans sa marche avec Dieu afin de devenir de véritables disciples de Christ.
-                </p>
-              </div>
-              {/* Boutons d'export */}
-              <div className="flex gap-2">
+            <div className="relative z-10">
+              <div className="flex items-start justify-between gap-6 mb-4">
+                <div className="flex-1 max-w-3xl">
+                  <motion.h1 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-4xl font-bold text-white mb-4"
+                  >
+                    BIENVENUE dans la Famille de {superviseurNom.titre === 'Pasteur' ? 'Pasteur ' : ''}{superviseurNom.first_name} {superviseurNom.last_name}
+                  </motion.h1>
+                  <p className="text-xl text-white/90 mb-4 leading-relaxed">
+                    Ici, vous êtes chez vous.
+                  </p>
+                  <p className="text-lg text-white/90 leading-relaxed">
+                    Un espace de partage, de soutien et de croissance spirituelle, où chacun est accompagné dans sa marche avec Dieu afin de devenir de véritables disciples de Christ.
+                  </p>
+                </div>
+                {/* Boutons d'export */}
+                <div className="flex gap-2">
                 <Button
                   onClick={handleExportPDF}
                   disabled={exporting}
@@ -737,28 +1212,40 @@ const SuperviseurDashboard = () => {
                   <FileText className="h-4 w-4 mr-2" />
                   Excel
                 </Button>
+                </div>
               </div>
-              {/* Icône/Personnage représentant la famille - Positionnée à droite et en bas */}
-              <div className="flex-shrink-0 self-end mt-8 md:mt-12 mr-4 md:mr-8">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
-                  className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30"
-                >
-                  {famille.nom.toLowerCase().includes('déterminé') || famille.nom.toLowerCase().includes('determine') ? (
-                    <Target className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                  ) : famille.nom.toLowerCase().includes('victoire') || famille.nom.toLowerCase().includes('victory') ? (
-                    <Trophy className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                  ) : famille.nom.toLowerCase().includes('étoile') || famille.nom.toLowerCase().includes('star') ? (
-                    <Star className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                  ) : famille.nom.toLowerCase().includes('feu') || famille.nom.toLowerCase().includes('fire') ? (
-                    <Zap className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                  ) : (
-                    <Sparkles className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                  )}
-                </motion.div>
-              </div>
+            </div>
+            {/* Nom de la famille sur une ligne séparée */}
+            <div className="mt-6 relative z-10">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-3xl md:text-4xl font-bold text-amber-400"
+              >
+                « {famille.nom} »
+              </motion.div>
+            </div>
+            {/* Icône/Personnage représentant la famille - Positionnée à droite et en bas */}
+            <div className="absolute bottom-8 right-8 flex-shrink-0">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30"
+              >
+                {famille.nom.toLowerCase().includes('déterminé') || famille.nom.toLowerCase().includes('determine') ? (
+                  <Target className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
+                ) : famille.nom.toLowerCase().includes('victoire') || famille.nom.toLowerCase().includes('victory') ? (
+                  <Trophy className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
+                ) : famille.nom.toLowerCase().includes('étoile') || famille.nom.toLowerCase().includes('star') ? (
+                  <Star className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
+                ) : famille.nom.toLowerCase().includes('feu') || famille.nom.toLowerCase().includes('fire') ? (
+                  <Zap className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
+                ) : (
+                  <Sparkles className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
+                )}
+              </motion.div>
             </div>
             
             {/* Background Decorative Circles */}
@@ -1461,6 +1948,376 @@ const SuperviseurDashboard = () => {
           </Card>
         )}
 
+        {/* Graphiques supplémentaires : Évolution formations/vidéos */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <GraduationCap className="h-5 w-5 text-purple-600" />
+              Évolution des Formations et Vidéos (12 derniers mois)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {formationVideoChartData.length > 0 ? (
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={formationVideoChartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="formations" name="Formations Terminées" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="videos" name="Vidéos Terminées" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[300px] w-full flex items-center justify-center text-gray-500">
+                <p>Aucune donnée disponible pour le moment</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Graphique : Comparaison année en cours vs année précédente */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-purple-600" />
+              Comparaison Annuelle : {new Date().getFullYear()} vs {new Date().getFullYear() - 1}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {chartData.length > 0 && chartDataPreviousYear.length > 0 ? (
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[
+                    { name: 'Année en cours', value: chartData.reduce((sum, d) => sum + d.culteDimancheMatin, 0) },
+                    { name: 'Année précédente', value: chartDataPreviousYear.reduce((sum, d) => sum + d.culteDimancheMatin, 0) }
+                  ]} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="#8b5cf6" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[300px] w-full flex items-center justify-center text-gray-500">
+                <p>Données insuffisantes pour la comparaison (besoin de données sur 2 années)</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Graphique en camembert : Répartition des statuts spirituels */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Users className="h-5 w-5 text-purple-600" />
+              Répartition des Statuts Spirituels
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {statutsSpirituelsData.length > 0 ? (
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={statutsSpirituelsData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {statutsSpirituelsData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[300px] w-full flex items-center justify-center text-gray-500">
+                <p>Aucune donnée de statut disponible</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Section Activité Récente */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Activity className="h-5 w-5 text-purple-600" />
+              Activité Récente - Disciples Arrivés
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Inscriptions de la semaine */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">Cette Semaine</h3>
+                  <Badge variant="default" className="bg-blue-100 text-blue-800">
+                    {activiteRecente.inscriptionsSemaine?.length || 0}
+                  </Badge>
+                </div>
+                {activiteRecente.inscriptionsSemaine && activiteRecente.inscriptionsSemaine.length > 0 ? (
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {activiteRecente.inscriptionsSemaine.map((inscription) => (
+                      <div 
+                        key={inscription.id} 
+                        className="flex items-center gap-3 p-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"
+                        onClick={() => navigate(`/disciples/${inscription.id}`)}
+                      >
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={inscription.avatar_url} />
+                          <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
+                            {inscription.first_name?.charAt(0)}{inscription.last_name?.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {inscription.first_name} {inscription.last_name}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {format(new Date(inscription.created_at), 'dd MMM yyyy', { locale: fr })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 py-4">Aucune inscription cette semaine</p>
+                )}
+              </div>
+              
+              {/* Inscriptions du mois */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">Ce Mois</h3>
+                  <Badge variant="default" className="bg-green-100 text-green-800">
+                    {activiteRecente.inscriptionsMois?.length || 0}
+                  </Badge>
+                </div>
+                {activiteRecente.inscriptionsMois && activiteRecente.inscriptionsMois.length > 0 ? (
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {activiteRecente.inscriptionsMois.map((inscription) => (
+                      <div 
+                        key={inscription.id} 
+                        className="flex items-center gap-3 p-2 bg-green-50 rounded-lg hover:bg-green-100 transition-colors cursor-pointer"
+                        onClick={() => navigate(`/disciples/${inscription.id}`)}
+                      >
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={inscription.avatar_url} />
+                          <AvatarFallback className="bg-green-100 text-green-600 text-xs">
+                            {inscription.first_name?.charAt(0)}{inscription.last_name?.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {inscription.first_name} {inscription.last_name}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {format(new Date(inscription.created_at), 'dd MMM yyyy', { locale: fr })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 py-4">Aucune inscription ce mois</p>
+                )}
+              </div>
+              
+              {/* Inscriptions du trimestre */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-900">Ce Trimestre</h3>
+                  <Badge variant="default" className="bg-purple-100 text-purple-800">
+                    {activiteRecente.inscriptionsTrimestre?.length || 0}
+                  </Badge>
+                </div>
+                {activiteRecente.inscriptionsTrimestre && activiteRecente.inscriptionsTrimestre.length > 0 ? (
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {activiteRecente.inscriptionsTrimestre.map((inscription) => (
+                      <div 
+                        key={inscription.id} 
+                        className="flex items-center gap-3 p-2 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors cursor-pointer"
+                        onClick={() => navigate(`/disciples/${inscription.id}`)}
+                      >
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={inscription.avatar_url} />
+                          <AvatarFallback className="bg-purple-100 text-purple-600 text-xs">
+                            {inscription.first_name?.charAt(0)}{inscription.last_name?.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {inscription.first_name} {inscription.last_name}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {format(new Date(inscription.created_at), 'dd MMM yyyy', { locale: fr })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 py-4">Aucune inscription ce trimestre</p>
+                )}
+              </div>
+            </div>
+            
+            {/* Derniers rapports soumis */}
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Derniers Rapports Soumis</h3>
+              {activiteRecente.derniersRapports && activiteRecente.derniersRapports.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                  {activiteRecente.derniersRapports.map((rapport) => (
+                    <div key={rapport.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <FileText className="w-5 h-5 text-purple-600" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-900 truncate">
+                          Rapport {rapport.report_type}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          {format(new Date(rapport.created_at), 'dd MMM', { locale: fr })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 py-2">Aucun rapport récent</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Statistiques Comparatives */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Target className="h-5 w-5 text-purple-600" />
+              Statistiques Comparatives
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {statsComparatives.moyenneAutresFamilles !== null ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {stats.nombreMembres}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">Votre famille</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {statsComparatives.moyenneAutresFamilles}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">Moyenne des autres familles</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    #{statsComparatives.classement}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    Classement sur {statsComparatives.totalFamilles} familles
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>Calcul en cours...</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Notifications/Alertes */}
+        {(alertes.disciplesInactifs.length > 0 || alertes.membresSansProgression.length > 0) && (
+          <Card className="bg-white border-gray-200 shadow-sm border-orange-300">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-orange-600" />
+                Alertes et Notifications
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Disciples inactifs */}
+                {alertes.disciplesInactifs.length > 0 && (
+                  <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
+                    <h3 className="text-sm font-semibold text-orange-900 mb-2">
+                      Disciples Inactifs ({alertes.disciplesInactifs.length})
+                    </h3>
+                    <p className="text-xs text-orange-700 mb-2">
+                      Disciples inactifs depuis plus de 30 jours
+                    </p>
+                    <div className="space-y-1">
+                      {alertes.disciplesInactifs.slice(0, 5).map((disciple) => (
+                        <div key={disciple.id} className="text-sm text-gray-700">
+                          • {disciple.first_name} {disciple.last_name}
+                        </div>
+                      ))}
+                      {alertes.disciplesInactifs.length > 5 && (
+                        <p className="text-xs text-gray-600">
+                          ... et {alertes.disciplesInactifs.length - 5} autres
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Membres sans progression */}
+                {alertes.membresSansProgression.length > 0 && (
+                  <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                    <h3 className="text-sm font-semibold text-red-900 mb-2">
+                      Membres sans Progression ({alertes.membresSansProgression.length})
+                    </h3>
+                    <p className="text-xs text-red-700 mb-2">
+                      Membres n'ayant aucune formation ni vidéo en cours ou terminée
+                    </p>
+                    <div className="space-y-1">
+                      {alertes.membresSansProgression.slice(0, 5).map((membre) => (
+                        <div key={membre.id} className="text-sm text-gray-700">
+                          • {membre.first_name} {membre.last_name}
+                        </div>
+                      ))}
+                      {alertes.membresSansProgression.length > 5 && (
+                        <p className="text-xs text-gray-600">
+                          ... et {alertes.membresSansProgression.length - 5} autres
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* Message si aucune alerte */}
+        {alertes.disciplesInactifs.length === 0 && alertes.membresSansProgression.length === 0 && (
+          <Card className="bg-white border-gray-200 shadow-sm border-green-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                <p className="text-sm text-green-900">
+                  Aucune alerte : tous les membres sont actifs et suivent leurs formations !
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Liste des membres de la famille */}
         <Card className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
@@ -1527,6 +2384,7 @@ const SuperviseurDashboard = () => {
                         <TableHead>Nom</TableHead>
                         <TableHead>Email</TableHead>
                         <TableHead>Statut spirituel</TableHead>
+                        <TableHead>Progression</TableHead>
                         <TableHead>Date d'inscription</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1542,7 +2400,13 @@ const SuperviseurDashboard = () => {
                             </Avatar>
                           </TableCell>
                           <TableCell className="font-medium">
-                            {membre.first_name} {membre.last_name}
+                            <div 
+                              className="flex items-center gap-2 cursor-pointer hover:text-purple-600 transition-colors"
+                              onClick={() => navigate(`/disciples/${membre.id}`)}
+                            >
+                              <span>{membre.first_name} {membre.last_name}</span>
+                              <Eye className="h-4 w-4 text-gray-400 hover:text-purple-600" />
+                            </div>
                           </TableCell>
                           <TableCell className="text-gray-600">
                             {membre.email || '-'}
@@ -1558,6 +2422,23 @@ const SuperviseurDashboard = () => {
                             >
                               {membre.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif'}
                             </Badge>
+                          </TableCell>
+                          <TableCell className="text-gray-600">
+                            {membresProgression[membre.id] ? (
+                              <div className="flex flex-col gap-1">
+                                <div className="text-xs">
+                                  <span className="font-semibold text-purple-600">{membresProgression[membre.id].formations}</span> formations
+                                </div>
+                                <div className="text-xs">
+                                  <span className="font-semibold text-red-600">{membresProgression[membre.id].videos}</span> vidéos
+                                </div>
+                                <div className="text-xs font-medium text-gray-900">
+                                  Total: {membresProgression[membre.id].total}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-gray-600">
                             {membre.created_at ? format(new Date(membre.created_at), 'dd/MM/yyyy', { locale: fr }) : '-'}

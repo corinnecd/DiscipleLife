@@ -28,6 +28,7 @@ const FamillesDisciples = () => {
   const [familles, setFamilles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedFamille, setSelectedFamille] = useState(null);
+  const [nombreMembresParFamille, setNombreMembresParFamille] = useState({});
   const [avatarUploadingId, setAvatarUploadingId] = useState(null);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -43,6 +44,58 @@ const FamillesDisciples = () => {
   const [deleteLoadingId, setDeleteLoadingId] = useState(null);
   const [superviseursFamille, setSuperviseursFamille] = useState([]);
   const [membresFamille, setMembresFamille] = useState([]);
+  const [nombreMembresReel, setNombreMembresReel] = useState(0);
+
+  // Calculer le nombre réel de membres quand une famille est sélectionnée
+  useEffect(() => {
+    const calculerNombreMembresReel = async () => {
+      if (!selectedFamille || !selectedFamille.id) {
+        setNombreMembresReel(0);
+        return;
+      }
+
+      try {
+        // 1. Membres depuis profils avec famille_id
+        const { data: membresData, error: membresError } = await supabase
+          .from('profils')
+          .select('id')
+          .eq('famille_id', selectedFamille.id);
+
+        // 2. Membres depuis cercle_personnes liés au superviseur
+        let disciplesData = [];
+        if (selectedFamille.superviseur_id) {
+          const { data: disciples, error: disciplesError } = await supabase
+            .from('cercle_personnes')
+            .select('id')
+            .eq('user_id', selectedFamille.superviseur_id);
+
+          if (!disciplesError && disciples) {
+            disciplesData = disciples;
+          }
+        }
+
+        // 3. Calculer le total
+        const nombreMembresProfils = (membresData || []).length;
+        const nombreMembresCercle = disciplesData.length;
+        const total = nombreMembresProfils + nombreMembresCercle;
+
+        console.log('📊 Calcul membres famille (modal):', {
+          familleId: selectedFamille.id,
+          superviseurId: selectedFamille.superviseur_id,
+          membresProfils: nombreMembresProfils,
+          membresCercle: nombreMembresCercle,
+          total: total
+        });
+
+        setNombreMembresReel(total);
+      } catch (error) {
+        console.error('Erreur calcul nombre membres:', error);
+        setNombreMembresReel(selectedFamille.nombre_disciples_actuels || 0);
+      }
+    };
+
+    calculerNombreMembresReel();
+  }, [selectedFamille]);
 
   useEffect(() => {
     if (user) {
@@ -96,7 +149,7 @@ const FamillesDisciples = () => {
 
       console.log('Familles récupérées:', data);
 
-      // Si des familles sont retournées, récupérer les superviseurs
+      // Si des familles sont retournées, récupérer les superviseurs et calculer les nombres réels
       if (data && data.length > 0) {
         const superviseurIds = data
           .map(f => f.superviseur_id)
@@ -121,6 +174,34 @@ const FamillesDisciples = () => {
             }));
 
             setFamilles(famillesAvecSuperviseurs);
+
+            // Calculer le nombre réel de membres pour chaque famille
+            const nombreMembresMap = {};
+            for (const famille of famillesAvecSuperviseurs) {
+              let total = 0;
+              
+              // 1. Membres depuis profils avec famille_id
+              const { data: membresData } = await supabase
+                .from('profils')
+                .select('id')
+                .eq('famille_id', famille.id);
+              
+              total += (membresData || []).length;
+
+              // 2. Membres depuis cercle_personnes liés au superviseur
+              if (famille.superviseur_id) {
+                const { data: disciplesData } = await supabase
+                  .from('cercle_personnes')
+                  .select('id')
+                  .eq('user_id', famille.superviseur_id);
+                
+                total += (disciplesData || []).length;
+              }
+
+              nombreMembresMap[famille.id] = total;
+            }
+
+            setNombreMembresParFamille(nombreMembresMap);
           } else {
             console.error('Erreur lors de la récupération des superviseurs:', superviseursError);
             setFamilles(data);
@@ -274,32 +355,85 @@ const FamillesDisciples = () => {
       const familleId = familleData.id;
       const superviseurId = familleData.superviseur_id;
 
-      // 2. Récupérer le superviseur
-      const { data: superviseurData, error: superviseurError } = await supabase
+      // 2. Récupérer le superviseur (utiliser maybeSingle au lieu de single pour éviter les erreurs)
+      let superviseurData = null;
+      
+      // D'abord essayer depuis profils
+      const { data: superviseurFromProfils, error: superviseurError } = await supabase
         .from('profils')
         .select('id, first_name, last_name, role, titre')
         .eq('id', superviseurId)
-        .single();
+        .maybeSingle();
+
+      if (!superviseurError && superviseurFromProfils) {
+        superviseurData = superviseurFromProfils;
+      }
+
+      // Si pas trouvé dans profils, essayer depuis familles déjà chargées
+      if (!superviseurData && familles && familles.length > 0) {
+        const famille = familles.find(f => f.id === familleId);
+        if (famille && famille.superviseur) {
+          superviseurData = {
+            id: famille.superviseur.id,
+            first_name: famille.superviseur.first_name,
+            last_name: famille.superviseur.last_name,
+            role: 'superviseur',
+            titre: 'Superviseur'
+          };
+        }
+      }
+
+      // Si toujours pas trouvé, utiliser user directement (comme fallback ultime)
+      if (!superviseurData && superviseurId === user.id) {
+        // Essayer depuis user_metadata ou utiliser email
+        superviseurData = {
+          id: user.id,
+          first_name: user.user_metadata?.first_name || '',
+          last_name: user.user_metadata?.last_name || '',
+          role: 'superviseur',
+          titre: 'Superviseur'
+        };
+      }
+
+      if (superviseurError) {
+        console.error('Erreur récupération superviseur:', superviseurError);
+      }
+
+      console.log('🔍 Superviseur récupéré pour affiliation:', superviseurData);
+      console.log('🔍 superviseurId utilisé:', superviseurId);
+      console.log('🔍 user.id:', user.id);
 
       const membres = [];
 
       // 3. Ajouter le superviseur (sera mis à jour avec le nombre de disciples directs plus tard)
-      if (superviseurData) {
+      // IMPORTANT: Toujours ajouter le superviseur, même si les données sont partielles
+      if (superviseurData && superviseurData.id) {
         membres.push({
           id: superviseurData.id,
-          first_name: superviseurData.first_name,
-          last_name: superviseurData.last_name,
+          first_name: superviseurData.first_name || '',
+          last_name: superviseurData.last_name || '',
           titre: 'Superviseur',
           affiliation: null,
           type: 'superviseur',
           disciplesSuivis: 0 // Sera mis à jour après récupération des disciples
+        });
+      } else if (superviseurId) {
+        // Fallback: créer un membre superviseur minimal si on a au moins l'ID
+        membres.push({
+          id: superviseurId,
+          first_name: '',
+          last_name: '',
+          titre: 'Superviseur',
+          affiliation: null,
+          type: 'superviseur',
+          disciplesSuivis: 0
         });
       }
 
       // 4. Récupérer les membres de la famille depuis profils
       const { data: profilsData, error: profilsError } = await supabase
         .from('profils')
-        .select('id, first_name, last_name, role, titre, famille_id')
+        .select('id, first_name, last_name, role, titre, famille_id, date_entree_famille')
         .eq('famille_id', familleId);
 
       if (!profilsError && profilsData) {
@@ -319,6 +453,7 @@ const FamillesDisciples = () => {
             last_name: profil.last_name,
             titre: titre,
             affiliation: superviseurData ? `${superviseurData.first_name} ${superviseurData.last_name}` : null,
+            dateEntreeFamille: profil.date_entree_famille || null,
             type: 'profil',
             disciplesSuivis: 0 // Pour les membres de profils, on ne compte pas pour l'instant
           });
@@ -328,7 +463,7 @@ const FamillesDisciples = () => {
       // 5. Récupérer les disciples depuis cercle_personnes (liés au superviseur)
       const { data: disciplesData, error: disciplesError } = await supabase
         .from('cercle_personnes')
-        .select('id, first_name, last_name, parent_disciple_id, user_id')
+        .select('id, first_name, last_name, parent_disciple_id, user_id, start_date, created_at')
         .eq('user_id', superviseurId);
 
       if (!disciplesError && disciplesData) {
@@ -368,6 +503,65 @@ const FamillesDisciples = () => {
           }
         }
 
+        // Préparer le nom du superviseur une seule fois pour tous les disciples directs
+        // IMPORTANT: Le superviseur a déjà été ajouté à membres (ligne 346-354), on peut le récupérer depuis là
+        let nomSuperviseurPourAffiliation = null;
+        
+        // D'abord essayer depuis superviseurData
+        if (superviseurData) {
+          const firstName = superviseurData.first_name || '';
+          const lastName = superviseurData.last_name || '';
+          const nomComplet = `${firstName} ${lastName}`.trim();
+          if (nomComplet && nomComplet !== '') {
+            nomSuperviseurPourAffiliation = nomComplet;
+          }
+        }
+
+        // Si pas trouvé, récupérer depuis les membres (le superviseur a été ajouté avant)
+        if (!nomSuperviseurPourAffiliation || nomSuperviseurPourAffiliation === '') {
+          const membreSuperviseur = membres.find(m => m.type === 'superviseur');
+          if (membreSuperviseur) {
+            const firstName = membreSuperviseur.first_name || '';
+            const lastName = membreSuperviseur.last_name || '';
+            const nomComplet = `${firstName} ${lastName}`.trim();
+            if (nomComplet && nomComplet !== '') {
+              nomSuperviseurPourAffiliation = nomComplet;
+            }
+          }
+        }
+
+        // Dernier recours: utiliser familles si disponible (état du composant)
+        if ((!nomSuperviseurPourAffiliation || nomSuperviseurPourAffiliation === '') && familles && familles.length > 0) {
+          const famille = familles.find(f => f.id === familleId);
+          if (famille && famille.superviseur) {
+            const firstName = famille.superviseur.first_name || '';
+            const lastName = famille.superviseur.last_name || '';
+            const nomComplet = `${firstName} ${lastName}`.trim();
+            if (nomComplet && nomComplet !== '') {
+              nomSuperviseurPourAffiliation = nomComplet;
+              // Mettre à jour aussi superviseurData et le membre superviseur pour cohérence
+              if (!superviseurData) {
+                superviseurData = {
+                  id: famille.superviseur.id,
+                  first_name: famille.superviseur.first_name,
+                  last_name: famille.superviseur.last_name,
+                  role: 'superviseur',
+                  titre: 'Superviseur'
+                };
+              }
+              const membreSuperviseur = membres.find(m => m.type === 'superviseur');
+              if (membreSuperviseur) {
+                membreSuperviseur.first_name = famille.superviseur.first_name || '';
+                membreSuperviseur.last_name = famille.superviseur.last_name || '';
+              }
+            }
+          }
+        }
+
+        console.log('📋 Nom superviseur pour affiliation des disciples directs:', nomSuperviseurPourAffiliation);
+        console.log('📋 Données superviseur complètes:', superviseurData);
+        console.log('📋 Membre superviseur dans membres:', membres.find(m => m.type === 'superviseur'));
+
         disciplesData.forEach(disciple => {
           const isDirect = !disciple.parent_disciple_id;
           let affiliation = null;
@@ -377,11 +571,24 @@ const FamillesDisciples = () => {
             affiliation = parentsMap[disciple.parent_disciple_id] || 'Discipline indirect';
           } else {
             // Disciple direct - affiliation avec le superviseur de la famille
-            if (superviseurData) {
-              const nomSuperviseur = `${superviseurData.first_name || ''} ${superviseurData.last_name || ''}`.trim();
-              affiliation = nomSuperviseur || null;
+            // TOUJOURS afficher le nom du superviseur (prénom nom) pour les disciples directs
+            if (nomSuperviseurPourAffiliation && nomSuperviseurPourAffiliation !== '') {
+              affiliation = nomSuperviseurPourAffiliation;
+            } else {
+              // Dernier recours: récupérer depuis les membres déjà ajoutés (pendant la boucle)
+              const membreSuperviseur = membres.find(m => m.type === 'superviseur');
+              if (membreSuperviseur) {
+                const firstName = membreSuperviseur.first_name || '';
+                const lastName = membreSuperviseur.last_name || '';
+                const nomComplet = `${firstName} ${lastName}`.trim();
+                affiliation = nomComplet || 'Superviseur';
+              } else {
+                affiliation = 'Superviseur';
+              }
             }
           }
+
+          console.log(`👤 Disciple ${disciple.first_name} ${disciple.last_name} (direct: ${isDirect}) -> affiliation: "${affiliation}"`);
 
           membres.push({
             id: disciple.id,
@@ -389,6 +596,7 @@ const FamillesDisciples = () => {
             last_name: disciple.last_name,
             titre: 'Disciple',
             affiliation: affiliation,
+            dateEntreeFamille: disciple.start_date || disciple.created_at || null,
             type: isDirect ? 'disciple_direct' : 'disciple_indirect',
             isDirect: isDirect,
             disciplesSuivis: disciplesSuivisMap[disciple.id] || 0
@@ -596,7 +804,12 @@ const FamillesDisciples = () => {
                   <div>
                     <p className="text-sm text-gray-600">Total Disciples</p>
                     <p className="text-2xl font-bold text-blue-600">
-                      {familles.reduce((sum, f) => sum + (f.nombre_disciples_actuels || 0), 0)}
+                      {familles.reduce((sum, f) => {
+                        const nombreReel = nombreMembresParFamille[f.id] !== undefined 
+                          ? nombreMembresParFamille[f.id] 
+                          : (f.nombre_disciples_actuels || 0);
+                        return sum + nombreReel;
+                      }, 0)}
                     </p>
                   </div>
                   <Users className="w-8 h-8 text-blue-600" />
@@ -611,10 +824,12 @@ const FamillesDisciples = () => {
                     <p className="text-2xl font-bold text-purple-600">
                       {familles.length > 0 
                         ? Math.round(
-                            familles.reduce((sum, f) => 
-                              sum + calculateProgression(f.nombre_disciples_actuels || 0, f.objectif_disciples || 70), 
-                              0
-                            ) / familles.length
+                            familles.reduce((sum, f) => {
+                              const nombreReel = nombreMembresParFamille[f.id] !== undefined 
+                                ? nombreMembresParFamille[f.id] 
+                                : (f.nombre_disciples_actuels || 0);
+                              return sum + calculateProgression(nombreReel, f.objectif_disciples || 70);
+                            }, 0) / familles.length
                           )
                         : 0}%
                     </p>
@@ -629,8 +844,13 @@ const FamillesDisciples = () => {
         {/* Liste des familles */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {familles.map((famille) => {
+            // Utiliser le nombre réel de membres si disponible, sinon utiliser celui de la base
+            const nombreMembresReel = nombreMembresParFamille[famille.id] !== undefined 
+              ? nombreMembresParFamille[famille.id] 
+              : (famille.nombre_disciples_actuels || 0);
+            
             const progression = calculateProgression(
-              famille.nombre_disciples_actuels || 0,
+              nombreMembresReel,
               famille.objectif_disciples || 70
             );
             const superviseurNom = famille.superviseur 
@@ -710,22 +930,18 @@ const FamillesDisciples = () => {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-sm text-gray-600">Progression</p>
-                      <p className={`text-sm font-bold ${getProgressionColor(progression)}`}>
+                      <p className="text-sm font-bold text-blue-600">
                         {progression}%
                       </p>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
-                        className={`h-2 rounded-full ${
-                          progression >= 80 ? 'bg-green-600' :
-                          progression >= 50 ? 'bg-yellow-600' :
-                          'bg-red-600'
-                        }`}
+                        className="h-2 rounded-full bg-blue-600"
                         style={{ width: `${progression}%` }}
                       />
                     </div>
                     <div className="flex items-center justify-between mt-1 text-xs text-gray-600">
-                      <span>{famille.nombre_disciples_actuels || 0} / {famille.objectif_disciples || 70}</span>
+                      <span className="font-bold">{nombreMembresReel} / {famille.objectif_disciples || 70}</span>
                       <Target className="w-4 h-4" />
                     </div>
                   </div>
@@ -993,7 +1209,7 @@ const FamillesDisciples = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="text-center p-4 bg-blue-50 rounded-lg">
                         <div className="text-3xl font-bold text-blue-600">
-                          {selectedFamille.nombre_disciples_actuels || 0}
+                          {nombreMembresReel || selectedFamille.nombre_disciples_actuels || 0}
                         </div>
                         <div className="text-sm text-gray-600 mt-1">Membres actuels</div>
                       </div>
@@ -1005,7 +1221,7 @@ const FamillesDisciples = () => {
                       </div>
                       <div className="text-center p-4 bg-green-50 rounded-lg">
                         <div className="text-3xl font-bold text-green-600">
-                          {calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70)}%
+                          {calculateProgression(nombreMembresReel || selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70)}%
                         </div>
                         <div className="text-sm text-gray-600 mt-1">Progression</div>
                       </div>
@@ -1015,22 +1231,22 @@ const FamillesDisciples = () => {
                     <div className="mt-6">
                       <div className="flex justify-between text-xs text-gray-600 mb-1">
                         <span>Progression</span>
-                        <span className="font-medium">{calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70)}%</span>
+                        <span className="font-medium">{calculateProgression(nombreMembresReel || selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70)}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-3">
                         <div
                           className={`h-3 rounded-full ${
-                            calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70) >= 100
+                            calculateProgression(nombreMembresReel || selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70) >= 100
                               ? 'bg-green-500'
-                              : calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70) >= 50
+                              : calculateProgression(nombreMembresReel || selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70) >= 50
                               ? 'bg-purple-600'
                               : 'bg-amber-500'
                           }`}
-                          style={{ width: `${Math.min(calculateProgression(selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70), 100)}%` }}
+                          style={{ width: `${Math.min(calculateProgression(nombreMembresReel || selectedFamille.nombre_disciples_actuels || 0, selectedFamille.objectif_disciples || 70), 100)}%` }}
                         />
                       </div>
                       <div className="flex items-center justify-between mt-2 text-xs text-gray-600">
-                        <span>{selectedFamille.nombre_disciples_actuels || 0} / {selectedFamille.objectif_disciples || 70}</span>
+                        <span>{nombreMembresReel || selectedFamille.nombre_disciples_actuels || 0} / {selectedFamille.objectif_disciples || 70}</span>
                         <Target className="w-4 h-4" />
                       </div>
                     </div>
@@ -1119,28 +1335,49 @@ const FamillesDisciples = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Prénom Nom</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Prénom</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Nom</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Titre</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Disciple depuis le</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Est suivi par</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit lui-même</th>
                       </tr>
                     </thead>
                     <tbody>
                       {membresFamille
                         .filter(m => m.isDirect || m.type === 'disciple_direct')
                         .map((membre) => (
-                          <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                            <td className="py-3 px-4 text-sm text-gray-900">
-                              {membre.first_name} {membre.last_name}
+                          <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-200 transition-colors">
+                            <td 
+                              className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
+                              onClick={() => navigate(`/disciples/${membre.id}`)}
+                            >
+                              {membre.first_name}
+                            </td>
+                            <td 
+                              className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
+                              onClick={() => navigate(`/disciples/${membre.id}`)}
+                            >
+                              {membre.last_name}
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
                               {membre.titre}
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
-                              {membre.affiliation || '-'}
+                              {membre.dateEntreeFamille 
+                                ? format(new Date(membre.dateEntreeFamille), 'd MMM yyyy', { locale: fr })
+                                : '-'
+                              }
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
-                              {membre.disciplesSuivis > 0 ? `${membre.disciplesSuivis} Disciple${membre.disciplesSuivis > 1 ? 's' : ''}` : '-'}
+                              {membre.disciplesSuivis > 0 ? (
+                                <span><span className="font-bold text-blue-600">{membre.disciplesSuivis}</span> Disciple{membre.disciplesSuivis > 1 ? 's' : ''}</span>
+                              ) : (
+                                <span><span className="font-bold text-blue-600">0</span> Disciple</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">
+                              {membre.affiliation || '-'}
                             </td>
                           </tr>
                         ))}
@@ -1161,28 +1398,49 @@ const FamillesDisciples = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Prénom Nom</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Prénom</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Nom</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Titre</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Disciple depuis le</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit</th>
                         <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Est suivi par</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit lui-même</th>
                       </tr>
                     </thead>
                     <tbody>
                       {membresFamille
                         .filter(m => !m.isDirect && m.type !== 'disciple_direct')
                         .map((membre) => (
-                          <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                            <td className="py-3 px-4 text-sm text-gray-900">
-                              {membre.first_name} {membre.last_name}
+                          <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-200 transition-colors">
+                            <td 
+                              className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
+                              onClick={() => navigate(`/disciples/${membre.id}`)}
+                            >
+                              {membre.first_name}
+                            </td>
+                            <td 
+                              className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
+                              onClick={() => navigate(`/disciples/${membre.id}`)}
+                            >
+                              {membre.last_name}
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
                               {membre.titre}
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
-                              {membre.affiliation || '-'}
+                              {membre.dateEntreeFamille 
+                                ? format(new Date(membre.dateEntreeFamille), 'd MMM yyyy', { locale: fr })
+                                : '-'
+                              }
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">
-                              {membre.disciplesSuivis > 0 ? `${membre.disciplesSuivis} Disciple${membre.disciplesSuivis > 1 ? 's' : ''}` : '-'}
+                              {membre.disciplesSuivis > 0 ? (
+                                <span><span className="font-bold text-blue-600">{membre.disciplesSuivis}</span> Disciple{membre.disciplesSuivis > 1 ? 's' : ''}</span>
+                              ) : (
+                                <span><span className="font-bold text-blue-600">0</span> Disciple</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">
+                              {membre.affiliation || '-'}
                             </td>
                           </tr>
                         ))}

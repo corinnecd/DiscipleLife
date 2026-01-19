@@ -19,6 +19,7 @@ const Profile = () => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [nomFamille, setNomFamille] = useState(null);
   
   // Avatar Upload
   const [avatarFile, setAvatarFile] = useState(null);
@@ -38,6 +39,19 @@ const Profile = () => {
       
       if (error) throw error;
       setProfile(data);
+
+      // Si le profil est un superviseur, récupérer le nom de la famille
+      if (data.role === 'superviseur') {
+        const { data: familleData, error: familleError } = await supabase
+          .from('familles_disciples')
+          .select('nom')
+          .eq('superviseur_id', user.id)
+          .maybeSingle();
+        
+        if (!familleError && familleData) {
+          setNomFamille(familleData.nom);
+        }
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -129,7 +143,11 @@ const Profile = () => {
                    </div>
                    <div className="text-center">
                       <p className="text-sm font-medium text-gray-900">{user.email}</p>
-                      <p className="text-xs text-gray-600 capitalize">{profile.role || 'Disciple'}</p>
+                      <p className="text-xs text-gray-600 capitalize">
+                        {profile.role === 'superviseur' && nomFamille 
+                          ? <>Superviseur de la Famille <span className="font-bold">« {nomFamille} »</span></>
+                          : (profile.role || 'Disciple')}
+                      </p>
                    </div>
                    
                    {uploadProgress > 0 && uploadProgress < 100 && (

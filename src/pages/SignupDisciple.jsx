@@ -24,7 +24,8 @@ const SignupDisciple = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    familleId: ''
+    familleId: '',
+    dateEntreeFamille: new Date().toISOString().split('T')[0] // Date du jour par défaut
   });
 
   const [familles, setFamilles] = useState([]);
@@ -111,7 +112,10 @@ const SignupDisciple = () => {
         // Vérifier si le profil existe et mettre à jour si nécessaire
         const { error: updateError } = await supabase
           .from('profils')
-          .update({ famille_id: formData.familleId })
+          .update({ 
+            famille_id: formData.familleId,
+            date_entree_famille: formData.dateEntreeFamille ? new Date(formData.dateEntreeFamille).toISOString() : null
+          })
           .eq('id', user.id);
 
         if (updateError) {
@@ -210,6 +214,20 @@ const SignupDisciple = () => {
                 )}
                 <p className="text-xs text-gray-500 mt-1">
                   Sélectionnez la famille à laquelle vous appartenez.
+                </p>
+             </div>
+             <div className="space-y-2">
+                <Label>Disciple depuis le <span className="text-red-400">*</span></Label>
+                <Input 
+                  type="date" 
+                  name="dateEntreeFamille" 
+                  value={formData.dateEntreeFamille} 
+                  onChange={handleInputChange} 
+                  required 
+                  className="bg-black/20 border-white/10 text-white" 
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Date d'entrée dans la famille.
                 </p>
              </div>
              <div className="space-y-2">

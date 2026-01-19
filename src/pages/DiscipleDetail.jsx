@@ -455,7 +455,7 @@ const DiscipleDetail = () => {
           <CardContent>
             <div className="space-y-4">
                <div 
-                  onClick={() => navigate('/conversations')}
+                  onClick={() => navigate('/my-appointments')}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-purple-50 hover:border-purple-300 cursor-pointer transition-colors"
                >
                   <div className="flex items-center gap-3">
@@ -516,15 +516,25 @@ const DiscipleDetail = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Prénom Nom</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Prénom</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Nom</th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Suit lui-même</th>
                   </tr>
                 </thead>
                 <tbody>
                   {disciplesSuivis.map((discipleSuivi) => (
                     <tr key={discipleSuivi.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-4 text-sm text-gray-900">
-                        {discipleSuivi.first_name} {discipleSuivi.last_name}
+                      <td 
+                        className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
+                        onClick={() => navigate(`/disciples/${discipleSuivi.id}`)}
+                      >
+                        {discipleSuivi.first_name}
+                      </td>
+                      <td 
+                        className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
+                        onClick={() => navigate(`/disciples/${discipleSuivi.id}`)}
+                      >
+                        {discipleSuivi.last_name}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">
                         {discipleSuivi.disciplesSuivis > 0 ? (
@@ -533,7 +543,7 @@ const DiscipleDetail = () => {
                             {discipleSuivi.disciplesSuivis} Disciple{discipleSuivi.disciplesSuivis > 1 ? 's' : ''}
                           </span>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <span>0 Disciple</span>
                         )}
                       </td>
                     </tr>
