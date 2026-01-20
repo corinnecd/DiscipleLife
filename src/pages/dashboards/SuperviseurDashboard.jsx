@@ -32,14 +32,17 @@ import { Helmet } from 'react-helmet';
 import { compressImage } from '@/lib/ImageCompression';
 import { useToast } from '@/components/ui/use-toast';
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
+import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { 
-  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Brush, ReferenceLine
 } from 'recharts';
 
 const SuperviseurDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { handleError } = useErrorHandler();
   const [loading, setLoading] = useState(true);
   const [famille, setFamille] = useState(null);
   const [pasteur, setPasteur] = useState(null);
@@ -141,6 +144,19 @@ const SuperviseurDashboard = () => {
   const [selectedSuperviseur, setSelectedSuperviseur] = useState(null); // Pour afficher la fiche du superviseur
   const [showAllInactifs, setShowAllInactifs] = useState(false); // Pour afficher tous les disciples inactifs
   const [showAllSansProgression, setShowAllSansProgression] = useState(false); // Pour afficher tous les membres sans progression
+  // États pour le lazy loading des graphiques
+  const [chartsLoaded, setChartsLoaded] = useState({
+    formationVideo: false,
+    statutsSpirituels: false,
+    activiteRecente: false,
+    statsComparatives: false
+  });
+
+  // Refs pour le lazy loading des graphiques
+  const formationVideoRef = React.useRef(null);
+  const statutsSpirituelsRef = React.useRef(null);
+  const activiteRecenteRef = React.useRef(null);
+  const statsComparativesRef = React.useRef(null);
 
   useEffect(() => {
     if (user) {
@@ -148,6 +164,125 @@ const SuperviseurDashboard = () => {
       checkReportReminder();
     }
   }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+
+  // Hook pour détecter la visibilité d'un élément (IntersectionObserver) - Lazy loading des graphiques
+  useEffect(() => {
+    if (!user || !famille) return; // Ne pas observer si les données principales ne sont pas chargées
+
+    const observers = [];
+
+    // Observer pour "Évolution des Formations et Vidéos"
+    if (formationVideoRef.current) {
+      const observer1 = new IntersectionObserver(
+        async ([entry]) => {
+          if (entry.isIntersecting && !chartsLoaded.formationVideo) {
+            setChartsLoaded(prev => ({ ...prev, formationVideo: true }));
+            try {
+              await generateFormationVideoChartData();
+              console.log('✅ Données formations/vidéos générées (lazy loading)');
+            } catch (error) {
+              console.error('❌ Erreur génération formations/vidéos:', error);
+            }
+          }
+        },
+        { threshold: 0.1 }
+      );
+      observer1.observe(formationVideoRef.current);
+      observers.push({ observer: observer1, element: formationVideoRef.current });
+    }
+
+    // Observer pour "Répartition des Statuts Spirituels"
+    if (statutsSpirituelsRef.current) {
+      const observer2 = new IntersectionObserver(
+        async ([entry]) => {
+          if (entry.isIntersecting && !chartsLoaded.statutsSpirituels) {
+            setChartsLoaded(prev => ({ ...prev, statutsSpirituels: true }));
+            try {
+              await calculateStatutsSpirituels();
+              console.log('✅ Statuts spirituels calculés (lazy loading)');
+            } catch (error) {
+              console.error('❌ Erreur calcul statuts spirituels:', error);
+            }
+          }
+        },
+        { threshold: 0.1 }
+      );
+      observer2.observe(statutsSpirituelsRef.current);
+      observers.push({ observer: observer2, element: statutsSpirituelsRef.current });
+    }
+
+    // Observer pour "Activité Récente"
+    if (activiteRecenteRef.current) {
+      const observer3 = new IntersectionObserver(
+        async ([entry]) => {
+          if (entry.isIntersecting && !chartsLoaded.activiteRecente) {
+            setChartsLoaded(prev => ({ ...prev, activiteRecente: true }));
+            try {
+              await fetchActiviteRecente();
+              console.log('✅ Activité récente récupérée (lazy loading)');
+            } catch (error) {
+              console.error('❌ Erreur récupération activité récente:', error);
+            }
+          }
+        },
+        { threshold: 0.1 }
+      );
+      observer3.observe(activiteRecenteRef.current);
+      observers.push({ observer: observer3, element: activiteRecenteRef.current });
+    }
+
+    // Observer pour "Statistiques Comparatives"
+    if (statsComparativesRef.current) {
+      const observer4 = new IntersectionObserver(
+        async ([entry]) => {
+          if (entry.isIntersecting && !chartsLoaded.statsComparatives) {
+            setChartsLoaded(prev => ({ ...prev, statsComparatives: true }));
+            try {
+              // Attendre que famille soit chargée avant de calculer
+              if (!famille || !famille.id) {
+                console.log('⏳ Attente chargement famille avant calcul stats comparatives...');
+                // Vérifier périodiquement si famille est chargée
+                let attempts = 0;
+                const maxAttempts = 25; // 5 secondes max
+                const checkInterval = setInterval(() => {
+                  attempts++;
+                  if (famille && famille.id) {
+                    clearInterval(checkInterval);
+                    fetchStatsComparatives().then(() => {
+                      console.log('✅ Statistiques comparatives récupérées (lazy loading)');
+                    });
+                  } else if (attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    console.warn('⚠️ Famille non chargée après 5 secondes, calcul annulé');
+                    setStatsComparatives({
+                      moyenneAutresFamilles: null,
+                      classement: null,
+                      totalFamilles: 0
+                    });
+                  }
+                }, 200);
+              } else {
+                await fetchStatsComparatives();
+                console.log('✅ Statistiques comparatives récupérées (lazy loading)');
+              }
+            } catch (error) {
+              console.error('❌ Erreur récupération stats comparatives:', error);
+            }
+          }
+        },
+        { threshold: 0.1 }
+      );
+      observer4.observe(statsComparativesRef.current);
+      observers.push({ observer: observer4, element: statsComparativesRef.current });
+    }
+
+    // Nettoyage
+    return () => {
+      observers.forEach(({ observer, element }) => {
+        if (element) observer.unobserve(element);
+      });
+    };
+  }, [chartsLoaded, user, famille]);
 
   // Fonction pour vérifier le rappel de rapport (5 jours avant la fin du mois)
   const checkReportReminder = () => {
@@ -177,21 +312,39 @@ const SuperviseurDashboard = () => {
     try {
       setLoading(true);
 
-      // OPTIMISATION: Paralléliser les requêtes initiales (famille, superviseur)
+      // OPTIMISATION: Utiliser le cache pour les données fréquemment consultées (TTL: 2 minutes)
+      const cacheKeyBase = `superviseur_${user.id}`;
+      
+      // OPTIMISATION: Paralléliser les requêtes initiales (famille, superviseur) avec cache
       const [familleResult, superviseurResult] = await Promise.all([
-        // 1. Récupérer la famille du superviseur
-        supabase
-          .from('familles_disciples')
-          .select('*')
-          .eq('superviseur_id', user.id)
-          .maybeSingle(),
-        // 2. Récupérer les informations du superviseur (nom et pasteur)
-        // Note: titre n'est pas inclus car la colonne n'existe pas encore dans la base
-        supabase
-          .from('profils')
-          .select('first_name, last_name, pasteur_id')
-          .eq('id', user.id)
-          .single()
+        // 1. Récupérer la famille du superviseur avec cache
+        getOrSetCache(
+          `${cacheKeyBase}_famille`,
+          async () => {
+            const result = await supabase
+              .from('familles_disciples')
+              .select('*')
+              .eq('superviseur_id', user.id)
+              .maybeSingle();
+            if (result.error) throw result.error;
+            return result.data;
+          },
+          2 * 60 * 1000 // 2 minutes
+        ).then(data => ({ data, error: null })).catch(error => ({ data: null, error })),
+        // 2. Récupérer les informations du superviseur avec cache
+        getOrSetCache(
+          `${cacheKeyBase}_superviseur`,
+          async () => {
+            const result = await supabase
+              .from('profils')
+              .select('first_name, last_name, pasteur_id')
+              .eq('id', user.id)
+              .single();
+            if (result.error) throw result.error;
+            return result.data;
+          },
+          2 * 60 * 1000 // 2 minutes
+        ).then(data => ({ data, error: null })).catch(error => ({ data: null, error }))
       ]);
 
       const { data: familleData, error: familleError } = familleResult;
@@ -745,36 +898,11 @@ const SuperviseurDashboard = () => {
         setRapports(rapportsData || []);
       }
       
-      // 6. Récupérer les données supplémentaires
-      console.log('📊 Récupération des données supplémentaires...');
-      try {
-        await generateFormationVideoChartData();
-        console.log('✅ Données formations/vidéos générées');
-      } catch (error) {
-        console.error('❌ Erreur génération formations/vidéos:', error);
-      }
+      // 6. OPTIMISATION: Charger les données supplémentaires de manière paresseuse
+      // Ces données seront chargées uniquement quand les sections correspondantes sont visibles
+      console.log('📊 Données principales chargées. Les graphiques seront chargés de manière paresseuse.');
       
-      try {
-        await calculateStatutsSpirituels();
-        console.log('✅ Statuts spirituels calculés');
-      } catch (error) {
-        console.error('❌ Erreur calcul statuts spirituels:', error);
-      }
-      
-      try {
-        await fetchActiviteRecente();
-        console.log('✅ Activité récente récupérée');
-      } catch (error) {
-        console.error('❌ Erreur récupération activité récente:', error);
-      }
-      
-      try {
-        await fetchStatsComparatives();
-        console.log('✅ Statistiques comparatives récupérées');
-      } catch (error) {
-        console.error('❌ Erreur récupération stats comparatives:', error);
-      }
-      
+      // Seules les alertes sont chargées immédiatement car elles sont importantes
       try {
         await fetchAlertes();
         console.log('✅ Alertes récupérées');
@@ -782,7 +910,7 @@ const SuperviseurDashboard = () => {
         console.error('❌ Erreur récupération alertes:', error);
       }
 
-      // 6. Récupérer les autres superviseurs de la famille (même pasteur_id)
+      // 6. OPTIMISATION: Récupérer les autres superviseurs de la famille (même pasteur_id) avec calculs groupés
       if (superviseurData?.pasteur_id) {
         const { data: superviseursData, error: superviseursError } = await supabase
           .from('profils')
@@ -795,46 +923,66 @@ const SuperviseurDashboard = () => {
         if (!superviseursError && superviseursData) {
           setSuperviseursFamille(superviseursData || []);
           
-          // Pour chaque superviseur, récupérer le nombre de membres de sa famille
+          // OPTIMISATION: Récupérer toutes les familles et compter les membres en requêtes groupées
           const membresCountMap = {};
           if (superviseursData.length > 0) {
-            const membresPromises = superviseursData.map(async (superviseur) => {
-              try {
-                // Récupérer la famille du superviseur
-                const { data: familleSuperviseur, error: familleError } = await supabase
-                  .from('familles_disciples')
-                  .select('id')
-                  .eq('superviseur_id', superviseur.id)
-                  .maybeSingle();
+            const superviseurIds = superviseursData.map(s => s.id);
+            
+            // Récupérer toutes les familles des superviseurs en une seule requête
+            const { data: allFamilles, error: famillesError } = await supabase
+              .from('familles_disciples')
+              .select('id, superviseur_id')
+              .in('superviseur_id', superviseurIds);
 
-                if (familleError || !familleSuperviseur) {
-                  return { superviseurId: superviseur.id, count: 0 };
-                }
+            if (!famillesError && allFamilles) {
+              // Créer un map superviseur_id -> famille_id
+              const superviseurToFamilleMap = {};
+              const familleIds = [];
+              allFamilles.forEach(famille => {
+                superviseurToFamilleMap[famille.superviseur_id] = famille.id;
+                familleIds.push(famille.id);
+              });
 
-                // Compter les membres depuis profils
-                const { count: membresProfils } = await supabase
-                  .from('profils')
-                  .select('id', { count: 'exact', head: true })
-                  .eq('famille_id', familleSuperviseur.id);
-
-                // Compter les membres depuis cercle_personnes
-                const { count: membresCercle } = await supabase
+              // Récupérer tous les comptages en requêtes groupées
+              const [profilsCountsResult, cercleCountsResult] = await Promise.all([
+                // Compter les membres depuis profils pour toutes les familles
+                familleIds.length > 0
+                  ? supabase
+                      .from('profils')
+                      .select('famille_id')
+                      .in('famille_id', familleIds)
+                  : Promise.resolve({ data: [] }),
+                // Compter les membres depuis cercle_personnes pour tous les superviseurs
+                supabase
                   .from('cercle_personnes')
-                  .select('id', { count: 'exact', head: true })
-                  .eq('user_id', superviseur.id);
+                  .select('user_id')
+                  .in('user_id', superviseurIds)
+              ]);
 
-                const totalMembres = (membresProfils || 0) + (membresCercle || 0);
-                return { superviseurId: superviseur.id, count: totalMembres };
-              } catch (error) {
-                console.error(`Erreur calcul membres pour superviseur ${superviseur.id}:`, error);
-                return { superviseurId: superviseur.id, count: 0 };
-              }
-            });
+              // Compter les membres par famille depuis profils
+              const membresParFamille = {};
+              profilsCountsResult.data?.forEach(p => {
+                if (p.famille_id) {
+                  membresParFamille[p.famille_id] = (membresParFamille[p.famille_id] || 0) + 1;
+                }
+              });
 
-            const countResults = await Promise.all(membresPromises);
-            countResults.forEach(({ superviseurId, count }) => {
-              membresCountMap[superviseurId] = count;
-            });
+              // Compter les membres par superviseur depuis cercle_personnes
+              const membresParSuperviseur = {};
+              cercleCountsResult.data?.forEach(c => {
+                if (c.user_id) {
+                  membresParSuperviseur[c.user_id] = (membresParSuperviseur[c.user_id] || 0) + 1;
+                }
+              });
+
+              // Calculer le total pour chaque superviseur
+              superviseursData.forEach(superviseur => {
+                const familleId = superviseurToFamilleMap[superviseur.id];
+                const membresProfils = familleId ? (membresParFamille[familleId] || 0) : 0;
+                const membresCercle = membresParSuperviseur[superviseur.id] || 0;
+                membresCountMap[superviseur.id] = membresProfils + membresCercle;
+              });
+            }
           }
           
           setNombreMembresParSuperviseur(membresCountMap);
@@ -1183,46 +1331,123 @@ const SuperviseurDashboard = () => {
   
   // Fonction pour récupérer les statistiques comparatives
   const fetchStatsComparatives = async () => {
-    if (!famille) return;
+    // Attendre que famille soit chargée
+    if (!famille || !famille.id) {
+      console.log('⏳ Famille non chargée, attente...');
+      // Réessayer après un court délai si famille n'est pas encore chargée
+      setTimeout(() => {
+        if (famille && famille.id) {
+          fetchStatsComparatives();
+        } else {
+          // Si toujours pas chargée après 2 secondes, définir un état par défaut
+          setStatsComparatives({
+            moyenneAutresFamilles: null,
+            classement: null,
+            totalFamilles: 0
+          });
+        }
+      }, 500);
+      return;
+    }
     
     try {
+      console.log('📊 Début calcul stats comparatives pour famille:', famille.id);
+      
+      // Initialiser l'état de chargement
+      setStatsComparatives({
+        moyenneAutresFamilles: null,
+        classement: null,
+        totalFamilles: 0
+      });
+      
       // Récupérer toutes les familles avec leurs statistiques
-      const { data: toutesFamilles } = await supabase
+      const { data: toutesFamilles, error: famillesError } = await supabase
         .from('familles_disciples')
         .select('id, nom, nombre_disciples_actuels, objectif_disciples, superviseur_id');
       
-      if (!toutesFamilles || toutesFamilles.length === 0) return;
+      if (famillesError) {
+        throw famillesError;
+      }
+      
+      if (!toutesFamilles || toutesFamilles.length === 0) {
+        console.log('⚠️ Aucune famille trouvée');
+        setStatsComparatives({
+          moyenneAutresFamilles: 0,
+          classement: 1,
+          totalFamilles: 0
+        });
+        return;
+      }
+      
+      console.log(`📊 ${toutesFamilles.length} familles trouvées`);
       
       // Calculer les nombres réels de membres pour chaque famille
       const famillesAvecStats = await Promise.all(
         toutesFamilles.map(async (f) => {
-          const { count: membresProfils } = await supabase
-            .from('profils')
-            .select('id', { count: 'exact', head: true })
-            .eq('famille_id', f.id);
-          
-          const { count: membresCercle } = await supabase
-            .from('cercle_personnes')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', f.superviseur_id);
-          
-          const totalMembres = (membresProfils || 0) + (membresCercle || 0);
-          return {
-            ...f,
-            nombreMembresReel: totalMembres
-          };
+          try {
+            // Récupérer les membres depuis profils
+            const { count: membresProfils, error: profilsError } = await supabase
+              .from('profils')
+              .select('id', { count: 'exact', head: true })
+              .eq('famille_id', f.id);
+            
+            if (profilsError) {
+              console.error(`Erreur profils pour famille ${f.id}:`, profilsError);
+            }
+            
+            // Récupérer les membres depuis cercle_personnes
+            let membresCercle = 0;
+            if (f.superviseur_id) {
+              const { count, error: cercleError } = await supabase
+                .from('cercle_personnes')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', f.superviseur_id);
+              
+              if (!cercleError) {
+                membresCercle = count || 0;
+              } else {
+                console.error(`Erreur cercle pour famille ${f.id}:`, cercleError);
+              }
+            }
+            
+            const totalMembres = (membresProfils || 0) + membresCercle;
+            return {
+              ...f,
+              nombreMembresReel: totalMembres
+            };
+          } catch (error) {
+            console.error(`Erreur calcul stats pour famille ${f.id}:`, error);
+            return {
+              ...f,
+              nombreMembresReel: 0
+            };
+          }
         })
       );
       
-      // Calculer la moyenne
-      const sommeMembres = famillesAvecStats.reduce((sum, f) => sum + f.nombreMembresReel, 0);
-      const moyenne = Math.round(sommeMembres / famillesAvecStats.length);
+      // Calculer la moyenne (sans inclure la famille actuelle)
+      const autresFamilles = famillesAvecStats.filter(f => f.id !== famille.id);
+      const sommeMembres = autresFamilles.length > 0 
+        ? autresFamilles.reduce((sum, f) => sum + f.nombreMembresReel, 0)
+        : 0;
+      const moyenne = autresFamilles.length > 0 
+        ? Math.round(sommeMembres / autresFamilles.length)
+        : 0;
       
       // Trouver le classement de la famille actuelle
       const familleActuelle = famillesAvecStats.find(f => f.id === famille.id);
+      const nombreMembresActuels = familleActuelle?.nombreMembresReel || stats.nombreMembres;
+      
       const classement = famillesAvecStats
         .sort((a, b) => b.nombreMembresReel - a.nombreMembresReel)
         .findIndex(f => f.id === famille.id) + 1;
+      
+      console.log('✅ Stats comparatives calculées:', {
+        moyenne,
+        classement,
+        totalFamilles: famillesAvecStats.length,
+        nombreMembresActuels
+      });
       
       setStatsComparatives({
         moyenneAutresFamilles: moyenne,
@@ -1230,7 +1455,13 @@ const SuperviseurDashboard = () => {
         totalFamilles: famillesAvecStats.length
       });
     } catch (error) {
-      console.error('Erreur récupération stats comparatives:', error);
+      console.error('❌ Erreur récupération stats comparatives:', error);
+      // En cas d'erreur, définir un état par défaut pour éviter le message "Calcul en cours..."
+      setStatsComparatives({
+        moyenneAutresFamilles: null,
+        classement: null,
+        totalFamilles: 0
+      });
     }
   };
   
@@ -1593,7 +1824,17 @@ const SuperviseurDashboard = () => {
         console.log('📄 Tentative export PDF:', { uniqueId, pdfFilename });
         
         try {
-          await exportElementToPDF(uniqueId, pdfFilename);
+          await exportElementToPDF(uniqueId, pdfFilename, {
+            title: 'Liste des Membres de la Famille',
+            subtitle: famille ? `Famille: ${famille.nom}` : '',
+            showHeader: true,
+            showFooter: true,
+            additionalInfo: {
+              'Superviseur': `${superviseurNom.first_name} ${superviseurNom.last_name}`,
+              'Nombre de membres': filteredMembres.length,
+              'Filtres appliqués': searchTerm || statusFilter !== 'tous' || dateFilter || progressionFilter !== 'tous' ? 'Oui' : 'Non'
+            }
+          });
           console.log('✅ Export PDF réussi');
           document.body.removeChild(tempDiv);
         } catch (pdfError) {
@@ -1604,7 +1845,15 @@ const SuperviseurDashboard = () => {
       } else {
         console.log('📊 Tentative export Excel:', { filename, nombreLignes: exportData.length });
         try {
-          exportToExcel(exportData, filename);
+          exportToExcel(exportData, filename, {
+            title: 'Liste des Membres de la Famille',
+            description: famille ? `Famille: ${famille.nom}` : '',
+            additionalInfo: {
+              'Superviseur': `${superviseurNom.first_name} ${superviseurNom.last_name}`,
+              'Nombre de membres': filteredMembres.length.toString(),
+              'Filtres appliqués': searchTerm || statusFilter !== 'tous' || dateFilter || progressionFilter !== 'tous' ? 'Oui' : 'Non'
+            }
+          });
           console.log('✅ Export Excel réussi');
         } catch (excelError) {
           console.error('❌ Erreur export Excel:', excelError);
@@ -1680,11 +1929,27 @@ const SuperviseurDashboard = () => {
           </div>
         `;
         document.body.appendChild(tempDiv);
-        const pdfFilename = `${filename}.pdf`;
-        await exportElementToPDF(uniqueId, pdfFilename);
+        const pdfFilename = `disciples_${selectedMembreForDisciples.name.replace(/\s+/g, '_')}`;
+        await exportElementToPDF(uniqueId, pdfFilename, {
+          title: `Disciples de ${selectedMembreForDisciples.name}`,
+          subtitle: `Liste des disciples suivis par ce membre`,
+          showHeader: true,
+          showFooter: true,
+          additionalInfo: {
+            'Nombre de disciples': disciplesList.length.toString(),
+            'Membre suivi': selectedMembreForDisciples.name
+          }
+        });
         document.body.removeChild(tempDiv);
       } else {
-        exportToExcel(exportData, filename);
+        exportToExcel(exportData, filename, {
+          title: `Disciples de ${selectedMembreForDisciples.name}`,
+          description: `Liste des disciples suivis par ce membre`,
+          additionalInfo: {
+            'Nombre de disciples': disciplesList.length.toString(),
+            'Membre suivi': selectedMembreForDisciples.name
+          }
+        });
       }
       
       toast({
@@ -1916,14 +2181,14 @@ const SuperviseurDashboard = () => {
                   <motion.h1 
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="text-4xl font-bold text-white mb-4"
+                    className="text-2xl md:text-4xl font-bold text-white mb-4"
                   >
                     BIENVENUE dans la Famille de {superviseurNom.titre === 'Pasteur' ? 'Pasteur ' : ''}{superviseurNom.first_name} {superviseurNom.last_name}
                   </motion.h1>
-                  <p className="text-xl text-white/90 mb-4 leading-relaxed">
+                  <p className="text-base md:text-xl text-white/90 mb-4 leading-relaxed">
                     Ici, vous êtes chez vous.
                   </p>
-                  <p className="text-lg text-white/90 leading-relaxed">
+                  <p className="text-sm md:text-lg text-white/90 leading-relaxed">
                     Un espace de partage, de soutien et de croissance spirituelle, où chacun est accompagné dans sa marche avec Dieu afin de devenir de véritables disciples de Christ.
                   </p>
                 </div>
@@ -1992,7 +2257,12 @@ const SuperviseurDashboard = () => {
         
         {/* En-tête avec nom de la famille et pasteur */}
         <div className="grid gap-4 md:grid-cols-2">
-          <Card className="bg-white border-gray-200 shadow-sm">
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+          <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-start justify-between">
               <div className="flex-1">
                 <CardTitle className="flex items-center gap-2 text-gray-900">
@@ -2060,6 +2330,12 @@ const SuperviseurDashboard = () => {
                     <span className="text-lg font-semibold text-red-600">{stats.reste} Disciples</span>
                   </div>
                 )}
+                {stats.nombreMembres > stats.objectif && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Objectif Atteint</span>
+                    <span className="text-lg font-semibold text-green-600">+ {stats.nombreMembres - stats.objectif} Disciples</span>
+                  </div>
+                )}
               </div>
               
               {/* Barre de progression */}
@@ -2089,9 +2365,15 @@ const SuperviseurDashboard = () => {
               )}
             </CardContent>
           </Card>
+          </motion.div>
 
           {/* Carte du Pasteur de tutelle */}
-          <Card className="bg-white border-gray-200 shadow-sm">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+          >
+          <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-start justify-between">
               <div className="flex-1">
                 <CardTitle className="flex items-center gap-2 text-gray-900">
@@ -2176,6 +2458,7 @@ const SuperviseurDashboard = () => {
               )}
             </CardContent>
           </Card>
+          </motion.div>
         </div>
 
         {/* Liste des superviseurs de la famille */}
@@ -2267,15 +2550,15 @@ const SuperviseurDashboard = () => {
           <Card className="bg-white border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-gray-900">
-                Disciples à évangéliser
+                {stats.nombreMembres >= stats.objectif ? 'Continuons d\'évangéliser' : 'Disciples à évangéliser'}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">
-                {stats.reste}
+              <div className={`text-2xl font-bold ${stats.nombreMembres >= stats.objectif ? 'text-green-600' : 'text-red-600'}`}>
+                {stats.nombreMembres >= stats.objectif ? `+ ${stats.nombreMembres - stats.objectif}` : stats.reste}
               </div>
               <p className="text-xs text-gray-600 mt-1">
-                avant l'objectif
+                {stats.nombreMembres >= stats.objectif ? 'Objectif atteint' : 'avant l\'objectif'}
               </p>
             </CardContent>
           </Card>
@@ -2694,7 +2977,7 @@ const SuperviseurDashboard = () => {
         )}
 
         {/* Section Activité Récente */}
-        <Card className="bg-white border-gray-200 shadow-sm">
+        <Card ref={activiteRecenteRef} className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Activity className="h-5 w-5 text-purple-600" />
@@ -2845,7 +3128,7 @@ const SuperviseurDashboard = () => {
         </Card>
 
         {/* Statistiques Comparatives */}
-        <Card className="bg-white border-gray-200 shadow-sm">
+        <Card ref={statsComparativesRef} className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Target className="h-5 w-5 text-purple-600" />
@@ -2853,7 +3136,7 @@ const SuperviseurDashboard = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {statsComparatives.moyenneAutresFamilles !== null ? (
+            {chartsLoaded.statsComparatives && statsComparatives.moyenneAutresFamilles !== null ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="text-center p-4 bg-purple-50 rounded-lg">
                   <div className="text-2xl font-bold text-purple-600">
@@ -2872,13 +3155,18 @@ const SuperviseurDashboard = () => {
                     #{statsComparatives.classement}
                   </div>
                   <div className="text-sm text-gray-600 mt-1">
-                    Classement sur {statsComparatives.totalFamilles} familles
+                    Classement sur {statsComparatives.totalFamilles} famille{statsComparatives.totalFamilles > 1 ? 's' : ''}
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : chartsLoaded.statsComparatives ? (
               <div className="text-center py-8 text-gray-500">
+                <Loader2 className="h-6 w-6 animate-spin text-purple-600 mx-auto mb-2" />
                 <p>Calcul en cours...</p>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-400">
+                <p>Faites défiler pour charger les statistiques</p>
               </div>
             )}
           </CardContent>
@@ -3214,8 +3502,8 @@ const SuperviseurDashboard = () => {
                     </TableHeader>
                     <TableBody>
                       {paginatedMembres.map((membre) => (
-                        <TableRow key={membre.id} className={`hover:bg-gray-50 ${selectedMembres.includes(membre.id) ? 'bg-blue-50' : ''}`}>
-                          <TableCell>
+                        <TableRow key={membre.id} className={`hover:bg-gray-50 hover:text-black ${selectedMembres.includes(membre.id) ? 'bg-blue-50' : ''}`}>
+                          <TableCell className="hover:text-black">
                             <Checkbox
                               checked={selectedMembres.includes(membre.id)}
                               onCheckedChange={() => toggleSelectMembre(membre.id)}
@@ -3229,7 +3517,7 @@ const SuperviseurDashboard = () => {
                               </AvatarFallback>
                             </Avatar>
                           </TableCell>
-                          <TableCell className="font-medium">
+                          <TableCell className="font-medium hover:text-black">
                             <div 
                               className="flex items-center gap-2 cursor-pointer hover:text-purple-600 transition-colors"
                               onClick={() => navigate(`/disciples/${membre.id}`)}
@@ -3238,7 +3526,7 @@ const SuperviseurDashboard = () => {
                               <Eye className="h-4 w-4 text-gray-400 hover:text-purple-600" />
                             </div>
                           </TableCell>
-                          <TableCell className="text-gray-600">
+                          <TableCell className="text-gray-600 hover:text-black">
                             {membre.email || '-'}
                           </TableCell>
                           <TableCell>
@@ -3253,7 +3541,7 @@ const SuperviseurDashboard = () => {
                               {membre.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif'}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center hover:text-black">
                             <button
                               onClick={() => {
                                 fetchDisciplesOfMembre(membre.id, `${membre.first_name} ${membre.last_name}`);
@@ -3263,7 +3551,7 @@ const SuperviseurDashboard = () => {
                               {membre.nombreDisciples || 0}
                             </button>
                           </TableCell>
-                          <TableCell className="text-gray-600">
+                          <TableCell className="text-gray-600 hover:text-black">
                             {membresProgression[membre.id] ? (
                               <div className="flex flex-col gap-1">
                                 <div className="text-xs">
@@ -3280,7 +3568,7 @@ const SuperviseurDashboard = () => {
                               <span className="text-gray-400">-</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-gray-600">
+                          <TableCell className="text-gray-600 hover:text-black">
                             {membresSuiviPar[membre.id] ? (
                               <span className="text-sm font-medium text-gray-900">
                                 {membresSuiviPar[membre.id].name}
@@ -3289,7 +3577,7 @@ const SuperviseurDashboard = () => {
                               <span className="text-gray-400">-</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-gray-600">
+                          <TableCell className="text-gray-600 hover:text-black">
                             {membre.created_at ? format(new Date(membre.created_at), 'dd/MM/yyyy', { locale: fr }) : '-'}
                           </TableCell>
                         </TableRow>
@@ -3376,7 +3664,7 @@ const SuperviseurDashboard = () => {
         </Card>
 
         {/* Graphiques supplémentaires : Évolution formations/vidéos */}
-        <Card className="bg-white border-gray-200 shadow-sm">
+        <Card ref={formationVideoRef} className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <GraduationCap className="h-5 w-5 text-purple-600" />
@@ -3385,19 +3673,81 @@ const SuperviseurDashboard = () => {
           </CardHeader>
           <CardContent>
             {formationVideoChartData.length > 0 ? (
-              <div className="h-[300px] w-full">
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="h-[400px] w-full"
+              >
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={formationVideoChartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="formations" name="Formations Terminées" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="videos" name="Vidéos Terminées" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
+                  <LineChart 
+                    data={formationVideoChartData} 
+                    margin={{ top: 10, right: 30, left: 0, bottom: 80 }}
+                  >
+                    <XAxis 
+                      dataKey="name" 
+                      stroke="#888888" 
+                      fontSize={12} 
+                      tickLine={false} 
+                      axisLine={false}
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                    />
+                    <YAxis 
+                      stroke="#888888" 
+                      fontSize={12} 
+                      tickLine={false} 
+                      axisLine={false}
+                    />
+                    <CartesianGrid 
+                      strokeDasharray="3 3" 
+                      vertical={false} 
+                      stroke="#e5e7eb"
+                      opacity={0.5}
+                    />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                      }}
+                      cursor={{ stroke: '#8b5cf6', strokeWidth: 1, strokeDasharray: '5 5' }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: '20px' }}
+                      iconType="line"
+                    />
+                    <Brush 
+                      dataKey="name" 
+                      height={30}
+                      stroke="#8b5cf6"
+                      tickFormatter={() => ''}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="formations" 
+                      name="Formations Terminées" 
+                      stroke="#8b5cf6" 
+                      strokeWidth={3} 
+                      dot={{ r: 5, fill: '#8b5cf6' }}
+                      activeDot={{ r: 8, fill: '#7c3aed' }}
+                      animationDuration={1000}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="videos" 
+                      name="Vidéos Terminées" 
+                      stroke="#ef4444" 
+                      strokeWidth={3} 
+                      dot={{ r: 5, fill: '#ef4444' }}
+                      activeDot={{ r: 8, fill: '#dc2626' }}
+                      animationDuration={1000}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
-              </div>
+              </motion.div>
             ) : (
               <div className="h-[300px] w-full flex items-center justify-center text-gray-500">
                 <p>Aucune donnée disponible pour le moment</p>
@@ -3416,20 +3766,75 @@ const SuperviseurDashboard = () => {
           </CardHeader>
           <CardContent>
             {chartData.length > 0 && chartDataPreviousYear.length > 0 ? (
-              <div className="h-[300px] w-full">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+                className="h-[400px] w-full"
+              >
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={[
-                    { name: 'Année en cours', value: chartData.reduce((sum, d) => sum + d.culteDimancheMatin, 0) },
-                    { name: 'Année précédente', value: chartDataPreviousYear.reduce((sum, d) => sum + d.culteDimancheMatin, 0) }
-                  ]} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="#8b5cf6" />
+                  <BarChart 
+                    data={[
+                      { 
+                        name: 'Année en cours', 
+                        value: chartData.reduce((sum, d) => sum + d.culteDimancheMatin, 0),
+                        fill: '#8b5cf6'
+                      },
+                      { 
+                        name: 'Année précédente', 
+                        value: chartDataPreviousYear.reduce((sum, d) => sum + d.culteDimancheMatin, 0),
+                        fill: '#a78bfa'
+                      }
+                    ]} 
+                    margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                  >
+                    <XAxis 
+                      dataKey="name" 
+                      stroke="#888888" 
+                      fontSize={12} 
+                      tickLine={false} 
+                      axisLine={false}
+                    />
+                    <YAxis 
+                      stroke="#888888" 
+                      fontSize={12} 
+                      tickLine={false} 
+                      axisLine={false}
+                    />
+                    <CartesianGrid 
+                      strokeDasharray="3 3" 
+                      vertical={false} 
+                      stroke="#e5e7eb"
+                      opacity={0.5}
+                    />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                      }}
+                      cursor={{ fill: 'rgba(139, 92, 246, 0.1)' }}
+                    />
+                    <ReferenceLine y={0} stroke="#888888" />
+                    <Bar 
+                      dataKey="value" 
+                      radius={[8, 8, 0, 0]}
+                      animationDuration={1000}
+                    >
+                      {[
+                        { name: 'Année en cours', value: chartData.reduce((sum, d) => sum + d.culteDimancheMatin, 0), fill: '#8b5cf6' },
+                        { name: 'Année précédente', value: chartDataPreviousYear.reduce((sum, d) => sum + d.culteDimancheMatin, 0), fill: '#a78bfa' }
+                      ].map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.fill} 
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
+              </motion.div>
             ) : (
               <div className="h-[300px] w-full flex items-center justify-center text-gray-500">
                 <p>Données insuffisantes pour la comparaison (besoin de données sur 2 années)</p>
@@ -3439,7 +3844,7 @@ const SuperviseurDashboard = () => {
         </Card>
 
         {/* Graphique en camembert : Répartition des statuts spirituels */}
-        <Card className="bg-white border-gray-200 shadow-sm">
+        <Card ref={statutsSpirituelsRef} className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Users className="h-5 w-5 text-purple-600" />
@@ -3448,7 +3853,12 @@ const SuperviseurDashboard = () => {
           </CardHeader>
           <CardContent>
             {statutsSpirituelsData.length > 0 ? (
-              <div className="h-[300px] w-full">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="h-[400px] w-full"
+              >
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -3456,19 +3866,45 @@ const SuperviseurDashboard = () => {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={80}
+                      label={({ name, percent, value }) => 
+                        `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
+                      }
+                      outerRadius={120}
+                      innerRadius={60}
                       fill="#8884d8"
                       dataKey="value"
+                      paddingAngle={3}
+                      animationDuration={1000}
                     >
                       {statutsSpirituelsData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.color}
+                          stroke="#fff"
+                          strokeWidth={2}
+                        />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                      }}
+                      formatter={(value, name, props) => [
+                        `${value} (${((value / statutsSpirituelsData.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%)`,
+                        props.payload.name
+                      ]}
+                    />
+                    <Legend 
+                      verticalAlign="bottom"
+                      height={36}
+                      iconType="circle"
+                    />
                   </PieChart>
                 </ResponsiveContainer>
-              </div>
+              </motion.div>
             ) : (
               <div className="h-[300px] w-full flex items-center justify-center text-gray-500">
                 <p>Aucune donnée de statut disponible</p>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -13,6 +14,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
+import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
+import { handleError } from '@/lib/ErrorHandler';
 import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft, Mail, Calendar, Building2, Search, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -34,8 +37,18 @@ const FamillesDisciples = () => {
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editingFamille, setEditingFamille] = useState(null);
   const [superviseursOptions, setSuperviseursOptions] = useState([]);
   const [createForm, setCreateForm] = useState({
+    nom: '',
+    identifiant_famille: '',
+    statut: 'actif',
+    objectif_disciples: 70,
+    superviseur_id: '',
+  });
+  const [editForm, setEditForm] = useState({
     nom: '',
     identifiant_famille: '',
     statut: 'actif',
@@ -138,18 +151,31 @@ const FamillesDisciples = () => {
     try {
       setLoading(true);
       
-      // Requête simple d'abord pour voir les familles
-      let query = supabase
-        .from('familles_disciples')
-        .select('*')
-        .order('identifiant_famille', { ascending: true });
+      // OPTIMISATION: Utiliser le cache (TTL: 2 minutes)
+      const cacheKey = `familles_${role}_${role === 'superviseur' ? user.id : 'all'}`;
+      
+      const cachedData = await getOrSetCache(
+        cacheKey,
+        async () => {
+          // Requête simple d'abord pour voir les familles
+          let query = supabase
+            .from('familles_disciples')
+            .select('*')
+            .order('identifiant_famille', { ascending: true });
 
-      // Si l'utilisateur est superviseur, ne voir que sa famille
-      if (role === 'superviseur') {
-        query = query.eq('superviseur_id', user.id);
-      }
+          // Si l'utilisateur est superviseur, ne voir que sa famille
+          if (role === 'superviseur') {
+            query = query.eq('superviseur_id', user.id);
+          }
 
-      const { data, error } = await query;
+          const { data, error } = await query;
+          if (error) throw error;
+          return data;
+        },
+        2 * 60 * 1000 // 2 minutes
+      );
+
+      const { data, error } = { data: cachedData, error: null };
 
       if (error) {
         console.error('Erreur Supabase:', error);
@@ -856,14 +882,75 @@ const FamillesDisciples = () => {
         description: `La famille "${createForm.nom}" a été ajoutée avec succès.`,
       });
     } catch (error) {
-      console.error('Erreur lors de la création de la famille:', error);
-      toast({
-        title: 'Erreur',
-        description: "Impossible de créer la famille. Vérifiez que l'identifiant est unique.",
-        variant: 'destructive',
-      });
+      const { toast: errorToast } = handleError(error, { context: 'handleCreateFamille' }, "Impossible de créer la famille. Vérifiez que l'identifiant est unique.");
+      toast({ ...errorToast });
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  // Fonction pour ouvrir le modal d'édition
+  const openEditDialog = async (famille) => {
+    if (!famille || !famille.id) return;
+
+    setEditingFamille(famille);
+    setEditForm({
+      nom: famille.nom || '',
+      identifiant_famille: famille.identifiant_famille || '',
+      statut: famille.statut || 'actif',
+      objectif_disciples: famille.objectif_disciples || 70,
+      superviseur_id: famille.superviseur_id || famille.superviseur?.id || '',
+    });
+
+    if (superviseursOptions.length === 0) {
+      await loadSuperviseursOptions();
+    }
+    setIsEditDialogOpen(true);
+  };
+
+  // Fonction pour gérer la modification d'une famille
+  const handleEditFamille = async (e) => {
+    e?.preventDefault();
+    if (!editingFamille || !editingFamille.id) return;
+
+    if (!editForm.nom || !editForm.identifiant_famille || !editForm.superviseur_id) {
+      toast({
+        title: 'Champs manquants',
+        description: 'Merci de renseigner le nom, l\'identifiant et le superviseur de la famille.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setEditLoading(true);
+      const { error } = await supabase
+        .from('familles_disciples')
+        .update({
+          nom: editForm.nom.trim(),
+          identifiant_famille: editForm.identifiant_famille.trim(),
+          statut: editForm.statut,
+          objectif_disciples: Number(editForm.objectif_disciples) || 70,
+          superviseur_id: editForm.superviseur_id,
+        })
+        .eq('id', editingFamille.id);
+
+      if (error) throw error;
+
+      // Recharger pour inclure les infos superviseur fusionnées
+      await fetchFamilles();
+
+      setIsEditDialogOpen(false);
+      setEditingFamille(null);
+      toast({
+        title: 'Famille modifiée',
+        description: `La famille "${editForm.nom}" a été modifiée avec succès.`,
+      });
+    } catch (error) {
+      const { toast: errorToast } = handleError(error, { context: 'handleEditFamille' }, "Impossible de modifier la famille. Vérifiez que l'identifiant est unique.");
+      toast({ ...errorToast });
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -964,76 +1051,100 @@ const FamillesDisciples = () => {
         {/* Statistiques globales */}
         {hasAdminView && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="bg-white border-gray-200">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Total Familles</p>
-                    <p className="text-2xl font-bold text-purple-600">{familles.length}</p>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              <Card className="bg-white border-gray-200 hover:shadow-md transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">Total Familles</p>
+                      <p className="text-2xl font-bold text-purple-600">{familles.length}</p>
+                    </div>
+                    <Users className="w-8 h-8 text-purple-600" />
                   </div>
-                  <Users className="w-8 h-8 text-purple-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white border-gray-200">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Familles Actives</p>
-                    <p className="text-2xl font-bold text-green-600">
-                      {familles.filter(f => f.statut === 'actif').length}
-                    </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              <Card className="bg-white border-gray-200 hover:shadow-md transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">Familles Actives</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        {familles.filter(f => f.statut === 'actif').length}
+                      </p>
+                    </div>
+                    <UserCheck className="w-8 h-8 text-green-600" />
                   </div>
-                  <UserCheck className="w-8 h-8 text-green-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white border-gray-200">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Total Disciples</p>
-                    <p className="text-2xl font-bold text-blue-600">
-                      {familles.reduce((sum, f) => {
-                        const nombreReel = nombreMembresParFamille[f.id] !== undefined 
-                          ? nombreMembresParFamille[f.id] 
-                          : (f.nombre_disciples_actuels || 0);
-                        return sum + nombreReel;
-                      }, 0)}
-                    </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+            >
+              <Card className="bg-white border-gray-200 hover:shadow-md transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">Total Disciples</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {familles.reduce((sum, f) => {
+                          const nombreReel = nombreMembresParFamille[f.id] !== undefined 
+                            ? nombreMembresParFamille[f.id] 
+                            : (f.nombre_disciples_actuels || 0);
+                          return sum + nombreReel;
+                        }, 0)}
+                      </p>
+                    </div>
+                    <Users className="w-8 h-8 text-blue-600" />
                   </div>
-                  <Users className="w-8 h-8 text-blue-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white border-gray-200">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Progression Moyenne</p>
-                    <p className="text-2xl font-bold text-purple-600">
-                      {familles.length > 0 
-                        ? Math.round(
-                            familles.reduce((sum, f) => {
-                              const nombreReel = nombreMembresParFamille[f.id] !== undefined 
-                                ? nombreMembresParFamille[f.id] 
-                                : (f.nombre_disciples_actuels || 0);
-                              return sum + calculateProgression(nombreReel, f.objectif_disciples || 70);
-                            }, 0) / familles.length
-                          )
-                        : 0}%
-                    </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+            >
+              <Card className="bg-white border-gray-200 hover:shadow-md transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">Progression Moyenne</p>
+                      <p className="text-2xl font-bold text-purple-600">
+                        {familles.length > 0 
+                          ? Math.round(
+                              familles.reduce((sum, f) => {
+                                const nombreReel = nombreMembresParFamille[f.id] !== undefined 
+                                  ? nombreMembresParFamille[f.id] 
+                                  : (f.nombre_disciples_actuels || 0);
+                                return sum + calculateProgression(nombreReel, f.objectif_disciples || 70);
+                              }, 0) / familles.length
+                            )
+                          : 0}%
+                      </p>
+                    </div>
+                    <TrendingUp className="w-8 h-8 text-purple-600" />
                   </div>
-                  <TrendingUp className="w-8 h-8 text-purple-600" />
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </motion.div>
           </div>
         )}
 
         {/* Liste des familles */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {familles.map((famille) => {
+          {familles.map((famille, index) => {
             // Utiliser le nombre réel de membres si disponible, sinon utiliser celui de la base
             const nombreMembresReel = nombreMembresParFamille[famille.id] !== undefined 
               ? nombreMembresParFamille[famille.id] 
@@ -1053,8 +1164,13 @@ const FamillesDisciples = () => {
                 (hasSuperviseurView && user && user.id === famille.superviseur.id));
 
             return (
+              <motion.div
+                key={famille.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.05 }}
+              >
               <Card 
-                key={famille.id} 
                 className="bg-white border-gray-200 hover:shadow-lg transition-shadow"
               >
                 <CardHeader>
@@ -1155,7 +1271,7 @@ const FamillesDisciples = () => {
                         className="bg-purple-600 text-white hover:bg-blue-600"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // TODO: Ouvrir modal d'édition
+                          openEditDialog(famille);
                         }}
                       >
                         <Edit className="w-4 h-4" />
@@ -1178,6 +1294,7 @@ const FamillesDisciples = () => {
                   </div>
                 </CardContent>
               </Card>
+              </motion.div>
             );
           })}
         </div>
@@ -1307,6 +1424,129 @@ const FamillesDisciples = () => {
                   disabled={createLoading}
                 >
                   {createLoading ? 'Création...' : 'Créer la famille'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialog édition famille */}
+      {hasAdminView && (
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="bg-white border-gray-200 text-gray-900">
+            <DialogHeader>
+              <DialogTitle className="text-gray-900">Modifier la famille de 70</DialogTitle>
+              <DialogDescription className="text-gray-600">
+                Modifiez les informations de la famille "{editingFamille?.nom || ''}".
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleEditFamille} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-famille-nom">Nom de la famille</Label>
+                <Input
+                  id="edit-famille-nom"
+                  value={editForm.nom}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, nom: e.target.value }))
+                  }
+                  placeholder="Ex: LES DÉTERMINÉS"
+                  className="bg-gray-50 border-gray-300 text-gray-900 placeholder:text-gray-400"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-famille-id">Identifiant</Label>
+                <Input
+                  id="edit-famille-id"
+                  value={editForm.identifiant_famille}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      identifiant_famille: e.target.value,
+                    }))
+                  }
+                  placeholder="Ex: FAM027"
+                  className="bg-gray-50 border-gray-300 text-gray-900 placeholder:text-gray-400"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-objectif">Objectif de disciples</Label>
+                  <Input
+                    id="edit-objectif"
+                    type="number"
+                    min={1}
+                    value={editForm.objectif_disciples}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        objectif_disciples: e.target.value,
+                      }))
+                    }
+                    className="bg-gray-50 border-gray-300 text-gray-900 placeholder:text-gray-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Statut</Label>
+                  <Select
+                    value={editForm.statut}
+                    onValueChange={(value) =>
+                      setEditForm((prev) => ({ ...prev, statut: value }))
+                    }
+                  >
+                    <SelectTrigger className="bg-gray-50 border-gray-300 text-gray-900">
+                      <SelectValue placeholder="Sélectionner un statut" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="actif">Actif</SelectItem>
+                      <SelectItem value="inactif">Inactif</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Superviseur *</Label>
+                <Select
+                  value={editForm.superviseur_id}
+                  onValueChange={(value) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      superviseur_id: value,
+                    }))
+                  }
+                  required
+                >
+                  <SelectTrigger className="bg-gray-50 border-gray-300 text-gray-900">
+                    <SelectValue placeholder="Choisir un superviseur" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {superviseursOptions.map((sup) => (
+                      <SelectItem key={sup.id} value={sup.id}>
+                        {`${sup.first_name || ''} ${sup.last_name || ''}`.trim() ||
+                          sup.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter className="pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditDialogOpen(false);
+                    setEditingFamille(null);
+                  }}
+                  className="bg-white text-gray-900 border border-gray-300 hover:bg-white hover:text-red-600"
+                >
+                  Annuler
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-purple-600 text-white hover:bg-white hover:text-purple-600 hover:border hover:border-purple-600"
+                  disabled={editLoading}
+                >
+                  {editLoading ? 'Modification...' : 'Enregistrer les modifications'}
                 </Button>
               </DialogFooter>
             </form>

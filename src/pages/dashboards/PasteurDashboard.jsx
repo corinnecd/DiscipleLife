@@ -19,6 +19,7 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
+import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
 import {
@@ -143,14 +144,23 @@ const PasteurDashboard = () => {
     try {
       setLoading(true);
 
-      // 1. Récupérer les informations du pasteur
-      const { data: pasteurData, error: pasteurError } = await supabase
-        .from('profils')
-        .select('first_name, last_name, identifiant_unique, email')
-        .eq('id', user.id)
-        .single();
+      // OPTIMISATION: Utiliser le cache pour les données du pasteur (TTL: 2 minutes)
+      const cacheKeyBase = `pasteur_${user.id}`;
 
-      if (pasteurError) throw pasteurError;
+      // 1. Récupérer les informations du pasteur avec cache
+      const pasteurData = await getOrSetCache(
+        `${cacheKeyBase}_info`,
+        async () => {
+          const { data, error } = await supabase
+            .from('profils')
+            .select('first_name, last_name, identifiant_unique, email')
+            .eq('id', user.id)
+            .single();
+          if (error) throw error;
+          return data;
+        },
+        2 * 60 * 1000 // 2 minutes
+      );
 
       if (pasteurData) {
         setPasteurNom({
@@ -163,16 +173,25 @@ const PasteurDashboard = () => {
       // 2. Récupérer tous les superviseurs sous sa responsabilité
       // Méthode principale : Directement via pasteur_id (comme dans la migration SQL)
       // Note: Ne pas inclure 'titre' dans la requête principale car la colonne peut ne pas exister
-      const { data: superviseursData, error: superviseursError } = await supabase
-        .from('profils')
-        .select('id, first_name, last_name, email, identifiant_unique, avatar_url, pasteur_id')
-        .eq('pasteur_id', user.id)
-        .eq('role', 'superviseur')
-        .order('first_name', { ascending: true });
+      const superviseursData = await getOrSetCache(
+        `${cacheKeyBase}_superviseurs`,
+        async () => {
+          const { data, error } = await supabase
+            .from('profils')
+            .select('id, first_name, last_name, email, identifiant_unique, avatar_url, pasteur_id')
+            .eq('pasteur_id', user.id)
+            .eq('role', 'superviseur')
+            .order('first_name', { ascending: true });
+          if (error) {
+            console.error('Erreur lors de la récupération des superviseurs:', error);
+            throw error;
+          }
+          return data || [];
+        },
+        2 * 60 * 1000 // 2 minutes
+      );
 
-      if (superviseursError) {
-        console.error('Erreur lors de la récupération des superviseurs:', superviseursError);
-      }
+      const superviseursError = null; // Pas d'erreur si le cache fonctionne
 
       // Récupérer les titres séparément si la colonne existe
       let superviseursAvecTitres = superviseursData || [];

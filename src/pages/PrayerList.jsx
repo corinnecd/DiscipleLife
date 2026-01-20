@@ -11,6 +11,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { getAvatarColor, getInitials } from '@/lib/utils';
 import { supabase } from '@/lib/customSupabaseClient';
+import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
+import { handleError } from '@/lib/ErrorHandler';
 import DashboardAlert from '@/components/DashboardAlert';
 import { useNavigate } from 'react-router-dom';
 
@@ -43,33 +45,54 @@ const PrayerList = () => {
 
   const fetchDisciples = async () => {
     try {
-        const { data, error } = await supabase
-            .from('cercle_personnes')
-            .select('id, name')
-            .eq('user_id', user.id)
-            .order('name');
+        // OPTIMISATION: Utiliser le cache pour la liste des disciples (TTL: 2 minutes)
+        const cacheKey = `prayer_disciples_${user.id}`;
         
-        if (error) throw error;
-        setDisciples(data || []);
+        const data = await getOrSetCache(
+          cacheKey,
+          async () => {
+            const { data, error } = await supabase
+              .from('cercle_personnes')
+              .select('id, name')
+              .eq('user_id', user.id)
+              .order('name');
+            if (error) throw error;
+            return data || [];
+          },
+          2 * 60 * 1000 // 2 minutes
+        );
+        
+        setDisciples(data);
     } catch (error) {
-        console.error("Error fetching disciples", error);
+        const { toast } = handleError(error, { context: 'fetchDisciples' });
+        toast({ ...toast });
     }
   };
 
   const fetchPrayers = async () => {
     try {
         setLoading(true);
-        let query = supabase
-            .from('prayer_requests')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        const { data, error } = await query;
-        if (error) throw error;
-        setPrayers(data || []);
+        
+        // OPTIMISATION: Utiliser le cache pour les prières (TTL: 30 secondes - données plus dynamiques)
+        const cacheKey = 'prayer_requests_all';
+        
+        const data = await getOrSetCache(
+          cacheKey,
+          async () => {
+            const { data, error } = await supabase
+              .from('prayer_requests')
+              .select('*')
+              .order('created_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+          },
+          30 * 1000 // 30 secondes (données plus dynamiques)
+        );
+        
+        setPrayers(data);
     } catch (error) {
-        console.error("Error fetching prayers", error);
-        toast({ title: "Erreur", description: "Impossible de charger les prières.", variant: "destructive" });
+        const { toast: errorToast } = handleError(error, { context: 'fetchPrayers' });
+        toast({ ...errorToast });
     } finally {
         setLoading(false);
     }
@@ -130,6 +153,12 @@ const PrayerList = () => {
         setReminderDate('');
         setReminderTime('');
 
+        // Invalider le cache des prières pour recharger les données
+        await clearCache('prayer_requests_all');
+        
+        // Recharger les prières
+        await fetchPrayers();
+        
         toast({
             title: "Requête ajoutée",
             description: isReminderEnabled 
@@ -138,8 +167,8 @@ const PrayerList = () => {
         });
 
     } catch (error) {
-        console.error("Error adding prayer", error);
-        toast({ title: "Erreur", description: "Impossible d'ajouter la requête.", variant: "destructive" });
+        const { toast: errorToast } = handleError(error, { context: 'handleAdd' }, "Impossible d'ajouter la requête de prière. Veuillez réessayer.");
+        toast({ ...errorToast });
     }
   };
 
@@ -152,9 +181,11 @@ const PrayerList = () => {
 
         if (error) throw error;
 
-        setPrayers(prayers.map(p => 
-            p.id === id ? { ...p, is_answered: !currentStatus } : p
-        ));
+        // Invalider le cache des prières
+        await clearCache('prayer_requests_all');
+        
+        // Recharger les prières
+        await fetchPrayers();
 
         if (!currentStatus) {
             toast({ title: "Gloire à Dieu !", description: "Requête marquée comme exaucée." });
@@ -163,8 +194,8 @@ const PrayerList = () => {
         }
 
     } catch (error) {
-        console.error("Error updating prayer", error);
-        toast({ title: "Erreur", description: "Modification impossible.", variant: "destructive" });
+        const { toast: errorToast } = handleError(error, { context: 'toggleAnswered' }, "Impossible de modifier le statut de la requête.");
+        toast({ ...errorToast });
     }
   };
 
@@ -177,11 +208,16 @@ const PrayerList = () => {
 
         if (error) throw error;
 
-        setPrayers(prayers.filter(p => p.id !== id));
+        // Invalider le cache des prières
+        await clearCache('prayer_requests_all');
+        
+        // Recharger les prières
+        await fetchPrayers();
+        
         toast({ description: "Requête de prière supprimée." });
     } catch (error) {
-        console.error("Error deleting prayer", error);
-        toast({ title: "Erreur", description: "Suppression impossible.", variant: "destructive" });
+        const { toast: errorToast } = handleError(error, { context: 'deletePrayer' }, "Impossible de supprimer la requête de prière.");
+        toast({ ...errorToast });
     }
   };
 

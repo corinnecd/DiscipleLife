@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { supabase } from '@/lib/customSupabaseClient';
+import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, ArrowLeft } from 'lucide-react';
@@ -36,39 +37,52 @@ const Statistics = () => {
     try {
       setLoading(true);
       
-      // Récupérer les disciples
-      const { data: cercleData, error: cercleError } = await supabase
-        .from('cercle_personnes')
-        .select('id, name, first_name, last_name, email')
-        .eq('user_id', user.id)
-        .order('name');
+      // OPTIMISATION: Utiliser le cache pour les données de statistiques (TTL: 2 minutes)
+      const cacheKey = `statistics_${user.id}`;
       
-      if (cercleError) throw cercleError;
+      const result = await getOrSetCache(
+        cacheKey,
+        async () => {
+          // Récupérer les disciples
+          const { data: cercleData, error: cercleError } = await supabase
+            .from('cercle_personnes')
+            .select('id, name, first_name, last_name, email')
+            .eq('user_id', user.id)
+            .order('name');
+          
+          if (cercleError) throw cercleError;
 
-      // Pour chaque disciple, récupérer son ID utilisateur depuis profils
-      const disciplesWithUserIds = await Promise.all(
-        (cercleData || []).map(async (disciple) => {
-          let discipleUserId = null;
-          
-          if (disciple.email) {
-            const { data: profilData } = await supabase
-              .from('profils')
-              .select('id')
-              .eq('email', disciple.email)
-              .maybeSingle();
-            
-            if (profilData) {
-              discipleUserId = profilData.id;
-            }
-          }
-          
-          return {
-            ...disciple,
-            disciple_user_id: discipleUserId
-          };
-        })
+          // Pour chaque disciple, récupérer son ID utilisateur depuis profils
+          // OPTIMISATION: Paralléliser les requêtes pour améliorer les performances
+          const disciplesWithUserIds = await Promise.all(
+            (cercleData || []).map(async (disciple) => {
+              let discipleUserId = null;
+              
+              if (disciple.email) {
+                const { data: profilData } = await supabase
+                  .from('profils')
+                  .select('id')
+                  .eq('email', disciple.email)
+                  .maybeSingle();
+                
+                if (profilData) {
+                  discipleUserId = profilData.id;
+                }
+              }
+              
+              return {
+                ...disciple,
+                disciple_user_id: discipleUserId
+              };
+            })
+          );
+
+          return { disciples: disciplesWithUserIds };
+        },
+        2 * 60 * 1000 // 2 minutes
       );
 
+      const disciplesWithUserIds = result.disciples;
       setDisciples(disciplesWithUserIds);
 
       // Calculer les 3 derniers mois
@@ -86,13 +100,22 @@ const Statistics = () => {
         });
       }
 
-      // Récupérer les événements personnalisés pour trouver le jeudi de prière
-      const { data: eventsData } = await supabase
-        .from('mentor_events')
-        .select('*')
-        .eq('mentor_id', user.id)
-        .eq('day_of_week', 4) // Jeudi = 4
-        .eq('recurrence', 'hebdomadaire');
+      // OPTIMISATION: Utiliser le cache pour les événements mentor (TTL: 5 minutes)
+      const eventsCacheKey = `statistics_events_${user.id}`;
+      const eventsData = await getOrSetCache(
+        eventsCacheKey,
+        async () => {
+          const { data, error } = await supabase
+            .from('mentor_events')
+            .select('*')
+            .eq('mentor_id', user.id)
+            .eq('day_of_week', 4) // Jeudi = 4
+            .eq('recurrence', 'hebdomadaire');
+          if (error) throw error;
+          return data || [];
+        },
+        5 * 60 * 1000 // 5 minutes
+      );
 
       const thursdayPrayerEvent = eventsData && eventsData.length > 0 ? eventsData[0] : null;
 

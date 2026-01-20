@@ -28,8 +28,11 @@ import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { getInitials } from '@/lib/utils';
 import { supabase } from '@/lib/customSupabaseClient';
+import NotificationBell from './NotificationBell';
+import GlobalSearch from './GlobalSearch';
 
 const Layout = () => {
   const { user, signOut } = useAuth();
@@ -38,6 +41,7 @@ const Layout = () => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
 
   // Récupérer le profil complet de l'utilisateur
   useEffect(() => {
@@ -230,22 +234,29 @@ const Layout = () => {
            </div>
            
            <div className="flex items-center gap-4">
-              <div className="relative">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                 <input 
-                    type="text" 
-                    placeholder="Rechercher..." 
-                    className="h-10 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-full text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-teal-500 focus:bg-white w-64 transition-all"
-                 />
-              </div>
-              <Button variant="ghost" size="icon" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100" onClick={() => navigate('/notifications')}>
-                 <Bell size={20} />
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                onClick={() => setShowGlobalSearch(!showGlobalSearch)}
+              >
+                 <Search size={20} />
               </Button>
+              <NotificationBell />
               <Button variant="ghost" size="icon" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100" onClick={() => navigate('/settings')}>
                  <Settings size={20} />
               </Button>
            </div>
         </header>
+
+        {/* Global Search Modal */}
+        {showGlobalSearch && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowGlobalSearch(false)}>
+            <div className="w-full max-w-2xl animate-in fade-in slide-in-from-top duration-300" onClick={(e) => e.stopPropagation()}>
+              <GlobalSearch onClose={() => setShowGlobalSearch(false)} />
+            </div>
+          </div>
+        )}
 
         <div className="p-4 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
           <Outlet />

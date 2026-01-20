@@ -266,14 +266,66 @@ const Disciples = () => {
           // Vérifier si c'est un mentor ou un disciple
           const selectedParent = allMembers.find(m => m.id === formData.parentId);
           if (selectedParent) {
-            // Si c'est un mentor, on ne peut pas utiliser son ID directement car parent_disciple_id 
-            // pointe vers cercle_personnes. On met null pour l'instant.
-            // TODO: Créer une table de liaison ou gérer différemment les mentors comme parents
             if (selectedParent.type === 'mentor') {
-              // Pour les mentors, on ne met pas de parent_disciple_id car ils ne sont pas dans cercle_personnes
-              parentDiscipleId = null;
+              // Pour les mentors : vérifier s'ils ont déjà une entrée dans cercle_personnes
+              // Si oui, utiliser cette entrée comme parent, sinon créer une entrée minimale
+              const { data: mentorEntry, error: mentorEntryError } = await supabase
+                .from('cercle_personnes')
+                .select('id')
+                .eq('user_id', selectedParent.id)
+                .maybeSingle();
+              
+              if (mentorEntryError && mentorEntryError.code !== 'PGRST116') {
+                console.error('Erreur vérification entrée mentor:', mentorEntryError);
+                toast({ 
+                  title: "Attention", 
+                  description: "Impossible de vérifier l'entrée du mentor. Le disciple sera créé sans parent.", 
+                  variant: "warning" 
+                });
+                parentDiscipleId = null;
+              } else if (mentorEntry) {
+                // Le mentor a déjà une entrée dans cercle_personnes, utiliser cet ID
+                parentDiscipleId = mentorEntry.id;
+              } else {
+                // Le mentor n'a pas d'entrée, créer une entrée minimale pour permettre la liaison
+                const { data: mentorProfile } = await supabase
+                  .from('profils')
+                  .select('first_name, last_name, email')
+                  .eq('id', selectedParent.id)
+                  .single();
+                
+                const mentorFullName = mentorProfile 
+                  ? `${mentorProfile.first_name || ''} ${mentorProfile.last_name || ''}`.trim()
+                  : 'Mentor';
+                
+                const { data: newMentorEntry, error: createMentorEntryError } = await supabase
+                  .from('cercle_personnes')
+                  .insert({
+                    user_id: selectedParent.id,
+                    name: mentorFullName,
+                    first_name: mentorProfile?.first_name || null,
+                    last_name: mentorProfile?.last_name || null,
+                    email: mentorProfile?.email || null,
+                    circle_type: 'Faiseur de Disciples',
+                    created_at: new Date().toISOString()
+                  })
+                  .select('id')
+                  .single();
+                
+                if (createMentorEntryError) {
+                  console.error('Erreur création entrée mentor:', createMentorEntryError);
+                  toast({ 
+                    title: "Attention", 
+                    description: "Impossible de créer l'entrée du mentor. Le disciple sera créé sans parent.", 
+                    variant: "warning" 
+                  });
+                  parentDiscipleId = null;
+                } else {
+                  parentDiscipleId = newMentorEntry.id;
+                }
+              }
             } else {
-              // Pour les disciples, on peut utiliser leur ID
+              // Pour les disciples, on peut utiliser leur ID directement
               parentDiscipleId = formData.parentId;
             }
           }

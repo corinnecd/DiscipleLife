@@ -2,44 +2,128 @@
 import { saveAs } from 'file-saver';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 export const ExportUtils = {
-  exportToExcel: (data, filename) => {
+  exportToExcel: (data, filename, options = {}) => {
     try {
       if (!data || !data.length) {
         console.warn("No data to export");
         throw new Error("Aucune donnée à exporter");
       }
 
-      // Simple CSV export for now as it's lighter than full Excel
+      const { 
+        title = 'Export de données',
+        description = '',
+        author = 'DiscipleLife',
+        additionalInfo = {}
+      } = options;
+
+      // Headers mapping for better column names
+      const headerMapping = {
+        'first_name': 'Prénom',
+        'last_name': 'Nom',
+        'name': 'Nom complet',
+        'email': 'Email',
+        'phone': 'Téléphone',
+        'created_at': 'Date d\'inscription',
+        'dateEntreeFamille': 'Disciple depuis le',
+        'nombreDisciples': 'Nombre de Disciples',
+        'statut': 'Statut',
+        'statut_spirituel': 'Statut Spirituel',
+        'role': 'Rôle',
+        'affiliation': 'Est suivi par',
+        'progression': 'Progression (%)',
+        'formation_completed': 'Formations Terminées',
+        'video_completed': 'Vidéos Terminées'
+      };
+
       const headers = Object.keys(data[0]);
       if (!headers || headers.length === 0) {
         throw new Error("Aucune colonne trouvée dans les données");
       }
 
-      const csvContent = [
-        headers.join(','),
-        ...data.map(row => headers.map(header => {
-          const cell = row[header] === null || row[header] === undefined ? '' : row[header];
-          // Escape quotes and wrap in quotes if contains comma
-          const stringCell = String(cell).replace(/"/g, '""');
-          return `"${stringCell}"`;
-        }).join(','))
-      ].join('\n');
+      // Format headers with mapping
+      const formattedHeaders = headers.map(h => headerMapping[h] || h);
 
+      // Build CSV with header info
+      const csvLines = [];
+      
+      // Header section
+      csvLines.push(`"${title}"`);
+      if (description) {
+        csvLines.push(`"${description}"`);
+      }
+      csvLines.push(`"Date d'export: ${format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })}"`);
+      csvLines.push(`"Auteur: ${author}"`);
+      
+      // Additional info
+      Object.entries(additionalInfo).forEach(([key, value]) => {
+        csvLines.push(`"${key}: ${value}"`);
+      });
+      
+      csvLines.push(''); // Empty line
+      
+      // Column headers
+      csvLines.push(formattedHeaders.join(','));
+      
+      // Data rows
+      data.forEach(row => {
+        csvLines.push(
+          headers.map(header => {
+            let cell = row[header];
+            
+            // Format dates
+            if (cell && (header === 'created_at' || header === 'dateEntreeFamille' || header.includes('date'))) {
+              try {
+                cell = format(new Date(cell), 'dd/MM/yyyy', { locale: fr });
+              } catch (e) {
+                cell = cell;
+              }
+            }
+            
+            // Handle null/undefined
+            if (cell === null || cell === undefined) {
+              cell = '';
+            }
+            
+            // Escape quotes and wrap in quotes
+            const stringCell = String(cell).replace(/"/g, '""');
+            return `"${stringCell}"`;
+          }).join(',')
+        );
+      });
+      
+      // Footer
+      csvLines.push('');
+      csvLines.push(`"Total d'enregistrements: ${data.length}"`);
+      csvLines.push(`"Généré par DiscipleLife - ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: fr })}"`);
+
+      const csvContent = csvLines.join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      saveAs(blob, `${filename}.csv`);
+      saveAs(blob, `${filename}_${format(new Date(), 'yyyy-MM-dd_HH-mm', { locale: fr })}.csv`);
     } catch (error) {
       console.error('Erreur lors de l\'export Excel:', error);
       throw error;
     }
   },
 
-  exportElementToPDF: async (elementId, filename) => {
+  exportElementToPDF: async (elementId, filename, options = {}) => {
     const element = document.getElementById(elementId);
     if (!element) {
       throw new Error(`Element with id "${elementId}" not found`);
     }
+
+    const {
+      title = 'Export de données',
+      subtitle = '',
+      author = 'DiscipleLife',
+      showHeader = true,
+      showFooter = true,
+      logoUrl = null,
+      additionalInfo = {}
+    } = options;
 
     try {
       // Fonction pour extraire la couleur principale d'un gradient
@@ -194,25 +278,148 @@ export const ExportUtils = {
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgWidth = 210; // A4 width in mm
       const pageHeight = 297; // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pageWidth = 210;
+      const margin = 10;
+      const headerHeight = showHeader ? 30 : 0;
+      const footerHeight = showFooter ? 20 : 0;
+      const contentWidth = imgWidth;
+      const contentHeight = pageHeight - headerHeight - footerHeight;
+      
+      const imgHeight = (canvas.height * contentWidth) / canvas.width;
       let heightLeft = imgHeight;
-      let position = 0;
+      let position = headerHeight;
+      let pageNumber = 1;
 
-      // Add first page
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+      // Function to add header
+      const addHeader = (pageNum) => {
+        if (!showHeader) return;
+        
+        // Header background
+        pdf.setFillColor(139, 92, 246); // Purple
+        pdf.rect(0, 0, pageWidth, headerHeight, 'F');
+        
+        // Logo (if provided)
+        if (logoUrl) {
+          try {
+            // For now, just add text logo. In production, you'd load and add an image
+            pdf.setTextColor(255, 255, 255);
+            pdf.setFontSize(16);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text('DL', margin, 12);
+          } catch (e) {
+            console.warn('Logo not loaded:', e);
+          }
+        }
+        
+        // Title
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(18);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(title, logoUrl ? margin + 15 : margin, 12);
+        
+        // Subtitle
+        if (subtitle) {
+          pdf.setFontSize(10);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(subtitle, logoUrl ? margin + 15 : margin, 18);
+        }
+        
+        // Date
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'normal');
+        const dateText = `Date: ${format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })}`;
+        pdf.text(dateText, pageWidth - margin - pdf.getTextWidth(dateText), 12);
+        
+        // Additional info
+        if (Object.keys(additionalInfo).length > 0) {
+          let yPos = 18;
+          Object.entries(additionalInfo).forEach(([key, value]) => {
+            if (yPos < headerHeight - 5) {
+              pdf.setFontSize(7);
+              pdf.text(`${key}: ${value}`, pageWidth - margin - pdf.getTextWidth(`${key}: ${value}`), yPos);
+              yPos += 4;
+            }
+          });
+        }
+        
+        // Reset text color
+        pdf.setTextColor(0, 0, 0);
+      };
+
+      // Function to add footer
+      const addFooter = (pageNum, totalPages) => {
+        if (!showFooter) return;
+        
+        const footerY = pageHeight - footerHeight + 5;
+        
+        // Footer line
+        pdf.setDrawColor(200, 200, 200);
+        pdf.setLineWidth(0.5);
+        pdf.line(0, pageHeight - footerHeight, pageWidth, pageHeight - footerHeight);
+        
+        // Footer text
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 100, 100);
+        
+        // Left: Author
+        pdf.text(`Généré par ${author}`, margin, footerY);
+        
+        // Center: Page number
+        if (totalPages > 1) {
+          const pageText = `Page ${pageNum} sur ${totalPages}`;
+          pdf.text(pageText, pageWidth / 2 - pdf.getTextWidth(pageText) / 2, footerY);
+        }
+        
+        // Right: URL/Info
+        pdf.text('DiscipleLife App', pageWidth - margin - pdf.getTextWidth('DiscipleLife App'), footerY);
+        
+        // Reset text color
+        pdf.setTextColor(0, 0, 0);
+      };
+
+      // Calculate total pages
+      let totalPages = 1;
+      let tempHeightLeft = heightLeft;
+      while (tempHeightLeft > contentHeight) {
+        totalPages++;
+        tempHeightLeft -= contentHeight;
+      }
+
+      // Add header to first page
+      addHeader(1);
+
+      // Add first page content
+      const firstPageImgHeight = Math.min(imgHeight, contentHeight);
+      pdf.addImage(imgData, 'PNG', 0, position, contentWidth, firstPageImgHeight);
+      heightLeft -= firstPageImgHeight;
+
+      // Add footer to first page
+      addFooter(1, totalPages);
 
       // Add additional pages if needed
+      let currentPage = 2;
       while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+        addHeader(currentPage);
+        
+        const pageImgHeight = Math.min(heightLeft, contentHeight);
+        const imgY = headerHeight;
+        
+        // Crop the image for this page
+        pdf.addImage(imgData, 'PNG', 0, imgY, contentWidth, pageImgHeight, 
+          `page${currentPage}`, 'FAST');
+        
+        heightLeft -= pageImgHeight;
+        
+        addFooter(currentPage, totalPages);
+        currentPage++;
       }
 
       // Forcer le téléchargement direct sans boîte de dialogue
       const blob = pdf.output('blob');
-      saveAs(blob, filename);
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm', { locale: fr });
+      saveAs(blob, `${filename}_${timestamp}.pdf`);
     } catch (error) {
       console.error('Error exporting to PDF:', error);
       throw error;

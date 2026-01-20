@@ -137,13 +137,25 @@ const DiscipleDetail = () => {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('cercle_personnes')
-        .select('*')
-        .eq('id', id)
-        .single();
+      // OPTIMISATION: Utiliser le cache pour les détails du disciple (TTL: 3 minutes)
+      const { getOrSetCache } = await import('@/lib/CacheUtils');
+      const cacheKey = `disciple_detail_${id}`;
+      
+      const data = await getOrSetCache(
+        cacheKey,
+        async () => {
+          const { data, error } = await supabase
+            .from('cercle_personnes')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-      if (error) throw error;
+          if (error) throw error;
+          return data;
+        },
+        3 * 60 * 1000 // 3 minutes
+      );
+
       setDisciple(data);
     } catch (error) {
       console.error('Error fetching details:', error);
@@ -163,47 +175,58 @@ const DiscipleDetail = () => {
 
     setLoadingDisciplesSuivis(true);
     try {
-      // Récupérer tous les disciples qui ont ce disciple comme parent
-      const { data: disciplesData, error: disciplesError } = await supabase
-        .from('cercle_personnes')
-        .select('id, first_name, last_name, name, parent_disciple_id')
-        .eq('parent_disciple_id', disciple.id);
+      // OPTIMISATION: Utiliser le cache pour la liste des disciples suivis (TTL: 2 minutes)
+      const { getOrSetCache } = await import('@/lib/CacheUtils');
+      const cacheKey = `disciple_suivis_${disciple.id}`;
+      
+      const result = await getOrSetCache(
+        cacheKey,
+        async () => {
+          // Récupérer tous les disciples qui ont ce disciple comme parent
+          const { data: disciplesData, error: disciplesError } = await supabase
+            .from('cercle_personnes')
+            .select('id, first_name, last_name, name, parent_disciple_id')
+            .eq('parent_disciple_id', disciple.id);
 
-      if (disciplesError) throw disciplesError;
+          if (disciplesError) throw disciplesError;
 
-      if (!disciplesData || disciplesData.length === 0) {
-        setDisciplesSuivis([]);
-        return;
-      }
+          if (!disciplesData || disciplesData.length === 0) {
+            return [];
+          }
 
-      // Pour chaque disciple, compter combien de disciples ils suivent eux-mêmes
-      const disciplesIds = disciplesData.map(d => d.id);
-      const { data: sousDisciplesData, error: sousDisciplesError } = await supabase
-        .from('cercle_personnes')
-        .select('parent_disciple_id')
-        .in('parent_disciple_id', disciplesIds);
+          // Pour chaque disciple, compter combien de disciples ils suivent eux-mêmes
+          const disciplesIds = disciplesData.map(d => d.id);
+          const { data: sousDisciplesData, error: sousDisciplesError } = await supabase
+            .from('cercle_personnes')
+            .select('parent_disciple_id')
+            .in('parent_disciple_id', disciplesIds);
 
-      if (sousDisciplesError) throw sousDisciplesError;
+          if (sousDisciplesError) throw sousDisciplesError;
 
-      // Créer un map pour compter les disciples suivis par chaque disciple
-      const disciplesSuivisMap = {};
-      if (sousDisciplesData) {
-        sousDisciplesData.forEach(sousDisciple => {
-          const parentId = sousDisciple.parent_disciple_id;
-          disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
-        });
-      }
+          // Créer un map pour compter les disciples suivis par chaque disciple
+          const disciplesSuivisMap = {};
+          if (sousDisciplesData) {
+            sousDisciplesData.forEach(sousDisciple => {
+              const parentId = sousDisciple.parent_disciple_id;
+              disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
+            });
+          }
 
-      // Enrichir les données avec le nombre de disciples suivis
-      const disciplesAvecCompte = disciplesData.map(discipleItem => ({
-        id: discipleItem.id,
-        first_name: discipleItem.first_name || '',
-        last_name: discipleItem.last_name || '',
-        name: discipleItem.name || `${discipleItem.first_name || ''} ${discipleItem.last_name || ''}`.trim(),
-        disciplesSuivis: disciplesSuivisMap[discipleItem.id] || 0
-      }));
+          // Enrichir les données avec le nombre de disciples suivis
+          const disciplesAvecCompte = disciplesData.map(discipleItem => ({
+            id: discipleItem.id,
+            first_name: discipleItem.first_name || '',
+            last_name: discipleItem.last_name || '',
+            name: discipleItem.name || `${discipleItem.first_name || ''} ${discipleItem.last_name || ''}`.trim(),
+            disciplesSuivis: disciplesSuivisMap[discipleItem.id] || 0
+          }));
 
-      setDisciplesSuivis(disciplesAvecCompte);
+          return disciplesAvecCompte;
+        },
+        2 * 60 * 1000 // 2 minutes
+      );
+
+      setDisciplesSuivis(result);
     } catch (error) {
       console.error('Erreur lors de la récupération des disciples suivis:', error);
       setDisciplesSuivis([]);
@@ -370,11 +393,21 @@ const DiscipleDetail = () => {
       </Button>
 
       {/* Header Profile */}
-      <Card className="bg-white border-gray-200 shadow-sm rounded-2xl p-6 md:p-8">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+      <Card className="bg-white border-gray-200 shadow-sm rounded-2xl p-6 md:p-8 hover:shadow-md transition-shadow">
         <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
-          <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-4xl font-bold text-white shadow-lg shadow-purple-500/20">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-4xl font-bold text-white shadow-lg shadow-purple-500/20"
+          >
             {disciple.name.charAt(0).toUpperCase()}
-          </div>
+          </motion.div>
           <div className="flex-1 text-center md:text-left space-y-2">
             <div className="flex items-center justify-between">
               <h1 className="text-3xl font-bold text-gray-900">{disciple.name}</h1>
@@ -424,8 +457,14 @@ const DiscipleDetail = () => {
           </div>
         </div>
       </Card>
+      </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.3 }}
+        className="grid grid-cols-1 md:grid-cols-2 gap-6"
+      >
         {/* Quick Info */}
         <Card className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
@@ -485,9 +524,14 @@ const DiscipleDetail = () => {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
 
       {/* Liste des Disciples Suivis */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.4 }}
+      >
       <Card className="bg-white border-gray-200 shadow-sm">
         <CardHeader>
           <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
@@ -554,6 +598,7 @@ const DiscipleDetail = () => {
           )}
         </CardContent>
       </Card>
+      </motion.div>
 
       {/* Add Prayer Request Modal */}
       <AnimatePresence>

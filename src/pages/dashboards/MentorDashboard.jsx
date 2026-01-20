@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
+import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
@@ -69,12 +70,23 @@ const MentorDashboard = () => {
     try {
       setLoading(true);
       
-      const { data: disciples } = await supabase
-        .from('cercle_personnes')
-        .select('*')
-        .eq('user_id', user.id);
+      // OPTIMISATION: Utiliser le cache pour les données du mentor (TTL: 2 minutes)
+      const cacheKeyBase = `mentor_${user.id}`;
       
-      const allDisciples = disciples || [];
+      // Récupérer les disciples avec cache
+      const allDisciples = await getOrSetCache(
+        `${cacheKeyBase}_disciples`,
+        async () => {
+          const { data, error } = await supabase
+            .from('cercle_personnes')
+            .select('*')
+            .eq('user_id', user.id);
+          if (error) throw error;
+          return data || [];
+        },
+        2 * 60 * 1000 // 2 minutes
+      );
+      
       const total = allDisciples.length;
 
       const countStatus = (term) => allDisciples.filter(d => 
@@ -86,47 +98,46 @@ const MentorDashboard = () => {
       const affermis = countStatus('established') + countStatus('affermi');
       const faiseurs = countStatus('maker') + countStatus('faiseur');
 
-      const { count: prayersCount } = await supabase
-        .from('prayer_requests')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
+      // OPTIMISATION: Paralléliser les requêtes pour les statistiques
+      const discipleIds = allDisciples.map(d => d.id);
+      const today = new Date();
+      const lastSunday = new Date(today);
+      lastSunday.setDate(today.getDate() - today.getDay());
+      const lastSundayStr = format(lastSunday, 'yyyy-MM-dd');
+      
+      const [prayersResult, totalAttendanceResult, lastSundayResult] = await Promise.all([
+        // Compteur de prières
+        supabase
+          .from('prayer_requests')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id),
+        // Total des présences au culte
+        discipleIds.length > 0 
+          ? supabase
+              .from('attendance_tracking')
+              .select('*', { count: 'exact', head: true })
+              .eq('attendance_type', 'sunday_worship')
+              .eq('status', 'present')
+              .in('disciple_id', discipleIds)
+          : Promise.resolve({ count: 0 }),
+        // Présences au dernier dimanche
+        discipleIds.length > 0
+          ? supabase
+              .from('attendance_tracking')
+              .select('*', { count: 'exact', head: true })
+              .eq('attendance_type', 'sunday_worship')
+              .eq('status', 'present')
+              .eq('attendance_date', lastSundayStr)
+              .in('disciple_id', discipleIds)
+          : Promise.resolve({ count: 0 })
+      ]);
+
+      const prayersCount = prayersResult.count || 0;
+      const sundayAttendanceCount = totalAttendanceResult.count || 0;
+      const lastSundayAttendance = lastSundayResult.count || 0;
 
       // Fetch disciples with prayer requests or appointments
       const disciplesWithActivity = await fetchDisciplesWithActivity(allDisciples);
-
-      // Fetch Sunday attendance statistics
-      const discipleIds = allDisciples.map(d => d.id);
-      let sundayAttendanceCount = 0;
-      let lastSundayAttendance = 0;
-      
-      if (discipleIds.length > 0) {
-        // Calculer le dernier dimanche
-        const today = new Date();
-        const lastSunday = new Date(today);
-        lastSunday.setDate(today.getDate() - today.getDay()); // Dernier dimanche
-        
-        // Total des présences au culte
-        const { count: totalAttendance } = await supabase
-          .from('attendance_tracking')
-          .select('*', { count: 'exact', head: true })
-          .eq('attendance_type', 'sunday_worship')
-          .eq('status', 'present')
-          .in('disciple_id', discipleIds);
-        
-        sundayAttendanceCount = totalAttendance || 0;
-        
-        // Présences au dernier dimanche
-        const lastSundayStr = format(lastSunday, 'yyyy-MM-dd');
-        const { count: lastSundayCount } = await supabase
-          .from('attendance_tracking')
-          .select('*', { count: 'exact', head: true })
-          .eq('attendance_type', 'sunday_worship')
-          .eq('status', 'present')
-          .eq('attendance_date', lastSundayStr)
-          .in('disciple_id', discipleIds);
-        
-        lastSundayAttendance = lastSundayCount || 0;
-      }
 
       setStats({
         total,

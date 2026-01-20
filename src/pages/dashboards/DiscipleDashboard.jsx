@@ -23,6 +23,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
+import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -54,31 +55,45 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
     try {
       setLoading(true);
       
-      // Fetch Next Appointment
-      const { data: appt } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('status', 'scheduled')
-        .or(`disciple_id.eq.${effectiveId},mentor_id.eq.${effectiveId}`)
-        .gte('scheduled_date', new Date().toISOString())
-        .order('scheduled_date', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      // Fetch Next Prayer
-      const { data: prayer } = await supabase
-        .from('prayer_sessions')
-        .select('*')
-        .eq('status', 'scheduled')
-        .or(`disciple_id.eq.${effectiveId},mentor_id.eq.${effectiveId}`)
-        .gte('scheduled_date', new Date().toISOString())
-        .order('scheduled_date', { ascending: true })
-        .limit(1)
-        .maybeSingle();
+      // OPTIMISATION: Utiliser le cache pour les prochains rendez-vous (TTL: 1 minute - données plus dynamiques)
+      const cacheKey = `disciple_dashboard_${effectiveId}`;
+      
+      const result = await getOrSetCache(
+        cacheKey,
+        async () => {
+          // OPTIMISATION: Paralléliser les requêtes pour appointment et prayer
+          const [apptResult, prayerResult] = await Promise.all([
+            supabase
+              .from('appointments')
+              .select('*')
+              .eq('status', 'scheduled')
+              .or(`disciple_id.eq.${effectiveId},mentor_id.eq.${effectiveId}`)
+              .gte('scheduled_date', new Date().toISOString())
+              .order('scheduled_date', { ascending: true })
+              .limit(1)
+              .maybeSingle(),
+            supabase
+              .from('prayer_sessions')
+              .select('*')
+              .eq('status', 'scheduled')
+              .or(`disciple_id.eq.${effectiveId},mentor_id.eq.${effectiveId}`)
+              .gte('scheduled_date', new Date().toISOString())
+              .order('scheduled_date', { ascending: true })
+              .limit(1)
+              .maybeSingle()
+          ]);
+          
+          return {
+            nextRdv: apptResult.data || null,
+            nextPrayer: prayerResult.data || null
+          };
+        },
+        1 * 60 * 1000 // 1 minute (données dynamiques)
+      );
 
       setStats({
-        nextRdv: appt || null,
-        nextPrayer: prayer || null
+        nextRdv: result.nextRdv,
+        nextPrayer: result.nextPrayer
       });
 
     } catch (error) {
