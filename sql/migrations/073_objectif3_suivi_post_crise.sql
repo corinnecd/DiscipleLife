@@ -39,6 +39,34 @@ CREATE TABLE IF NOT EXISTS suivi_post_crise (
   updated_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
 
+-- Ajouter les colonnes manquantes si la table existe déjà
+DO $$ 
+BEGIN
+  -- Colonne type_crise
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'suivi_post_crise' 
+    AND column_name = 'type_crise'
+  ) THEN
+    ALTER TABLE suivi_post_crise 
+    ADD COLUMN type_crise TEXT CHECK (type_crise IN (
+      'deuil',
+      'divorce',
+      'maladie',
+      'chomage',
+      'trauma',
+      'depression',
+      'addiction',
+      'conflit_familial',
+      'crise_spirituelle',
+      'autre'
+    )) NOT NULL DEFAULT 'autre';
+    
+    RAISE NOTICE '✅ Colonne type_crise ajoutée à suivi_post_crise';
+  END IF;
+END $$;
+
 -- Table pour l'historique de guérison (suivi de l'évolution)
 CREATE TABLE IF NOT EXISTS historique_guerison (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -59,16 +87,107 @@ CREATE TABLE IF NOT EXISTS historique_guerison (
 );
 
 -- Indexes pour améliorer les performances
-CREATE INDEX IF NOT EXISTS idx_suivi_user_id ON suivi_post_crise(user_id);
-CREATE INDEX IF NOT EXISTS idx_suivi_statut ON suivi_post_crise(statut);
-CREATE INDEX IF NOT EXISTS idx_suivi_type_crise ON suivi_post_crise(type_crise);
-CREATE INDEX IF NOT EXISTS idx_suivi_date_debut ON suivi_post_crise(date_debut);
-CREATE INDEX IF NOT EXISTS idx_suivi_prochain_rappel ON suivi_post_crise(prochain_rappel);
-CREATE INDEX IF NOT EXISTS idx_suivi_user_statut ON suivi_post_crise(user_id, statut);
+-- Vérifier que les colonnes existent avant de créer les index
+DO $$
+BEGIN
+  -- Index pour user_id
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'suivi_post_crise' 
+    AND column_name = 'user_id'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_user_id ON suivi_post_crise(user_id);
+  END IF;
 
-CREATE INDEX IF NOT EXISTS idx_historique_suivi_id ON historique_guerison(suivi_id);
-CREATE INDEX IF NOT EXISTS idx_historique_date_suivi ON historique_guerison(date_suivi);
-CREATE INDEX IF NOT EXISTS idx_historique_suivi_date ON historique_guerison(suivi_id, date_suivi DESC);
+  -- Index pour statut
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'suivi_post_crise' 
+    AND column_name = 'statut'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_statut ON suivi_post_crise(statut);
+  END IF;
+
+  -- Index pour type_crise
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'suivi_post_crise' 
+    AND column_name = 'type_crise'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_type_crise ON suivi_post_crise(type_crise);
+  END IF;
+
+  -- Index pour date_debut
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'suivi_post_crise' 
+    AND column_name = 'date_debut'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_date_debut ON suivi_post_crise(date_debut);
+  END IF;
+
+  -- Index pour prochain_rappel
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'suivi_post_crise' 
+    AND column_name = 'prochain_rappel'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_prochain_rappel ON suivi_post_crise(prochain_rappel);
+  END IF;
+
+  -- Index composite pour user_id et statut
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'suivi_post_crise' 
+    AND column_name = 'user_id'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'suivi_post_crise' 
+    AND column_name = 'statut'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_user_statut ON suivi_post_crise(user_id, statut);
+  END IF;
+
+  -- Index pour historique_guerison
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'historique_guerison' 
+    AND column_name = 'suivi_id'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_historique_suivi_id ON historique_guerison(suivi_id);
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'historique_guerison' 
+    AND column_name = 'date_suivi'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_historique_date_suivi ON historique_guerison(date_suivi);
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'historique_guerison' 
+    AND column_name = 'suivi_id'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'historique_guerison' 
+    AND column_name = 'date_suivi'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_historique_suivi_date ON historique_guerison(suivi_id, date_suivi DESC);
+  END IF;
+END $$;
 
 -- Triggers pour updated_at
 DROP TRIGGER IF EXISTS update_suivi_post_crise_updated_at ON suivi_post_crise;

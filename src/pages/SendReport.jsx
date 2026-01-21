@@ -450,34 +450,114 @@ const SendReport = () => {
         reportData.year = parseInt(reportYear);
       }
 
-      const { error } = await supabase.from('reports').insert([reportData]);
+      const { data: insertedReport, error } = await supabase
+        .from('reports')
+        .insert([reportData])
+        .select()
+        .single();
 
       if (error) throw error;
+      
+      // Mettre à jour la notification avec le report_id si elle existe
+      if (pasteurId && insertedReport) {
+        try {
+          // Récupérer la notification la plus récente pour ce pasteur
+          const { data: recentNotification } = await supabase
+            .from('notifications')
+            .select('id, metadata')
+            .eq('user_id', pasteurId)
+            .eq('type', 'report_received')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          if (recentNotification) {
+            await supabase
+              .from('notifications')
+              .update({ 
+                metadata: {
+                  ...recentNotification.metadata,
+                  report_id: insertedReport.id
+                }
+              })
+              .eq('id', recentNotification.id);
+          }
+        } catch (notifError) {
+          console.error('Erreur mise à jour notification:', notifError);
+        }
+      }
 
-      // Récupérer l'email du pasteur de tutelle
+      // Récupérer le pasteur_id et créer une notification
+      let pasteurId = null;
       let pasteurEmail = '';
       try {
-        // Récupérer le profil de l'utilisateur pour obtenir pasteur_id
+        // Récupérer le profil complet de l'utilisateur pour obtenir pasteur_id et nom
         const { data: userProfile } = await supabase
           .from('profils')
-          .select('pasteur_id')
+          .select('pasteur_id, first_name, last_name')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
         if (userProfile && userProfile.pasteur_id) {
+          pasteurId = userProfile.pasteur_id;
+          
           // Récupérer l'email du pasteur
           const { data: pasteurProfile } = await supabase
             .from('profils')
-            .select('email')
-            .eq('id', userProfile.pasteur_id)
-            .single();
+            .select('email, first_name, last_name')
+            .eq('id', pasteurId)
+            .maybeSingle();
 
-          if (pasteurProfile && pasteurProfile.email) {
-            pasteurEmail = pasteurProfile.email;
+          if (pasteurProfile) {
+            pasteurEmail = pasteurProfile.email || '';
+            
+            // Créer une notification pour le pasteur (sera mise à jour avec report_id après insertion)
+            const reportTypeLabels = {
+              'hebdomadaire': 'hebdomadaire',
+              'mensuel': 'mensuel',
+              'trimestriel': 'trimestriel',
+              'annuel': 'annuel'
+            };
+            
+            const reportTypeLabel = reportTypeLabels[reportType] || 'mensuel';
+            const reportPeriod = reportType === 'mensuel' 
+              ? `${months[parseInt(reportMonth)]} ${reportYear}`
+              : reportType === 'hebdomadaire'
+              ? `Semaine ${reportWeek} ${reportYearWeek}`
+              : reportType === 'trimestriel'
+              ? `Trimestre ${reportQuarter} ${reportYearQuarter}`
+              : `Année ${reportYearAnnual}`;
+            
+            const supervisorName = `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim() || 'Un superviseur';
+            const notificationTitle = `Nouveau rapport ${reportTypeLabel} reçu`;
+            const notificationContent = `${supervisorName} a envoyé un rapport ${reportTypeLabel} pour ${reportPeriod}.`;
+            
+            await supabase
+              .from('notifications')
+              .insert([{
+                user_id: pasteurId,
+                type: 'report_received',
+                title: notificationTitle,
+                content: notificationContent,
+                read: false,
+                metadata: {
+                  report_id: null, // Sera mis à jour après insertion
+                  supervisor_id: user.id,
+                  supervisor_name: supervisorName,
+                  report_type: reportType,
+                  report_period: reportPeriod,
+                  redirect_to: '/admin/reports'
+                }
+              }]);
           }
         }
-      } catch (emailError) {
-        console.error('Erreur lors de la récupération de l\'email du pasteur:', emailError);
+      } catch (error) {
+        console.error('Erreur lors de la récupération du pasteur ou création de notification:', error);
+      }
+      
+      // Ajouter pasteur_id au rapport si disponible
+      if (pasteurId) {
+        reportData.pasteur_id = pasteurId;
       }
       
       setStats({ ...stats, notes: '' });
@@ -602,8 +682,8 @@ const SendReport = () => {
     
     // Section Présences et Activités
     csvRows.push('Présences et Activités,'); // Colonne A = titre section, Colonne B = vide
-    csvRows.push(`Nombre de Disciples,${discipleCount}`); // Colonne A = label, Colonne B = valeur numérique
-    csvRows.push(`Présence Culte Dimanche matin,${stats.sundayAttendanceCount}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Nombre de Disciples,${discipleCount || 0}`); // Colonne A = label, Colonne B = valeur numérique
+    csvRows.push(`Présence Culte Dimanche matin,${stats.sundayAttendanceCount || 0}`); // Colonne A = label, Colonne B = valeur
     csvRows.push(`Présence Culte du samedi soir,${stats.saturdayEveningCount || 0}`); // Colonne A = label, Colonne B = valeur
     csvRows.push(`Présence à l'After Culte,${stats.afterCulteCount || 0}`); // Colonne A = label, Colonne B = valeur
     csvRows.push(`Présences à la Prière,${stats.saturdayPrayerCount || 0}`); // Colonne A = label, Colonne B = valeur
@@ -612,7 +692,7 @@ const SendReport = () => {
     
     // Section Évangélisation
     csvRows.push('Évangélisation,'); // Colonne A = titre section, Colonne B = vide
-    csvRows.push(`Personnes Évangélisées,${stats.evangelizedCount}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Personnes Évangélisées,${stats.evangelizedCount || 0}`); // Colonne A = label, Colonne B = valeur
     csvRows.push(`Nouveaux Convertis,${stats.nouveauxConvertis || 0}`); // Colonne A = label, Colonne B = valeur
     csvRows.push(`Nouveaux Arrivants,${stats.nouveauxArrivants || 0}`); // Colonne A = label, Colonne B = valeur
     csvRows.push(`Sorties d'Évangélisation,${stats.sortiesEvangelisation || 0}`); // Colonne A = label, Colonne B = valeur
@@ -620,8 +700,8 @@ const SendReport = () => {
     
     // Section Formation et Engagement
     csvRows.push('Formation et Engagement,'); // Colonne A = titre section, Colonne B = vide
-    csvRows.push(`Vidéos Visionnées (modules),${stats.videoViews}`); // Colonne A = label, Colonne B = valeur
-    csvRows.push(`Taux de Complétion (%),${stats.completionRate}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Vidéos Visionnées (modules),${stats.videoViews || 0}`); // Colonne A = label, Colonne B = valeur
+    csvRows.push(`Taux de Complétion (%),${stats.completionRate || 0}`); // Colonne A = label, Colonne B = valeur
     csvRows.push(','); // Ligne vide
     
     // Section Activités Communautaires
@@ -690,7 +770,10 @@ const SendReport = () => {
       
       // Contenu
       pdf.text(row[0] || '', margin + cellPadding, yPos + 5);
-      pdf.text(String(row[1] || ''), margin + col1Width + cellPadding, yPos + 5);
+      // Afficher "0" si la valeur est vide, null, undefined, ou NaN
+      const value = row[1];
+      const displayValue = (value === null || value === undefined || value === '' || isNaN(value)) ? '0' : String(value);
+      pdf.text(displayValue, margin + col1Width + cellPadding, yPos + 5);
       
       yPos += lineHeight;
     });
@@ -728,8 +811,8 @@ const SendReport = () => {
 
     pdf.setFontSize(10);
     const presenceData = [
-      ['Nombre de Disciples', discipleCount],
-      ['Présence Culte Dimanche matin', stats.sundayAttendanceCount],
+      ['Nombre de Disciples', discipleCount || 0],
+      ['Présence Culte Dimanche matin', stats.sundayAttendanceCount || 0],
       ['Présence Culte du samedi soir', stats.saturdayEveningCount || 0],
       ['Présence à l\'After Culte', stats.afterCulteCount || 0],
       ['Présences à la Prière', stats.saturdayPrayerCount || 0],
@@ -753,7 +836,7 @@ const SendReport = () => {
 
     pdf.setFontSize(10);
     const evangelizationData = [
-      ['Personnes Évangélisées', stats.evangelizedCount],
+      ['Personnes Évangélisées', stats.evangelizedCount || 0],
       ['Nouveaux Convertis', stats.nouveauxConvertis || 0],
       ['Nouveaux Arrivants', stats.nouveauxArrivants || 0],
       ['Sorties d\'Évangélisation', stats.sortiesEvangelisation || 0]
@@ -776,8 +859,8 @@ const SendReport = () => {
 
     pdf.setFontSize(10);
     const formationData = [
-      ['Vidéos Visionnées (modules)', stats.videoViews],
-      ['Taux de Complétion (%)', stats.completionRate]
+      ['Vidéos Visionnées (modules)', stats.videoViews || 0],
+      ['Taux de Complétion (%)', stats.completionRate || 0]
     ];
 
     yPosition = createTable(pdf, yPosition, ['Indicateurs', 'Valeurs'], formationData, margin);
