@@ -862,7 +862,8 @@ const SuperviseurDashboard = () => {
       // OPTIMISATION: Utiliser le cache pour les données fréquemment consultées (TTL: 2 minutes)
       const cacheKeyBase = `superviseur_${user.id}`;
       
-      // OPTIMISATION: Paralléliser les requêtes initiales (famille, superviseur) avec cache
+      // OPTIMISATION CRITIQUE: Charger d'abord les données minimales pour afficher l'interface
+      // Paralléliser les requêtes initiales (famille, superviseur) avec cache
       const [familleResult, superviseurResult] = await Promise.all([
         // 1. Récupérer la famille du superviseur avec cache
         getOrSetCache(
@@ -987,19 +988,27 @@ const SuperviseurDashboard = () => {
         console.warn('Aucune donnée superviseur trouvée');
       }
 
+      // OPTIMISATION CRITIQUE: Masquer le spinner IMMÉDIATEMENT après avoir chargé famille + stats
+      // L'interface s'affichera instantanément, toutes les autres données chargeront en arrière-plan
+      setLoading(false);
+      console.log('✅ Interface affichée instantanément (données critiques chargées)');
+
+      // Charger le pasteur en arrière-plan (non bloquant)
       if (superviseurData?.pasteur_id) {
-        const { data: pasteurData, error: pasteurError } = await supabase
+        supabase
           .from('profils')
           .select('id, first_name, last_name, identifiant_unique, avatar_url')
           .eq('id', superviseurData.pasteur_id)
-          .single();
-
-        if (!pasteurError && pasteurData) {
-          setPasteur(pasteurData);
-          if (pasteurData?.avatar_url) {
-            setPasteurAvatarPreview(pasteurData.avatar_url);
-          }
-        }
+          .single()
+          .then(({ data: pasteurData, error: pasteurError }) => {
+            if (!pasteurError && pasteurData) {
+              setPasteur(pasteurData);
+              if (pasteurData?.avatar_url) {
+                setPasteurAvatarPreview(pasteurData.avatar_url);
+              }
+            }
+          })
+          .catch(err => console.error('Erreur chargement pasteur:', err));
       }
 
       // 3. Récupérer les membres de la famille pour calculer le nombre réel
@@ -1074,24 +1083,10 @@ const SuperviseurDashboard = () => {
       const nombreMembresProfils = (membresData || []).filter(m => m.id !== user.id).length;
       const nombreMembresCercle = (disciplesData || []).length;
       
-      // Log pour debug détaillé
-      console.log('📊 Calcul membres famille:', {
-        superviseurId: user.id,
-        familleId: familleData.id,
-        familleNom: familleData.nom,
-        membresProfilsCount: nombreMembresProfils,
-        membresCercleCount: nombreMembresCercle,
-        totalCalculated: nombreMembres,
-        tousLesMembres: tousLesMembres
-      });
-
-      // 3d. Calculer les statistiques
+      // OPTIMISATION CRITIQUE: Mettre à jour les stats immédiatement pour afficher l'interface
       const objectif = familleData.objectif_disciples || 70;
       const progression = nombreMembres > 0 ? Math.min((nombreMembres / objectif) * 100, 100) : 0;
       const reste = Math.max(objectif - nombreMembres, 0);
-
-      console.log('📈 Stats à définir:', { nombreMembres, objectif, progression, reste });
-      console.log('🔍 Vérification - nombreMembres est:', typeof nombreMembres, nombreMembres);
 
       // Forcer la mise à jour des stats avec les valeurs calculées
       const newStats = {
@@ -1101,73 +1096,73 @@ const SuperviseurDashboard = () => {
         reste: Number(reste) || 70
       };
       
-      console.log('✅ Nouveaux stats à appliquer:', newStats);
       setStats(newStats);
-
-      // 4. Définir la liste des membres (tous les membres combinés)
       setMembres(tousLesMembres);
       
+      // Note: setLoading(false) a déjà été appelé plus tôt (ligne 993) pour afficher l'interface immédiatement
+      
+      // OPTIMISATION: Charger les données de formations/vidéos en arrière-plan (non bloquant)
       if (tousLesMembres.length > 0) {
-        
-        // Récupérer les statistiques de formations et vidéos des membres
         const membreIds = tousLesMembres.map(m => m.id);
         
-        if (membreIds.length > 0) {
-          // Formations terminées - Utiliser user_parcours_progression pour obtenir user_id
-          // Récupérer d'abord les progression_id pour ces membres
-          const { data: progressionsData } = await supabase
-            .from('user_parcours_progression')
-            .select('id')
-            .in('user_id', membreIds);
-          
-          const progressionIds = progressionsData?.map(p => p.id) || [];
-          
-          let formationsTermineesCount = 0;
-          let formationsEnCoursCount = 0;
-          
-          if (progressionIds.length > 0) {
-            const { count: formationsTerminees } = await supabase
-              .from('user_module_progression')
-              .select('id', { count: 'exact', head: true })
-              .in('progression_id', progressionIds)
-              .eq('est_complete', true);
+        // Charger en arrière-plan sans bloquer l'interface
+        (async () => {
+          try {
+            // Formations terminées - Utiliser user_parcours_progression pour obtenir user_id
+            const { data: progressionsData } = await supabase
+              .from('user_parcours_progression')
+              .select('id')
+              .in('user_id', membreIds);
             
-            const { count: formationsEnCours } = await supabase
-              .from('user_module_progression')
-              .select('id', { count: 'exact', head: true })
-              .in('progression_id', progressionIds)
-              .eq('est_complete', false);
+            const progressionIds = progressionsData?.map(p => p.id) || [];
             
-            formationsTermineesCount = formationsTerminees || 0;
-            formationsEnCoursCount = formationsEnCours || 0;
-          }
-          
-          // Vidéos terminées (is_completed = true dans video_progress)
-          const { count: videosTermineesCount } = await supabase
-            .from('video_progress')
-            .select('*', { count: 'exact', head: true })
-            .in('disciple_id', membreIds)
-            .eq('is_completed', true);
-          
-          setKpiData(prev => ({
-            ...prev,
-            formationsTerminees: formationsTermineesCount || 0,
-            formationsEnCours: formationsEnCoursCount || 0,
-            videosTerminees: videosTermineesCount || 0
-          }));
-          
-          // Calculer la progression individuelle pour chaque membre
-          const progressionMap = {};
-          
-          // Récupérer toutes les progressions pour ces membres
-          const { data: allProgressionsData } = await supabase
-            .from('user_parcours_progression')
-            .select('id, user_id')
-            .in('user_id', membreIds);
-          
-          // Créer un map progression_id -> user_id
-          const progressionToUserMap = {};
-          allProgressionsData?.forEach(p => {
+            let formationsTermineesCount = 0;
+            let formationsEnCoursCount = 0;
+            
+            if (progressionIds.length > 0) {
+              const [formationsTermineesResult, formationsEnCoursResult] = await Promise.all([
+                supabase
+                  .from('user_module_progression')
+                  .select('id', { count: 'exact', head: true })
+                  .in('progression_id', progressionIds)
+                  .eq('est_complete', true),
+                supabase
+                  .from('user_module_progression')
+                  .select('id', { count: 'exact', head: true })
+                  .in('progression_id', progressionIds)
+                  .eq('est_complete', false)
+              ]);
+              
+              formationsTermineesCount = formationsTermineesResult.count || 0;
+              formationsEnCoursCount = formationsEnCoursResult.count || 0;
+            }
+            
+            // Vidéos terminées
+            const { count: videosTermineesCount } = await supabase
+              .from('video_progress')
+              .select('*', { count: 'exact', head: true })
+              .in('disciple_id', membreIds)
+              .eq('is_completed', true);
+            
+            setKpiData(prev => ({
+              ...prev,
+              formationsTerminees: formationsTermineesCount || 0,
+              formationsEnCours: formationsEnCoursCount || 0,
+              videosTerminees: videosTermineesCount || 0
+            }));
+            
+            // Calculer la progression individuelle pour chaque membre
+            const progressionMap = {};
+            
+            // Récupérer toutes les progressions pour ces membres
+            const { data: allProgressionsData } = await supabase
+              .from('user_parcours_progression')
+              .select('id, user_id')
+              .in('user_id', membreIds);
+            
+            // Créer un map progression_id -> user_id
+            const progressionToUserMap = {};
+            allProgressionsData?.forEach(p => {
             progressionToUserMap[p.id] = p.user_id;
           });
           
@@ -1216,156 +1211,150 @@ const SuperviseurDashboard = () => {
           });
           
           setMembresProgression(progressionMap);
-        }
-        
-        // OPTIMISATION: Récupérer le nombre de disciples suivis par chaque membre en une seule requête
-        // Récupérer tous les disciples directs et sous-disciples en une seule fois
-        const memberIds = tousLesMembres.map(m => m.id);
-        const [directDisciplesResult, subDisciplesResult] = await Promise.all([
-          // Tous les disciples directs (où le membre est le mentor)
-          supabase
-            .from('cercle_personnes')
-            .select('user_id')
-            .in('user_id', memberIds),
-          // Tous les sous-disciples (où le membre est un disciple parent)
-          supabase
-            .from('cercle_personnes')
-            .select('parent_disciple_id')
-            .in('parent_disciple_id', memberIds)
-        ]);
-
-        // Compter les disciples par membre
-        const disciplesCountMap = {};
-        tousLesMembres.forEach(membre => {
-          disciplesCountMap[membre.id] = 0;
-        });
-
-        // Compter les disciples directs
-        directDisciplesResult.data?.forEach(d => {
-          if (d.user_id && disciplesCountMap[d.user_id] !== undefined) {
-            disciplesCountMap[d.user_id] = (disciplesCountMap[d.user_id] || 0) + 1;
+          } catch (err) {
+            console.error('Erreur chargement formations/vidéos:', err);
           }
-        });
-
-        // Compter les sous-disciples
-        subDisciplesResult.data?.forEach(d => {
-          if (d.parent_disciple_id && disciplesCountMap[d.parent_disciple_id] !== undefined) {
-            disciplesCountMap[d.parent_disciple_id] = (disciplesCountMap[d.parent_disciple_id] || 0) + 1;
-          }
-        });
-
-        console.log('📊 Nombre de disciples par membre (final):', disciplesCountMap);
-        setMembresDisciplesCount(disciplesCountMap);
+        })();
         
-        // Mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
-        // ⚠️ Cette fonction ne doit PAS appeler fetchSuperviseurData() pour éviter les boucles infinies
-        updateDisciplesToMentors(disciplesCountMap, tousLesMembres).catch(error => {
-          console.error('Erreur lors de la mise à jour automatique des statuts:', error);
-        });
-      }
-
-      // 4b. OPTIMISATION: Récupérer les informations "Suivi par" en requêtes groupées
-      const suiviParMap = {};
-      if (tousLesMembres.length > 0) {
-        const memberIds = tousLesMembres.map(m => m.id);
-        
-        // Récupérer tous les cercle_personnes en une seule requête
-        const { data: allCercleData } = await supabase
-          .from('cercle_personnes')
-          .select('id, user_id, parent_disciple_id, first_name, last_name')
-          .in('id', memberIds);
-
-        // Créer un map des données cercle par membre ID
-        const cercleMap = {};
-        allCercleData?.forEach(c => {
-          cercleMap[c.id] = c;
-        });
-
-        // Récupérer tous les IDs uniques (user_id et parent_disciple_id)
-        const uniqueUserIds = new Set();
-        const uniqueParentIds = new Set();
-        allCercleData?.forEach(c => {
-          if (c.user_id) uniqueUserIds.add(c.user_id);
-          if (c.parent_disciple_id) uniqueParentIds.add(c.parent_disciple_id);
-        });
-
-        // Récupérer tous les profils et cercle_personnes parent en une seule requête
-        const [profilsData, parentDisciplesData] = await Promise.all([
-          uniqueUserIds.size > 0 
-            ? supabase
-                .from('profils')
-                .select('id, first_name, last_name')
-                .in('id', Array.from(uniqueUserIds))
-            : Promise.resolve({ data: [] }),
-          uniqueParentIds.size > 0
-            ? supabase
-                .from('cercle_personnes')
-                .select('id, first_name, last_name')
-                .in('id', Array.from(uniqueParentIds))
-            : Promise.resolve({ data: [] })
-        ]);
-
-        // Créer des maps pour les profils et parents
-        const profilsMap = {};
-        profilsData.data?.forEach(p => {
-          profilsMap[p.id] = p;
-        });
-
-        const parentsMap = {};
-        parentDisciplesData.data?.forEach(p => {
-          parentsMap[p.id] = p;
-        });
-
-        // Construire le map "Suivi par" pour chaque membre
-        tousLesMembres.forEach(membre => {
-          const cercleData = cercleMap[membre.id];
-          
-          if (cercleData) {
-            // Si le membre a un parent_disciple_id, c'est un sous-disciple
-            if (cercleData.parent_disciple_id) {
-              const parentData = parentsMap[cercleData.parent_disciple_id];
-              if (parentData) {
-                suiviParMap[membre.id] = {
-                  name: `${parentData.first_name || ''} ${parentData.last_name || ''}`.trim(),
-                  id: cercleData.parent_disciple_id
-                };
-                return;
-              }
-            }
+        // OPTIMISATION: Charger les données de disciples et "suivi par" en arrière-plan
+        (async () => {
+          try {
+            const memberIds = tousLesMembres.map(m => m.id);
             
-            // Si le membre a un user_id, c'est le superviseur
-            if (cercleData.user_id) {
-              const superviseurData = profilsMap[cercleData.user_id];
-              if (superviseurData) {
-                suiviParMap[membre.id] = {
-                  name: `${superviseurData.first_name || ''} ${superviseurData.last_name || ''}`.trim(),
-                  id: cercleData.user_id
-                };
-                return;
-              }
-            }
-          }
+            // Récupérer le nombre de disciples suivis par chaque membre
+            const [directDisciplesResult, subDisciplesResult] = await Promise.all([
+              supabase
+                .from('cercle_personnes')
+                .select('user_id')
+                .in('user_id', memberIds),
+              supabase
+                .from('cercle_personnes')
+                .select('parent_disciple_id')
+                .in('parent_disciple_id', memberIds)
+            ]);
 
-          // Si le membre est dans profils avec famille_id, il est suivi par le superviseur de la famille
-          if (membre.source === 'profils' && membre.role !== 'superviseur') {
-            suiviParMap[membre.id] = {
-              name: `${superviseurNom.first_name || ''} ${superviseurNom.last_name || ''}`.trim(),
-              id: user.id
-            };
+            // Compter les disciples par membre
+            const disciplesCountMap = {};
+            tousLesMembres.forEach(membre => {
+              disciplesCountMap[membre.id] = 0;
+            });
+
+            directDisciplesResult.data?.forEach(d => {
+              if (d.user_id && disciplesCountMap[d.user_id] !== undefined) {
+                disciplesCountMap[d.user_id] = (disciplesCountMap[d.user_id] || 0) + 1;
+              }
+            });
+
+            subDisciplesResult.data?.forEach(d => {
+              if (d.parent_disciple_id && disciplesCountMap[d.parent_disciple_id] !== undefined) {
+                disciplesCountMap[d.parent_disciple_id] = (disciplesCountMap[d.parent_disciple_id] || 0) + 1;
+              }
+            });
+
+            setMembresDisciplesCount(disciplesCountMap);
+            
+            // Mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
+            updateDisciplesToMentors(disciplesCountMap, tousLesMembres).catch(error => {
+              console.error('Erreur lors de la mise à jour automatique des statuts:', error);
+            });
+
+            // Récupérer les informations "Suivi par"
+            const { data: allCercleData } = await supabase
+              .from('cercle_personnes')
+              .select('id, user_id, parent_disciple_id, first_name, last_name')
+              .in('id', memberIds);
+
+            const cercleMap = {};
+            allCercleData?.forEach(c => {
+              cercleMap[c.id] = c;
+            });
+
+            const uniqueUserIds = new Set();
+            const uniqueParentIds = new Set();
+            allCercleData?.forEach(c => {
+              if (c.user_id) uniqueUserIds.add(c.user_id);
+              if (c.parent_disciple_id) uniqueParentIds.add(c.parent_disciple_id);
+            });
+
+            const [profilsData, parentDisciplesData] = await Promise.all([
+              uniqueUserIds.size > 0 
+                ? supabase
+                    .from('profils')
+                    .select('id, first_name, last_name')
+                    .in('id', Array.from(uniqueUserIds))
+                : Promise.resolve({ data: [] }),
+              uniqueParentIds.size > 0
+                ? supabase
+                    .from('cercle_personnes')
+                    .select('id, first_name, last_name')
+                    .in('id', Array.from(uniqueParentIds))
+                : Promise.resolve({ data: [] })
+            ]);
+
+            const profilsMap = {};
+            profilsData.data?.forEach(p => {
+              profilsMap[p.id] = p;
+            });
+
+            const parentsMap = {};
+            parentDisciplesData.data?.forEach(p => {
+              parentsMap[p.id] = p;
+            });
+
+            const suiviParMap = {};
+            tousLesMembres.forEach(membre => {
+              const cercleData = cercleMap[membre.id];
+              
+              if (cercleData) {
+                if (cercleData.parent_disciple_id) {
+                  const parentData = parentsMap[cercleData.parent_disciple_id];
+                  if (parentData) {
+                    suiviParMap[membre.id] = {
+                      name: `${parentData.first_name || ''} ${parentData.last_name || ''}`.trim(),
+                      id: cercleData.parent_disciple_id
+                    };
+                    return;
+                  }
+                }
+                
+                if (cercleData.user_id) {
+                  const superviseurData = profilsMap[cercleData.user_id];
+                  if (superviseurData) {
+                    suiviParMap[membre.id] = {
+                      name: `${superviseurData.first_name || ''} ${superviseurData.last_name || ''}`.trim(),
+                      id: cercleData.user_id
+                    };
+                    return;
+                  }
+                }
+              }
+
+              if (membre.source === 'profils' && membre.role !== 'superviseur') {
+                suiviParMap[membre.id] = {
+                  name: `${superviseurNom.first_name || ''} ${superviseurNom.last_name || ''}`.trim(),
+                  id: user.id
+                };
+              }
+            });
+            
+            setMembresSuiviPar(suiviParMap);
+          } catch (err) {
+            console.error('Erreur chargement données membres:', err);
           }
-        });
-        
-        setMembresSuiviPar(suiviParMap);
+        })();
       }
 
-      // 5. Récupérer les rapports du superviseur pour les graphiques
-      const { data: rapportsData, error: rapportsError } = await supabase
-        .from('reports')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
+      // 5. OPTIMISATION: Charger les rapports en arrière-plan (non bloquant)
+      // Les rapports sont utilisés pour les graphiques qui se chargent en lazy loading
+      (async () => {
+        try {
+          const { data: rapportsData, error: rapportsError } = await supabase
+            .from('reports')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: true });
 
-      if (!rapportsError && rapportsData) {
+          if (!rapportsError && rapportsData) {
         // Filtrer les rapports selon la période sélectionnée
         const rapportsFiltres = rapportsData.filter(r => {
           const selectedYear = parseInt(kpiSelectedYearForPeriod);
@@ -1450,106 +1439,93 @@ const SuperviseurDashboard = () => {
           console.error('❌ Erreur génération graphiques:', err);
         });
         
-        // Stocker les rapports pour l'historique
-        setRapports(rapportsData || []);
-      }
-      
-      // OPTIMISATION: Arrêter le loading ici pour afficher l'interface rapidement
-      // Les données détaillées seront chargées en arrière-plan via le useEffect séparé
-      console.log('✅ Données principales chargées, interface affichée');
-      
-      // 6. OPTIMISATION: Charger les données supplémentaires en arrière-plan (non bloquant)
-      // Ces données seront chargées après l'affichage de l'interface
-      Promise.all([
-        fetchAlertes().catch(err => console.error('❌ Erreur récupération alertes:', err))
-      ]).then(() => {
-        console.log('✅ Données supplémentaires chargées en arrière-plan');
-      });
-
-      // 6. OPTIMISATION: Récupérer les autres superviseurs de la famille (même pasteur_id) avec calculs groupés
-      if (superviseurData?.pasteur_id) {
-        const { data: superviseursData, error: superviseursError } = await supabase
-          .from('profils')
-          .select('id, first_name, last_name, email, avatar_url')
-          .eq('pasteur_id', superviseurData.pasteur_id)
-          .eq('role', 'superviseur')
-          .neq('id', user.id) // Exclure le superviseur actuel
-          .order('first_name', { ascending: true });
-
-        if (!superviseursError && superviseursData) {
-          setSuperviseursFamille(superviseursData || []);
-          
-          // OPTIMISATION: Récupérer toutes les familles et compter les membres en requêtes groupées
-          const membresCountMap = {};
-          if (superviseursData.length > 0) {
-            const superviseurIds = superviseursData.map(s => s.id);
-            
-            // Récupérer toutes les familles des superviseurs en une seule requête
-            const { data: allFamilles, error: famillesError } = await supabase
-              .from('familles_disciples')
-              .select('id, superviseur_id')
-              .in('superviseur_id', superviseurIds);
-
-            if (!famillesError && allFamilles) {
-              // Créer un map superviseur_id -> famille_id
-              const superviseurToFamilleMap = {};
-              const familleIds = [];
-              allFamilles.forEach(famille => {
-                superviseurToFamilleMap[famille.superviseur_id] = famille.id;
-                familleIds.push(famille.id);
-              });
-
-              // Récupérer tous les comptages en requêtes groupées
-              const [profilsCountsResult, cercleCountsResult] = await Promise.all([
-                // Compter les membres depuis profils pour toutes les familles
-                familleIds.length > 0
-                  ? supabase
-                      .from('profils')
-                      .select('famille_id')
-                      .in('famille_id', familleIds)
-                  : Promise.resolve({ data: [] }),
-                // Compter les membres depuis cercle_personnes pour tous les superviseurs
-                supabase
-                  .from('cercle_personnes')
-                  .select('user_id')
-                  .in('user_id', superviseurIds)
-              ]);
-
-              // Compter les membres par famille depuis profils
-              const membresParFamille = {};
-              profilsCountsResult.data?.forEach(p => {
-                if (p.famille_id) {
-                  membresParFamille[p.famille_id] = (membresParFamille[p.famille_id] || 0) + 1;
-                }
-              });
-
-              // Compter les membres par superviseur depuis cercle_personnes
-              const membresParSuperviseur = {};
-              cercleCountsResult.data?.forEach(c => {
-                if (c.user_id) {
-                  membresParSuperviseur[c.user_id] = (membresParSuperviseur[c.user_id] || 0) + 1;
-                }
-              });
-
-              // Calculer le total pour chaque superviseur
-              superviseursData.forEach(superviseur => {
-                const familleId = superviseurToFamilleMap[superviseur.id];
-                const membresProfils = familleId ? (membresParFamille[familleId] || 0) : 0;
-                const membresCercle = membresParSuperviseur[superviseur.id] || 0;
-                membresCountMap[superviseur.id] = membresProfils + membresCercle;
-              });
-            }
+            // Stocker les rapports pour l'historique
+            setRapports(rapportsData || []);
           }
-          
-          setNombreMembresParSuperviseur(membresCountMap);
+        } catch (err) {
+          console.error('Erreur chargement rapports:', err);
         }
+      })();
+
+      // OPTIMISATION: Charger les autres superviseurs en arrière-plan (non bloquant)
+      if (superviseurData?.pasteur_id) {
+        (async () => {
+          try {
+            const { data: superviseursData, error: superviseursError } = await supabase
+              .from('profils')
+              .select('id, first_name, last_name, email, avatar_url')
+              .eq('pasteur_id', superviseurData.pasteur_id)
+              .eq('role', 'superviseur')
+              .neq('id', user.id)
+              .order('first_name', { ascending: true });
+
+            if (!superviseursError && superviseursData) {
+              setSuperviseursFamille(superviseursData || []);
+              
+              // Calculer les membres par superviseur en arrière-plan
+              const membresCountMap = {};
+              if (superviseursData.length > 0) {
+                const superviseurIds = superviseursData.map(s => s.id);
+                
+                const { data: allFamilles } = await supabase
+                  .from('familles_disciples')
+                  .select('id, superviseur_id')
+                  .in('superviseur_id', superviseurIds);
+
+                if (allFamilles) {
+                  const superviseurToFamilleMap = {};
+                  const familleIds = [];
+                  allFamilles.forEach(famille => {
+                    superviseurToFamilleMap[famille.superviseur_id] = famille.id;
+                    familleIds.push(famille.id);
+                  });
+
+                  const [profilsCountsResult, cercleCountsResult] = await Promise.all([
+                    familleIds.length > 0
+                      ? supabase.from('profils').select('famille_id').in('famille_id', familleIds)
+                      : Promise.resolve({ data: [] }),
+                    supabase.from('cercle_personnes').select('user_id').in('user_id', superviseurIds)
+                  ]);
+
+                  const membresParFamille = {};
+                  profilsCountsResult.data?.forEach(p => {
+                    if (p.famille_id) {
+                      membresParFamille[p.famille_id] = (membresParFamille[p.famille_id] || 0) + 1;
+                    }
+                  });
+
+                  const membresParSuperviseur = {};
+                  cercleCountsResult.data?.forEach(c => {
+                    if (c.user_id) {
+                      membresParSuperviseur[c.user_id] = (membresParSuperviseur[c.user_id] || 0) + 1;
+                    }
+                  });
+
+                  superviseursData.forEach(superviseur => {
+                    const familleId = superviseurToFamilleMap[superviseur.id];
+                    const membresProfils = familleId ? (membresParFamille[familleId] || 0) : 0;
+                    const membresCercle = membresParSuperviseur[superviseur.id] || 0;
+                    membresCountMap[superviseur.id] = membresProfils + membresCercle;
+                  });
+                }
+              }
+              
+              setNombreMembresParSuperviseur(membresCountMap);
+            }
+          } catch (err) {
+            console.error('Erreur chargement superviseurs:', err);
+          }
+        })();
       }
+
+      // OPTIMISATION: Charger les alertes en arrière-plan (non bloquant)
+      fetchAlertes().catch(err => console.error('❌ Erreur récupération alertes:', err));
 
     } catch (error) {
       console.error('Erreur lors du chargement des données superviseur:', error);
-    } finally {
-      setLoading(false);
+      setLoading(false); // Masquer le loading même en cas d'erreur
     }
+    // Note: setLoading(false) est déjà appelé plus tôt dans le code pour afficher l'interface rapidement
   };
 
   // Fonction pour exporter en PDF
@@ -2653,7 +2629,9 @@ const SuperviseurDashboard = () => {
     }
   };
 
-  if (loading) {
+  // OPTIMISATION: Afficher le spinner seulement si la famille n'est pas encore chargée
+  // Une fois la famille chargée, afficher l'interface même si d'autres données se chargent
+  if (loading && !famille) {
     return (
       <div className="flex h-full w-full items-center justify-center min-h-[50vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -2661,7 +2639,7 @@ const SuperviseurDashboard = () => {
     );
   }
 
-  if (!famille) {
+  if (!famille && !loading) {
     return (
       <div className="p-6">
         <Card>
