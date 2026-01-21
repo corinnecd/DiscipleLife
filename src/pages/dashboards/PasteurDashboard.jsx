@@ -42,6 +42,8 @@ const PasteurDashboard = () => {
   const [pasteurNom, setPasteurNom] = useState({ first_name: '', last_name: '', identifiant_unique: '' });
   const [superviseurs, setSuperviseurs] = useState([]);
   const [familles, setFamilles] = useState([]);
+  const [mentorsConsolides, setMentorsConsolides] = useState([]); // Tableau consolidé des mentors
+  const [loadingMentors, setLoadingMentors] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFamille, setSelectedFamille] = useState(null);
   const [familleModalDetails, setFamilleModalDetails] = useState({ members: [], reports: [], loading: false });
@@ -102,6 +104,13 @@ const PasteurDashboard = () => {
       checkMissingReports();
     }
   }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+
+  // Charger les mentors consolidés après le chargement des familles
+  useEffect(() => {
+    if (familles.length > 0 && user) {
+      fetchMentorsConsolides();
+    }
+  }, [familles, user]);
 
   // Charger les détails (membres, rapports) lorsque le modal famille s'ouvre
   useEffect(() => {
@@ -795,6 +804,124 @@ const PasteurDashboard = () => {
       }
     } catch (error) {
       console.error('Erreur lors de la vérification des rapports manquants:', error);
+    }
+  };
+
+  // Fonction pour récupérer les mentors consolidés avec leurs stats
+  const fetchMentorsConsolides = async () => {
+    try {
+      setLoadingMentors(true);
+      const cacheKeyBase = `pasteur_${user.id}_mentors_consolides`;
+      
+      const mentorsData = await getOrSetCache(
+        cacheKeyBase,
+        async () => {
+          // Récupérer tous les mentors (role='mentor' ou is_approved_as_disciple_maker=true) des familles sous la responsabilité du pasteur
+          const familleIds = familles.filter(f => f.famille?.id).map(f => f.famille.id);
+          
+          if (familleIds.length === 0) return [];
+
+          // Récupérer tous les profils avec role='mentor' ou is_approved_as_disciple_maker=true qui appartiennent aux familles
+          const { data: mentorsProfils, error: mentorsError } = await supabase
+            .from('profils')
+            .select('id, first_name, last_name, famille_id')
+            .in('famille_id', familleIds)
+            .or('role.eq.mentor,is_approved_as_disciple_maker.eq.true');
+
+          if (mentorsError) throw mentorsError;
+
+          if (!mentorsProfils || mentorsProfils.length === 0) return [];
+
+          // Pour chaque mentor, calculer les stats
+          const mentorsAvecStats = await Promise.all(
+            mentorsProfils.map(async (mentor) => {
+              // 1. Récupérer le nom de la famille (église)
+              const famille = familles.find(f => f.famille?.id === mentor.famille_id);
+              const nomEglise = famille?.famille?.nom || 'N/A';
+
+              // 2. Compter le nombre de disciples (depuis cercle_personnes où user_id = mentor.id)
+              const { count: nombreDisciples, error: countError } = await supabase
+                .from('cercle_personnes')
+                .select('*', { count: 'exact', head: true })
+                .eq('user_id', mentor.id);
+
+              if (countError) console.error(`Erreur comptage disciples pour mentor ${mentor.id}:`, countError);
+              const nombreDisciplesTotal = nombreDisciples || 0;
+
+              // 3. Calculer l'avancement % (nombreDisciples / 70 * 100)
+              const objectif = 70;
+              const avancementPourcentage = Math.min((nombreDisciplesTotal / objectif) * 100, 100);
+
+              // 4. Récupérer les IDs des disciples pour calculer les présences
+              const { data: disciplesData } = await supabase
+                .from('cercle_personnes')
+                .select('id')
+                .eq('user_id', mentor.id);
+
+              const discipleIds = disciplesData?.map(d => d.id) || [];
+
+              // 5. Compter les disciples présents à l'église (depuis attendance_tracking)
+              let disciplesPresents = 0;
+              if (discipleIds.length > 0) {
+                const { count: countPresents } = await supabase
+                  .from('attendance_tracking')
+                  .select('*', { count: 'exact', head: true })
+                  .in('disciple_id', discipleIds)
+                  .eq('attendance_type', 'sunday_worship')
+                  .eq('status', 'present');
+                disciplesPresents = countPresents || 0;
+              }
+
+              // 6. Calculer le taux de participation de la semaine en cours
+              const now = new Date();
+              const startOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 }); // Lundi
+              const endOfCurrentWeek = endOfWeek(now, { weekStartsOn: 1 }); // Dimanche
+              const startOfWeekStr = format(startOfCurrentWeek, 'yyyy-MM-dd');
+              const endOfWeekStr = format(endOfCurrentWeek, 'yyyy-MM-dd');
+
+              let tauxParticipationSemaine = 0;
+              if (discipleIds.length > 0 && nombreDisciplesTotal > 0) {
+                const { count: presentsSemaine } = await supabase
+                  .from('attendance_tracking')
+                  .select('*', { count: 'exact', head: true })
+                  .in('disciple_id', discipleIds)
+                  .eq('attendance_type', 'sunday_worship')
+                  .eq('status', 'present')
+                  .gte('attendance_date', startOfWeekStr)
+                  .lte('attendance_date', endOfWeekStr);
+                
+                const presentsSemaineCount = presentsSemaine || 0;
+                tauxParticipationSemaine = Math.round((presentsSemaineCount / nombreDisciplesTotal) * 100);
+              }
+
+              return {
+                mentor_id: mentor.id,
+                nom: mentor.last_name || '',
+                prenom: mentor.first_name || '',
+                eglise: nomEglise,
+                nombre_disciples: nombreDisciplesTotal,
+                avancement_pourcentage: Math.round(avancementPourcentage),
+                disciples_presents: disciplesPresents,
+                taux_participation_semaine: tauxParticipationSemaine
+              };
+            })
+          );
+
+          return mentorsAvecStats;
+        },
+        2 * 60 * 1000 // Cache 2 minutes
+      );
+
+      setMentorsConsolides(mentorsData || []);
+    } catch (error) {
+      console.error('Erreur lors de la récupération des mentors consolidés:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: 'Impossible de charger les données des mentors.',
+      });
+    } finally {
+      setLoadingMentors(false);
     }
   };
 
@@ -1619,6 +1746,103 @@ const PasteurDashboard = () => {
                             <Eye className="h-4 w-4 mr-1" />
                             Voir détails
                           </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Tableau consolidé des mentors (pilier) */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-semibold text-gray-900">Tableau Consolidé des Mentors (Piliers)</CardTitle>
+                <CardDescription>
+                  Vue d'ensemble de tous les mentors (piliers) avec leurs statistiques de progression
+                </CardDescription>
+              </div>
+              {loadingMentors && (
+                <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingMentors ? (
+              <div className="text-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-purple-600 mx-auto mb-4" />
+                <p className="text-gray-500">Chargement des données des mentors...</p>
+              </div>
+            ) : mentorsConsolides.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">Aucun mentor trouvé dans les familles sous votre responsabilité.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="group bg-purple-200 hover:bg-purple-300 transition-colors">
+                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Nom</TableHead>
+                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Prénom</TableHead>
+                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Église</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Nombre de Disciples</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Avancement (%)</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Disciples Présents</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Taux Participation Semaine (%)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {mentorsConsolides.map((mentor) => (
+                      <TableRow key={mentor.mentor_id} className="hover:bg-gray-50 transition-colors">
+                        <TableCell>
+                          <span className="font-semibold text-gray-900">{mentor.nom}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-semibold text-gray-900">{mentor.prenom}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-gray-700">{mentor.eglise}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-semibold text-gray-900">{mentor.nombre_disciples}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-24 bg-gray-200 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full ${
+                                  mentor.avancement_pourcentage >= 100
+                                    ? 'bg-green-500'
+                                    : mentor.avancement_pourcentage >= 50
+                                    ? 'bg-purple-600'
+                                    : 'bg-amber-500'
+                                }`}
+                                style={{ width: `${Math.min(mentor.avancement_pourcentage, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-sm font-medium text-gray-700 w-12 text-left">
+                              {mentor.avancement_pourcentage}%
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-semibold text-gray-900">{mentor.disciples_presents}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className={`font-semibold ${
+                            mentor.taux_participation_semaine >= 70
+                              ? 'text-green-600'
+                              : mentor.taux_participation_semaine >= 50
+                              ? 'text-amber-600'
+                              : 'text-red-600'
+                          }`}>
+                            {mentor.taux_participation_semaine}%
+                          </span>
                         </TableCell>
                       </TableRow>
                     ))}

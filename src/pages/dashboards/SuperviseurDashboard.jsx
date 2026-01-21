@@ -144,6 +144,12 @@ const SuperviseurDashboard = () => {
   const [selectedSuperviseur, setSelectedSuperviseur] = useState(null); // Pour afficher la fiche du superviseur
   const [showAllInactifs, setShowAllInactifs] = useState(false); // Pour afficher tous les disciples inactifs
   const [showAllSansProgression, setShowAllSansProgression] = useState(false); // Pour afficher tous les membres sans progression
+  
+  // États pour les tableaux détaillés
+  const [disciplesDetaille, setDisciplesDetaille] = useState([]); // Tableau détaillé des disciples (10 colonnes)
+  const [loadingDisciplesDetaille, setLoadingDisciplesDetaille] = useState(false);
+  const [mentorsConsolides, setMentorsConsolides] = useState([]); // Tableau consolidé des mentors
+  const [loadingMentorsConsolides, setLoadingMentorsConsolides] = useState(false);
   // États pour le lazy loading des graphiques
   const [chartsLoaded, setChartsLoaded] = useState({
     formationVideo: false,
@@ -158,16 +164,18 @@ const SuperviseurDashboard = () => {
   const activiteRecenteRef = React.useRef(null);
   const statsComparativesRef = React.useRef(null);
 
+  // Chargement initial des données principales (une seule fois)
   useEffect(() => {
     if (user) {
       fetchSuperviseurData();
       checkReportReminder();
     }
-  }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]); // Ne charger qu'une fois au montage, pas à chaque changement de filtre KPI
 
   // Hook pour détecter la visibilité d'un élément (IntersectionObserver) - Lazy loading des graphiques
   useEffect(() => {
-    if (!user || !famille) return; // Ne pas observer si les données principales ne sont pas chargées
+    if (!user) return; // Ne pas observer si les données principales ne sont pas chargées
 
     const observers = [];
 
@@ -282,7 +290,75 @@ const SuperviseurDashboard = () => {
         if (element) observer.unobserve(element);
       });
     };
-  }, [chartsLoaded, user, famille]);
+  }, [chartsLoaded, user]); // ✅ CORRIGÉ : Retirer famille des dépendances pour éviter la boucle infinie
+
+  // Fonction pour mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
+  // ⚠️ IMPORTANT : Ne pas appeler fetchSuperviseurData() ici pour éviter les boucles infinies
+  const updateDisciplesToMentors = async (disciplesCountMap, tousLesMembres) => {
+    try {
+      // Identifier les membres qui ont des disciples (> 0) et qui ont actuellement le rôle "disciple"
+      const membresAUpdater = tousLesMembres.filter(membre => {
+        const nombreDisciples = disciplesCountMap[membre.id] || 0;
+        return nombreDisciples > 0 && membre.role === 'disciple';
+      });
+
+      if (membresAUpdater.length === 0) {
+        console.log('✅ Aucun disciple à mettre à jour en Mentor/Pilier');
+        return;
+      }
+
+      console.log(`🔄 Mise à jour de ${membresAUpdater.length} disciple(s) en Mentor/Pilier:`, 
+        membresAUpdater.map(m => `${m.first_name} ${m.last_name} (${disciplesCountMap[m.id]} disciples)`));
+
+      // Mettre à jour tous les membres en une seule fois avec Promise.all
+      const updatePromises = membresAUpdater.map(async (membre) => {
+        const { error: updateError } = await supabase
+          .from('profils')
+          .update({ 
+            role: 'mentor', 
+            is_approved_as_disciple_maker: true 
+          })
+          .eq('id', membre.id);
+
+        if (updateError) {
+          console.error(`❌ Erreur lors de la mise à jour de ${membre.first_name} ${membre.last_name}:`, updateError);
+          handleError(updateError, { context: 'updateDisciplesToMentors', membreId: membre.id }, 
+            `Impossible de mettre à jour le statut de ${membre.first_name} ${membre.last_name}.`);
+          return { success: false, membreId: membre.id, error: updateError };
+        }
+
+        console.log(`✅ ${membre.first_name} ${membre.last_name} mis à jour en Mentor/Pilier`);
+        return { success: true, membreId: membre.id };
+      });
+
+      const results = await Promise.all(updatePromises);
+      const successCount = results.filter(r => r.success).length;
+      const failureCount = results.filter(r => !r.success).length;
+
+      if (successCount > 0) {
+        // Toast supprimé - mise à jour silencieuse
+        console.log(`✅ ${successCount} disciple(s) automatiquement promus Mentor/Pilier (mise à jour silencieuse)`);
+
+        // ⚠️ IMPORTANT : Ne PAS appeler fetchSuperviseurData() ici pour éviter la boucle infinie
+        // Les données seront mises à jour au prochain chargement naturel de la page
+        // Invalider seulement le cache pour que les prochaines requêtes soient fraîches
+        clearCache(`superviseur_${user.id}_membres`);
+        clearCache(`superviseur_${user.id}_famille`);
+      }
+
+      if (failureCount > 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Erreurs lors de la mise à jour',
+          description: `${failureCount} mise(s) à jour ont échoué.`,
+        });
+      }
+    } catch (error) {
+      console.error('❌ Erreur générale lors de la mise à jour des disciples en mentors:', error);
+      handleError(error, { context: 'updateDisciplesToMentors' }, 
+        "Impossible de mettre à jour automatiquement les statuts des disciples.");
+    }
+  };
 
   // Fonction pour vérifier le rappel de rapport (5 jours avant la fin du mois)
   const checkReportReminder = () => {
@@ -307,6 +383,477 @@ const SuperviseurDashboard = () => {
       setReportReminder(null);
     }
   };
+
+  // Fonction pour récupérer les données détaillées des disciples (10 colonnes)
+  const fetchDisciplesDetaille = async () => {
+    // Ne pas exécuter si la famille n'est pas encore chargée
+    if (!famille || !famille.id || !user) {
+      console.log('⏳ En attente du chargement de la famille...');
+      return;
+    }
+
+    try {
+      setLoadingDisciplesDetaille(true);
+      const cacheKeyBase = `superviseur_${user.id}_disciples_detaille`;
+      
+      const disciplesData = await getOrSetCache(
+        cacheKeyBase,
+        async () => {
+          // Double vérification
+          if (!famille || !famille.id) {
+            console.warn('⚠️ Pas de famille trouvée pour le superviseur');
+            return [];
+          }
+
+          // Récupérer tous les disciples de la famille depuis les deux sources
+          // 1. Depuis profils avec famille_id et role='disciple'
+          // 2. Depuis cercle_personnes liés au superviseur (disciples suivis)
+          const [profilsResult, cercleResult] = await Promise.all([
+            supabase
+              .from('profils')
+              .select('id, first_name, last_name, spiritual_status, created_at, famille_id')
+              .eq('famille_id', famille.id)
+              .eq('role', 'disciple'),
+            supabase
+              .from('cercle_personnes')
+              .select('id, first_name, last_name, created_at, user_id, circle_type')
+              .eq('user_id', user.id)
+          ]);
+
+          const { data: disciplesProfils, error: profilsError } = profilsResult;
+          const { data: disciplesCercle, error: cercleError } = cercleResult;
+
+          // Logger les erreurs mais continuer si une source échoue
+          if (profilsError && profilsError.code !== 'PGRST116') {
+            console.error('❌ Erreur récupération disciples depuis profils:', profilsError);
+          }
+          if (cercleError && cercleError.code !== 'PGRST116') {
+            console.error('❌ Erreur récupération disciples depuis cercle_personnes:', cercleError);
+          }
+
+          // Combiner les deux sources
+          const tousLesDisciples = [];
+          
+          // Ajouter les disciples depuis profils
+          if (disciplesProfils && disciplesProfils.length > 0) {
+            disciplesProfils.forEach(d => {
+              tousLesDisciples.push({
+                id: d.id,
+                first_name: d.first_name || '',
+                last_name: d.last_name || '',
+                spiritual_status: d.spiritual_status || 'Non-croyant',
+                created_at: d.created_at,
+                famille_id: d.famille_id,
+                source: 'profils'
+              });
+            });
+          }
+          
+          // Ajouter les disciples depuis cercle_personnes (éviter les doublons)
+          if (disciplesCercle && disciplesCercle.length > 0) {
+            disciplesCercle.forEach(d => {
+              // Vérifier si ce disciple n'est pas déjà dans la liste
+              const existeDeja = tousLesDisciples.some(existing => existing.id === d.id);
+              if (!existeDeja) {
+                tousLesDisciples.push({
+                  id: d.id,
+                  first_name: d.first_name || '',
+                  last_name: d.last_name || '',
+                  spiritual_status: d.circle_type || 'Non-croyant',
+                  created_at: d.created_at,
+                  famille_id: famille.id,
+                  source: 'cercle_personnes',
+                  mentor_user_id: d.user_id // Stocker le user_id qui est le mentor
+                });
+              }
+            });
+          }
+          
+          if (tousLesDisciples.length === 0) {
+            console.log('ℹ️ Aucun disciple trouvé pour cette famille (ni dans profils ni dans cercle_personnes)');
+            return [];
+          }
+
+          console.log(`✅ ${tousLesDisciples.length} disciple(s) trouvé(s) pour la famille ${famille.id}`);
+          
+          // Utiliser tousLesDisciples au lieu de disciplesProfils
+          const disciplesProfilsFinal = tousLesDisciples;
+
+          // OPTIMISATION: Récupérer toutes les données en batch au lieu de requêtes individuelles
+          const discipleIds = disciplesProfilsFinal.map(d => d.id);
+          const familleIds = [...new Set(disciplesProfilsFinal.map(d => d.famille_id).filter(Boolean))];
+          const mentorUserIds = disciplesProfilsFinal
+            .filter(d => d.source === 'cercle_personnes' && d.mentor_user_id)
+            .map(d => d.mentor_user_id);
+          
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          const troisMoisAgo = new Date();
+          troisMoisAgo.setMonth(troisMoisAgo.getMonth() - 3);
+          const today = new Date();
+          const lastSunday = new Date(today);
+          lastSunday.setDate(today.getDate() - today.getDay());
+          const lastSundayStr = format(lastSunday, 'yyyy-MM-dd');
+
+          // Récupérer toutes les données en batch
+          const [
+            mentorsByFamilleResult,
+            mentorsByUserIdResult,
+            presencesResult,
+            prayersResult,
+            appointmentsResult,
+            attendancesResult,
+            presencesCulteResult
+          ] = await Promise.allSettled([
+            // Mentors par famille (une seule requête pour toutes les familles)
+            familleIds.length > 0 ? supabase
+              .from('profils')
+              .select('id, first_name, last_name, famille_id')
+              .in('famille_id', familleIds)
+              .or('role.eq.mentor,is_approved_as_disciple_maker.eq.true') : Promise.resolve({ data: [] }),
+            // Mentors par user_id (pour cercle_personnes)
+            mentorUserIds.length > 0 ? supabase
+              .from('profils')
+              .select('id, first_name, last_name')
+              .in('id', mentorUserIds) : Promise.resolve({ data: [] }),
+            // Toutes les dernières présences
+            discipleIds.length > 0 ? supabase
+              .from('attendance_tracking')
+              .select('disciple_id, attendance_date')
+              .in('disciple_id', discipleIds)
+              .eq('status', 'present')
+              .order('attendance_date', { ascending: false }) : Promise.resolve({ data: [] }),
+            // Toutes les prières des 30 derniers jours
+            discipleIds.length > 0 ? supabase
+              .from('prayer_requests')
+              .select('user_id')
+              .in('user_id', discipleIds)
+              .gte('created_at', thirtyDaysAgo.toISOString()) : Promise.resolve({ data: [] }),
+            // Tous les rendez-vous des 30 derniers jours
+            discipleIds.length > 0 ? supabase
+              .from('appointments')
+              .select('disciple_id')
+              .in('disciple_id', discipleIds)
+              .gte('scheduled_date', thirtyDaysAgo.toISOString()) : Promise.resolve({ data: [] }),
+            // Toutes les présences des 30 derniers jours
+            discipleIds.length > 0 ? supabase
+              .from('attendance_tracking')
+              .select('disciple_id')
+              .in('disciple_id', discipleIds)
+              .eq('status', 'present')
+              .gte('attendance_date', thirtyDaysAgo.toISOString()) : Promise.resolve({ data: [] }),
+            // Présences au dernier culte
+            discipleIds.length > 0 ? supabase
+              .from('attendance_tracking')
+              .select('disciple_id')
+              .in('disciple_id', discipleIds)
+              .eq('attendance_type', 'sunday_worship')
+              .eq('status', 'present')
+              .eq('attendance_date', lastSundayStr) : Promise.resolve({ data: [] })
+          ]);
+
+          // Créer des maps pour accès rapide
+          const mentorsByFamille = {};
+          if (mentorsByFamilleResult.status === 'fulfilled' && mentorsByFamilleResult.value.data) {
+            mentorsByFamilleResult.value.data.forEach(m => {
+              if (!mentorsByFamille[m.famille_id]) {
+                mentorsByFamille[m.famille_id] = { prenom: m.first_name || '', nom: m.last_name || '', id: m.id };
+              }
+            });
+          }
+
+          const mentorsByUserId = {};
+          if (mentorsByUserIdResult.status === 'fulfilled' && mentorsByUserIdResult.value.data) {
+            mentorsByUserIdResult.value.data.forEach(m => {
+              mentorsByUserId[m.id] = { prenom: m.first_name || '', nom: m.last_name || '', id: m.id };
+            });
+          }
+
+          const presencesByDisciple = {};
+          if (presencesResult.status === 'fulfilled' && presencesResult.value.data) {
+            presencesResult.value.data.forEach(p => {
+              if (!presencesByDisciple[p.disciple_id] || 
+                  new Date(p.attendance_date) > new Date(presencesByDisciple[p.disciple_id])) {
+                presencesByDisciple[p.disciple_id] = p.attendance_date;
+              }
+            });
+          }
+
+          const prayersByDisciple = {};
+          if (prayersResult.status === 'fulfilled' && prayersResult.value.data) {
+            prayersResult.value.data.forEach(p => {
+              prayersByDisciple[p.user_id] = (prayersByDisciple[p.user_id] || 0) + 1;
+            });
+          }
+
+          const appointmentsByDisciple = {};
+          if (appointmentsResult.status === 'fulfilled' && appointmentsResult.value.data) {
+            appointmentsResult.value.data.forEach(a => {
+              appointmentsByDisciple[a.disciple_id] = (appointmentsByDisciple[a.disciple_id] || 0) + 1;
+            });
+          }
+
+          const attendancesByDisciple = {};
+          if (attendancesResult.status === 'fulfilled' && attendancesResult.value.data) {
+            attendancesResult.value.data.forEach(a => {
+              attendancesByDisciple[a.disciple_id] = (attendancesByDisciple[a.disciple_id] || 0) + 1;
+            });
+          }
+
+          const presencesCulteByDisciple = new Set();
+          if (presencesCulteResult.status === 'fulfilled' && presencesCulteResult.value.data) {
+            presencesCulteResult.value.data.forEach(p => {
+              presencesCulteByDisciple.add(p.disciple_id);
+            });
+          }
+
+          // Pour chaque disciple, construire les données détaillées depuis les maps
+          const disciplesAvecDetails = disciplesProfilsFinal.map((disciple) => {
+            try {
+              // 1. Trouver le mentor
+              let mentorInfo = { prenom: '', nom: '', id: null };
+              
+              if (disciple.source === 'cercle_personnes' && disciple.mentor_user_id) {
+                mentorInfo = mentorsByUserId[disciple.mentor_user_id] || mentorInfo;
+              } else if (disciple.famille_id) {
+                mentorInfo = mentorsByFamille[disciple.famille_id] || mentorInfo;
+              }
+
+              // 2. Date d'ajout
+              const dateAjout = disciple.created_at 
+                ? format(new Date(disciple.created_at), 'dd/MM/yyyy', { locale: fr }) 
+                : 'N/A';
+
+              // 3. Date dernière présence
+              const dernierePresenceDate = presencesByDisciple[disciple.id];
+              const dateDernierePresence = dernierePresenceDate
+                ? format(new Date(dernierePresenceDate), 'dd/MM/yyyy', { locale: fr })
+                : 'Jamais';
+
+              // 4. Niveau d'engagement
+              const prayersCount = prayersByDisciple[disciple.id] || 0;
+              const appointmentsCount = appointmentsByDisciple[disciple.id] || 0;
+              const attendanceCount = attendancesByDisciple[disciple.id] || 0;
+              const totalActivites = prayersCount + appointmentsCount + attendanceCount;
+              let niveauEngagement = 'Faible';
+              if (totalActivites >= 10) niveauEngagement = 'Élevé';
+              else if (totalActivites >= 5) niveauEngagement = 'Moyen';
+
+              // 5. Statut Actif/Inactif
+              const isActif = dernierePresenceDate 
+                ? new Date(dernierePresenceDate) >= troisMoisAgo
+                : false;
+
+              // 6. Présence au dernier culte
+              const presenceDernierCulteBool = presencesCulteByDisciple.has(disciple.id);
+
+              return {
+                mentor_prenom: mentorInfo.prenom,
+                mentor_nom: mentorInfo.nom,
+                disciple_prenom: disciple.first_name || '',
+                disciple_nom: disciple.last_name || '',
+                statut_spirituel: disciple.spiritual_status || 'Non-croyant',
+                date_ajout: dateAjout,
+                date_derniere_presence: dateDernierePresence,
+                niveau_engagement: niveauEngagement,
+                statut_actif: isActif,
+                presence_dernier_culte: presenceDernierCulteBool,
+                disciple_id: disciple.id
+              };
+            } catch (discipleError) {
+              console.error(`❌ Erreur traitement disciple ${disciple.id}:`, discipleError);
+              // Retourner un objet minimal pour ce disciple en cas d'erreur
+              return {
+                mentor_prenom: '',
+                mentor_nom: '',
+                disciple_prenom: disciple.first_name || '',
+                disciple_nom: disciple.last_name || '',
+                statut_spirituel: disciple.spiritual_status || 'Non-croyant',
+                date_ajout: disciple.created_at ? format(new Date(disciple.created_at), 'dd/MM/yyyy', { locale: fr }) : 'N/A',
+                date_derniere_presence: 'Erreur',
+                niveau_engagement: 'N/A',
+                statut_actif: false,
+                presence_dernier_culte: false,
+                disciple_id: disciple.id
+              };
+            }
+          });
+
+          console.log(`✅ ${disciplesAvecDetails.length} disciple(s) traité(s) avec succès (optimisation batch)`);
+          return disciplesAvecDetails;
+        },
+        2 * 60 * 1000 // Cache 2 minutes
+      );
+
+      setDisciplesDetaille(disciplesData || []);
+    } catch (error) {
+      console.error('❌ Erreur fetchDisciplesDetaille:', error);
+      console.error('❌ Détails de l\'erreur:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      
+      // Ne pas afficher l'erreur si c'est juste qu'il n'y a pas de famille ou de données
+      const errorMessage = error?.message || '';
+      const errorCode = error?.code || '';
+      const lowerMessage = errorMessage.toLowerCase();
+      
+      const isDataNotFound = 
+        errorCode === 'PGRST116' || 
+        lowerMessage.includes('no rows') ||
+        lowerMessage.includes('not found') ||
+        lowerMessage.includes('aucun') ||
+        lowerMessage.includes('pas de') ||
+        (!famille || !famille.id);
+      
+      // Ne pas afficher l'erreur si c'est juste l'absence de données
+      if (!isDataNotFound && errorMessage && !lowerMessage.includes('empty') && !lowerMessage.includes('vide')) {
+        // Afficher l'erreur seulement si c'est une vraie erreur technique
+        console.error('❌ Erreur technique détectée, affichage du message d\'erreur');
+        handleError(error, { context: 'fetchDisciplesDetaille', famille: famille?.id }, "Impossible de charger les données détaillées des disciples.");
+      } else {
+        console.log('ℹ️ Pas de données à charger (normal si pas de famille ou pas de disciples)');
+        // Ne pas afficher d'erreur, juste logger
+      }
+      
+      setDisciplesDetaille([]); // S'assurer que l'état est défini même en cas d'erreur
+    } finally {
+      setLoadingDisciplesDetaille(false);
+    }
+  };
+
+  // Fonction pour récupérer les mentors consolidés
+  const fetchMentorsConsolides = async () => {
+    try {
+      setLoadingMentorsConsolides(true);
+      const cacheKeyBase = `superviseur_${user.id}_mentors_consolides`;
+      
+      const mentorsData = await getOrSetCache(
+        cacheKeyBase,
+        async () => {
+          if (!famille || !famille.id) return [];
+
+          // Récupérer tous les mentors (pilier) de la famille
+          const { data: mentorsProfils, error: mentorsError } = await supabase
+            .from('profils')
+            .select('id, first_name, last_name, famille_id')
+            .eq('famille_id', famille.id)
+            .or('role.eq.mentor,is_approved_as_disciple_maker.eq.true');
+
+          if (mentorsError) throw mentorsError;
+          if (!mentorsProfils || mentorsProfils.length === 0) return [];
+
+          // Pour chaque mentor, calculer les stats
+          const mentorsAvecStats = await Promise.all(
+            mentorsProfils.map(async (mentor) => {
+              // 1. Nom et Prénom
+              const nom = mentor.last_name || '';
+              const prenom = mentor.first_name || '';
+
+              // 2. Église (nom de la famille)
+              const nomEglise = famille.nom || 'N/A';
+
+              // 3. Nombre de disciples (depuis cercle_personnes)
+              const { count: nombreDisciples } = await supabase
+                .from('cercle_personnes')
+                .select('*', { count: 'exact', head: true })
+                .eq('user_id', mentor.id);
+
+              const nombreDisciplesTotal = nombreDisciples || 0;
+
+              // 4. Avancement % (nombreDisciples / 70 * 100)
+              const objectif = 70;
+              const avancementPourcentage = Math.min((nombreDisciplesTotal / objectif) * 100, 100);
+
+              // 5. Nombre de disciples présents à l'église
+              const { data: disciplesData } = await supabase
+                .from('cercle_personnes')
+                .select('id')
+                .eq('user_id', mentor.id);
+
+              const discipleIds = disciplesData?.map(d => d.id) || [];
+              let disciplesPresents = 0;
+              if (discipleIds.length > 0) {
+                const { count: countPresents } = await supabase
+                  .from('attendance_tracking')
+                  .select('*', { count: 'exact', head: true })
+                  .in('disciple_id', discipleIds)
+                  .eq('attendance_type', 'sunday_worship')
+                  .eq('status', 'present');
+                disciplesPresents = countPresents || 0;
+              }
+
+              // 6. Taux de participation de la semaine en cours
+              const now = new Date();
+              const startOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 });
+              const endOfCurrentWeek = endOfWeek(now, { weekStartsOn: 1 });
+              const startOfWeekStr = format(startOfCurrentWeek, 'yyyy-MM-dd');
+              const endOfWeekStr = format(endOfCurrentWeek, 'yyyy-MM-dd');
+
+              let tauxParticipationSemaine = 0;
+              if (discipleIds.length > 0 && nombreDisciplesTotal > 0) {
+                const { count: presentsSemaine } = await supabase
+                  .from('attendance_tracking')
+                  .select('*', { count: 'exact', head: true })
+                  .in('disciple_id', discipleIds)
+                  .eq('attendance_type', 'sunday_worship')
+                  .eq('status', 'present')
+                  .gte('attendance_date', startOfWeekStr)
+                  .lte('attendance_date', endOfWeekStr);
+                
+                const presentsSemaineCount = presentsSemaine || 0;
+                tauxParticipationSemaine = Math.round((presentsSemaineCount / nombreDisciplesTotal) * 100);
+              }
+
+              return {
+                mentor_id: mentor.id,
+                nom,
+                prenom,
+                eglise: nomEglise,
+                nombre_disciples: nombreDisciplesTotal,
+                avancement_pourcentage: Math.round(avancementPourcentage),
+                disciples_presents: disciplesPresents,
+                taux_participation_semaine: tauxParticipationSemaine
+              };
+            })
+          );
+
+          return mentorsAvecStats;
+        },
+        2 * 60 * 1000 // Cache 2 minutes
+      );
+
+      setMentorsConsolides(mentorsData || []);
+    } catch (error) {
+      handleError(error, { context: 'fetchMentorsConsolides' }, "Impossible de charger les données consolidées des mentors.");
+    } finally {
+      setLoadingMentorsConsolides(false);
+    }
+  };
+
+  // Charger les données détaillées en lazy loading (après le chargement initial)
+  useEffect(() => {
+    // Attendre que la famille soit chargée ET que le chargement initial soit terminé
+    if (famille && famille.id && user && !loading) {
+      // Délai pour permettre au chargement initial de se terminer
+      const timer = setTimeout(() => {
+        console.log('✅ Famille chargée, chargement des données détaillées en arrière-plan...', { familleId: famille.id });
+        // Charger en arrière-plan sans bloquer l'interface
+        fetchDisciplesDetaille();
+        fetchMentorsConsolides();
+      }, 500); // Petit délai pour laisser l'interface se rendre d'abord
+      
+      return () => clearTimeout(timer);
+    } else if (user && !loading && (!famille || !famille.id)) {
+      console.warn('⚠️ Pas de famille trouvée pour ce superviseur');
+      // Ne pas afficher d'erreur, juste initialiser avec un tableau vide
+      setDisciplesDetaille([]);
+      setMentorsConsolides([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [famille, user, loading]);
 
   const fetchSuperviseurData = async () => {
     try {
@@ -709,6 +1256,12 @@ const SuperviseurDashboard = () => {
 
         console.log('📊 Nombre de disciples par membre (final):', disciplesCountMap);
         setMembresDisciplesCount(disciplesCountMap);
+        
+        // Mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
+        // ⚠️ Cette fonction ne doit PAS appeler fetchSuperviseurData() pour éviter les boucles infinies
+        updateDisciplesToMentors(disciplesCountMap, tousLesMembres).catch(error => {
+          console.error('Erreur lors de la mise à jour automatique des statuts:', error);
+        });
       }
 
       // 4b. OPTIMISATION: Récupérer les informations "Suivi par" en requêtes groupées
@@ -891,24 +1444,27 @@ const SuperviseurDashboard = () => {
           meditationBible
         }));
 
-        // Générer les données pour les graphiques d'évolution (tous les rapports soumis)
-        await generateChartData(rapportsData || []);
+        // OPTIMISATION: Générer les graphiques en arrière-plan après le chargement initial
+        // Ne pas bloquer l'affichage de l'interface
+        generateChartData(rapportsData || []).catch(err => {
+          console.error('❌ Erreur génération graphiques:', err);
+        });
         
         // Stocker les rapports pour l'historique
         setRapports(rapportsData || []);
       }
       
-      // 6. OPTIMISATION: Charger les données supplémentaires de manière paresseuse
-      // Ces données seront chargées uniquement quand les sections correspondantes sont visibles
-      console.log('📊 Données principales chargées. Les graphiques seront chargés de manière paresseuse.');
+      // OPTIMISATION: Arrêter le loading ici pour afficher l'interface rapidement
+      // Les données détaillées seront chargées en arrière-plan via le useEffect séparé
+      console.log('✅ Données principales chargées, interface affichée');
       
-      // Seules les alertes sont chargées immédiatement car elles sont importantes
-      try {
-        await fetchAlertes();
-        console.log('✅ Alertes récupérées');
-      } catch (error) {
-        console.error('❌ Erreur récupération alertes:', error);
-      }
+      // 6. OPTIMISATION: Charger les données supplémentaires en arrière-plan (non bloquant)
+      // Ces données seront chargées après l'affichage de l'interface
+      Promise.all([
+        fetchAlertes().catch(err => console.error('❌ Erreur récupération alertes:', err))
+      ]).then(() => {
+        console.log('✅ Données supplémentaires chargées en arrière-plan');
+      });
 
       // 6. OPTIMISATION: Récupérer les autres superviseurs de la famille (même pasteur_id) avec calculs groupés
       if (superviseurData?.pasteur_id) {
@@ -3660,6 +4216,208 @@ const SuperviseurDashboard = () => {
                 )}
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Tableau détaillé des disciples (10 colonnes) */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-semibold text-gray-900">Tableau Détaillé des Disciples</CardTitle>
+                <CardDescription>
+                  Vue détaillée de tous les disciples avec leurs informations de suivi
+                </CardDescription>
+              </div>
+              {loadingDisciplesDetaille && (
+                <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingDisciplesDetaille ? (
+              <div className="text-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-purple-600 mx-auto mb-4" />
+                <p className="text-gray-500">Chargement des données détaillées...</p>
+              </div>
+            ) : disciplesDetaille.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">Aucun disciple trouvé dans votre famille.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-purple-200 hover:bg-purple-300">
+                      <TableHead className="font-semibold text-gray-900">Prénom Pilier</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Nom Pilier</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Prénom Disciple</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Nom Disciple</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Statut</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Date d'ajout</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Date Dernière Présence</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Niveau d'Engagement</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Statut (Actif/Inactif)</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Présence Dernier Culte</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {disciplesDetaille.map((disciple) => (
+                      <TableRow key={disciple.disciple_id} className="hover:bg-gray-50 hover:text-black">
+                        <TableCell className="font-semibold text-gray-900">{disciple.mentor_prenom || '-'}</TableCell>
+                        <TableCell className="font-semibold text-gray-900">{disciple.mentor_nom || '-'}</TableCell>
+                        <TableCell 
+                          className="font-semibold text-gray-900 cursor-pointer hover:text-purple-600"
+                          onClick={() => navigate(`/disciples/${disciple.disciple_id}`)}
+                        >
+                          {disciple.disciple_prenom}
+                        </TableCell>
+                        <TableCell 
+                          className="font-semibold text-gray-900 cursor-pointer hover:text-purple-600"
+                          onClick={() => navigate(`/disciples/${disciple.disciple_id}`)}
+                        >
+                          {disciple.disciple_nom}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="border-purple-200 text-purple-700">
+                            {disciple.statut_spirituel}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-gray-700">{disciple.date_ajout}</TableCell>
+                        <TableCell className="text-gray-700">{disciple.date_derniere_presence}</TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant="outline" 
+                            className={
+                              disciple.niveau_engagement === 'Élevé' 
+                                ? 'border-green-200 text-green-700 bg-green-50'
+                                : disciple.niveau_engagement === 'Moyen'
+                                ? 'border-amber-200 text-amber-700 bg-amber-50'
+                                : 'border-red-200 text-red-700 bg-red-50'
+                            }
+                          >
+                            {disciple.niveau_engagement}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={disciple.statut_actif ? 'default' : 'secondary'}
+                            className={disciple.statut_actif ? 'bg-green-500 text-white' : 'bg-gray-400 text-white'}
+                          >
+                            {disciple.statut_actif ? 'Actif' : 'Inactif'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {disciple.presence_dernier_culte ? (
+                            <Badge className="bg-green-500 text-white">
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Oui
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="border-red-200 text-red-700">
+                              <X className="h-3 w-3 mr-1" />
+                              Non
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Tableau consolidé des mentors (piliers) */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-semibold text-gray-900">Tableau Consolidé des Mentors (Piliers)</CardTitle>
+                <CardDescription>
+                  Vue d'ensemble de tous les mentors (piliers) avec leurs statistiques de progression
+                </CardDescription>
+              </div>
+              {loadingMentorsConsolides && (
+                <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingMentorsConsolides ? (
+              <div className="text-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-purple-600 mx-auto mb-4" />
+                <p className="text-gray-500">Chargement des données des mentors...</p>
+              </div>
+            ) : mentorsConsolides.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">Aucun mentor trouvé dans votre famille.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-purple-200 hover:bg-purple-300">
+                      <TableHead className="font-semibold text-gray-900">Nom</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Prénom</TableHead>
+                      <TableHead className="font-semibold text-gray-900">Église</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900">Nombre de Disciples</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900">Avancement (%)</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900">Disciples Présents</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900">Taux Participation Semaine (%)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {mentorsConsolides.map((mentor) => (
+                      <TableRow key={mentor.mentor_id} className="hover:bg-gray-50 hover:text-black">
+                        <TableCell className="font-semibold text-gray-900">{mentor.nom}</TableCell>
+                        <TableCell className="font-semibold text-gray-900">{mentor.prenom}</TableCell>
+                        <TableCell className="text-gray-700">{mentor.eglise}</TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-semibold text-gray-900">{mentor.nombre_disciples}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-24 bg-gray-200 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full ${
+                                  mentor.avancement_pourcentage >= 100
+                                    ? 'bg-green-500'
+                                    : mentor.avancement_pourcentage >= 50
+                                    ? 'bg-purple-600'
+                                    : 'bg-amber-500'
+                                }`}
+                                style={{ width: `${Math.min(mentor.avancement_pourcentage, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-sm font-medium text-gray-700 w-12 text-left">
+                              {mentor.avancement_pourcentage}%
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-semibold text-gray-900">{mentor.disciples_presents}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className={`font-semibold ${
+                            mentor.taux_participation_semaine >= 70
+                              ? 'text-green-600'
+                              : mentor.taux_participation_semaine >= 50
+                              ? 'text-amber-600'
+                              : 'text-red-600'
+                          }`}>
+                            {mentor.taux_participation_semaine}%
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
 

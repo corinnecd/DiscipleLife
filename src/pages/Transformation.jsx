@@ -203,7 +203,7 @@ const Transformation = () => {
       // Gérer l'onglet depuis l'URL
       const params = new URLSearchParams(location.search);
       const tabParam = params.get('tab');
-      if (tabParam && ['bibliotheque', 'mes-formations', 'progression', 'journal', 'evaluations', 'statistiques'].includes(tabParam)) {
+      if (tabParam && ['bibliotheque', 'mes-formations', 'progression', 'journal', 'evaluations', 'statistiques', 'ressources-guerison', 'suivi-post-crise'].includes(tabParam)) {
         setActiveTab(tabParam);
       }
     }
@@ -240,7 +240,9 @@ const Transformation = () => {
         fetchJournalEntries(),
         fetchEvaluations(),
         fetchStatsData(),
-        fetchDisciples()
+        fetchDisciples(),
+        fetchRessourcesGuerison(),
+        fetchSuivisPostCrise()
       ]);
     } catch (error) {
       handleError(error, { context: 'fetchData' }, "Impossible de charger les données.");
@@ -2399,6 +2401,186 @@ const Transformation = () => {
     }
   };
 
+  // ========== FONCTIONS POUR LES RESSOURCES DE GUÉRISON ET RESTAURATION ==========
+  const fetchRessourcesGuerison = async () => {
+    try {
+      setRessourcesGuerisonLoading(true);
+      // Récupérer les ressources de la table resources avec filtre par catégorie de guérison/restauration
+      // On peut aussi utiliser les parcours de restauration
+      const { data: resourcesData, error: resourcesError } = await supabase
+        .from('resources')
+        .select('*')
+        .or('category.ilike.%guerison%,category.ilike.%restauration%,category.ilike.%guérison%,category.ilike.%restoration%,type.ilike.%guerison%,type.ilike.%restauration%')
+        .order('created_at', { ascending: false });
+
+      // Récupérer aussi les parcours de restauration
+      const { data: parcoursRestauration, error: parcoursError } = await supabase
+        .from('parcours_transformation')
+        .select('*')
+        .or('categorie.eq.restauration_ame,thematique.ilike.%guerison%,thematique.ilike.%restauration%,thematique.ilike.%guérison%,nom.ilike.%guerison%,nom.ilike.%restauration%,nom.ilike.%guérison%')
+        .eq('statut', 'actif')
+        .order('ordre_affichage', { ascending: true });
+
+      if (resourcesError && resourcesError.code !== 'PGRST116') {
+        console.error('Erreur récupération ressources:', resourcesError);
+      }
+      if (parcoursError) {
+        console.error('Erreur récupération parcours restauration:', parcoursError);
+      }
+
+      // Combiner les ressources et les parcours
+      const allRessources = [
+        ...(resourcesData || []).map(r => ({
+          ...r,
+          type_resource: 'resource',
+          id_resource: r.id
+        })),
+        ...(parcoursRestauration || []).map(p => ({
+          ...p,
+          type_resource: 'parcours',
+          id_resource: p.id,
+          title: p.nom,
+          description: p.description,
+          category: p.categorie || 'restauration_ame'
+        }))
+      ];
+
+      setRessourcesGuerison(allRessources);
+    } catch (error) {
+      console.error('Error fetching ressources guérison:', error);
+      setRessourcesGuerison([]);
+    } finally {
+      setRessourcesGuerisonLoading(false);
+    }
+  };
+
+  // ========== FONCTIONS POUR LE SUIVI POST-CRISE ==========
+  const fetchSuivisPostCrise = async () => {
+    try {
+      setSuivisPostCriseLoading(true);
+      const { data, error } = await supabase
+        .from('suivi_post_crise')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date_debut', { ascending: false });
+
+      if (error) throw error;
+      setSuivisPostCrise(data || []);
+    } catch (error) {
+      console.error('Error fetching suivis post-crise:', error);
+      setSuivisPostCrise([]);
+    } finally {
+      setSuivisPostCriseLoading(false);
+    }
+  };
+
+  const fetchHistoriqueSuivi = async (suiviId) => {
+    try {
+      const { data, error } = await supabase
+        .from('historique_guerison')
+        .select('*')
+        .eq('suivi_id', suiviId)
+        .order('date_suivi', { ascending: false });
+
+      if (error) throw error;
+      setHistoriqueSuivi(data || []);
+    } catch (error) {
+      console.error('Error fetching historique:', error);
+      setHistoriqueSuivi([]);
+    }
+  };
+
+  const handleSaveSuivi = async () => {
+    try {
+      const suiviData = {
+        ...suiviFormData,
+        user_id: user.id,
+        date_prochaine_action: suiviFormData.date_prochaine_action || null,
+        objectifs: Array.isArray(suiviFormData.objectifs) ? suiviFormData.objectifs : [],
+        besoins_specifiques: Array.isArray(suiviFormData.besoins_specifiques) ? suiviFormData.besoins_specifiques : [],
+        ressources_utilisees: Array.isArray(suiviFormData.ressources_utilisees) ? suiviFormData.ressources_utilisees : []
+      };
+
+      if (editingSuiviId) {
+        const { error } = await supabase
+          .from('suivi_post_crise')
+          .update(suiviData)
+          .eq('id', editingSuiviId);
+
+        if (error) throw error;
+        toast({ title: 'Succès', description: 'Suivi mis à jour' });
+      } else {
+        const { error } = await supabase
+          .from('suivi_post_crise')
+          .insert([suiviData]);
+
+        if (error) throw error;
+        toast({ title: 'Succès', description: 'Suivi créé' });
+      }
+
+      setIsSuiviDialogOpen(false);
+      setEditingSuiviId(null);
+      setSuiviFormData({
+        date_debut: new Date().toISOString().split('T')[0],
+        type_crise: 'autre',
+        description: '',
+        gravite: 5,
+        objectifs: [],
+        etat_actuel: '',
+        besoins_specifiques: [],
+        ressources_utilisees: [],
+        prochaine_action: '',
+        date_prochaine_action: '',
+        rappel_actif: true,
+        frequence_rappels: 'hebdomadaire',
+        statut: 'actif',
+        notes: ''
+      });
+      await fetchSuivisPostCrise();
+    } catch (error) {
+      handleError(error, { context: 'handleSaveSuivi' }, "Impossible d'enregistrer le suivi.");
+    }
+  };
+
+  const handleSaveHistorique = async () => {
+    if (!selectedSuivi) return;
+
+    try {
+      const historiqueData = {
+        ...historiqueFormData,
+        suivi_id: selectedSuivi.id,
+        versets_bibliques: Array.isArray(historiqueFormData.versets_bibliques) ? historiqueFormData.versets_bibliques : [],
+        prieres_exaucees: Array.isArray(historiqueFormData.prieres_exaucees) ? historiqueFormData.prieres_exaucees : [],
+        actions_prises: Array.isArray(historiqueFormData.actions_prises) ? historiqueFormData.actions_prises : []
+      };
+
+      const { error } = await supabase
+        .from('historique_guerison')
+        .insert([historiqueData]);
+
+      if (error) throw error;
+
+      toast({ title: 'Succès', description: 'Entrée d\'historique ajoutée' });
+      setIsHistoriqueDialogOpen(false);
+      setHistoriqueFormData({
+        date_suivi: new Date().toISOString().split('T')[0],
+        etat_mental: 5,
+        etat_spirituel: 5,
+        etat_physique: 5,
+        progres_observes: '',
+        defis_rencontres: '',
+        victoires: '',
+        versets_bibliques: [],
+        prieres_exaucees: [],
+        actions_prises: [],
+        notes: ''
+      });
+      await fetchHistoriqueSuivi(selectedSuivi.id);
+    } catch (error) {
+      handleError(error, { context: 'handleSaveHistorique' }, "Impossible d'enregistrer l'historique.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -2456,7 +2638,7 @@ const Transformation = () => {
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="nav-tabs-list grid w-full grid-cols-6 bg-white mb-6">
+            <TabsList className="nav-tabs-list grid w-full grid-cols-4 md:grid-cols-6 lg:grid-cols-8 bg-white mb-6 gap-1">
               <TabsTrigger 
                 value="bibliotheque" 
                 className="nav-tab hover:bg-purple-600 hover:text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white focus:outline-none focus:ring-0 transition-colors"
@@ -2498,6 +2680,22 @@ const Transformation = () => {
               >
                 <TrendingUp className="w-4 h-4 mr-2" />
                 Statistiques
+              </TabsTrigger>
+              <TabsTrigger 
+                value="ressources-guerison" 
+                className="nav-tab hover:bg-purple-600 hover:text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white focus:outline-none focus:ring-0 transition-colors"
+              >
+                <Heart className="w-4 h-4 mr-2" />
+                Guérison
+              </TabsTrigger>
+              <TabsTrigger 
+                value="suivi-post-crise" 
+                className="nav-tab hover:bg-purple-600 hover:text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white focus:outline-none focus:ring-0 transition-colors"
+                title="Suivi Post-Crise"
+              >
+                <Target className="w-4 h-4 mr-1 md:mr-2" />
+                <span className="hidden sm:inline">Suivi Post-Crise</span>
+                <span className="sm:hidden">Post-Crise</span>
               </TabsTrigger>
             </TabsList>
             <style jsx>{`
@@ -2951,9 +3149,9 @@ const Transformation = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200] max-h-60 overflow-y-auto">
-                        <SelectItem value="toutes" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Toutes les thématiques</SelectItem>
+                        <SelectItem value="toutes" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Toutes les thématiques</SelectItem>
                         {getUniqueThematiques().map(thematique => (
-                          <SelectItem key={thematique} value={thematique} className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">
+                          <SelectItem key={thematique} value={thematique} className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">
                             {thematique}
                           </SelectItem>
                         ))}
@@ -3108,17 +3306,17 @@ const Transformation = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
-                        <SelectItem value="tous" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Tous les domaines</SelectItem>
-                        <SelectItem value="relation_dieu" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Relation avec Dieu</SelectItem>
-                        <SelectItem value="priere" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Prière</SelectItem>
-                        <SelectItem value="parole" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Parole de Dieu</SelectItem>
-                        <SelectItem value="service" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Service</SelectItem>
-                        <SelectItem value="communaute" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Communauté</SelectItem>
-                        <SelectItem value="temperament" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Tempérament</SelectItem>
-                        <SelectItem value="finances" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Finances</SelectItem>
-                        <SelectItem value="sante" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Santé</SelectItem>
-                        <SelectItem value="relations" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Relations</SelectItem>
-                        <SelectItem value="autre" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Autre</SelectItem>
+                        <SelectItem value="tous" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Tous les domaines</SelectItem>
+                        <SelectItem value="relation_dieu" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Relation avec Dieu</SelectItem>
+                        <SelectItem value="priere" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Prière</SelectItem>
+                        <SelectItem value="parole" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Parole de Dieu</SelectItem>
+                        <SelectItem value="service" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Service</SelectItem>
+                        <SelectItem value="communaute" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Communauté</SelectItem>
+                        <SelectItem value="temperament" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Tempérament</SelectItem>
+                        <SelectItem value="finances" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Finances</SelectItem>
+                        <SelectItem value="sante" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Santé</SelectItem>
+                        <SelectItem value="relations" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Relations</SelectItem>
+                        <SelectItem value="autre" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Autre</SelectItem>
                       </SelectContent>
                     </Select>
 
@@ -3128,12 +3326,12 @@ const Transformation = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
-                        <SelectItem value="tous" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Tous les types</SelectItem>
-                        <SelectItem value="initiale" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Initiale</SelectItem>
-                        <SelectItem value="mensuelle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Mensuelle</SelectItem>
-                        <SelectItem value="trimestrielle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Trimestrielle</SelectItem>
-                        <SelectItem value="annuelle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Annuelle</SelectItem>
-                        <SelectItem value="personnalisee" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Personnalisée</SelectItem>
+                        <SelectItem value="tous" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Tous les types</SelectItem>
+                        <SelectItem value="initiale" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Initiale</SelectItem>
+                        <SelectItem value="mensuelle" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Mensuelle</SelectItem>
+                        <SelectItem value="trimestrielle" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Trimestrielle</SelectItem>
+                        <SelectItem value="annuelle" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Annuelle</SelectItem>
+                        <SelectItem value="personnalisee" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Personnalisée</SelectItem>
                       </SelectContent>
                     </Select>
 
@@ -3593,6 +3791,227 @@ const Transformation = () => {
                 </>
               )}
             </TabsContent>
+
+            {/* Tab Content: Ressources de Guérison et Restauration */}
+            <TabsContent value="ressources-guerison" className="space-y-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Ressources de Guérison et Restauration</h2>
+                  <p className="text-gray-600 mt-1">Catalogue de ressources spécialisées pour votre transformation</p>
+                </div>
+              </div>
+
+              {/* Filtres et recherche */}
+              <Card className="bg-white border-gray-200">
+                <CardContent className="p-4">
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex-1">
+                      <Input
+                        placeholder="Rechercher une ressource..."
+                        value={ressourcesSearchQuery}
+                        onChange={(e) => setRessourcesSearchQuery(e.target.value)}
+                        className="bg-white border-gray-300 text-gray-900"
+                      />
+                    </div>
+                    <Select value={ressourcesFilterType} onValueChange={setRessourcesFilterType}>
+                      <SelectTrigger className="w-full md:w-[200px] bg-white border-gray-300 text-gray-900">
+                        <SelectValue placeholder="Type de ressource" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
+                        <SelectItem value="tous" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Tous les types</SelectItem>
+                        <SelectItem value="resource" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Ressources</SelectItem>
+                        <SelectItem value="parcours" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Parcours</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Liste des ressources */}
+              {ressourcesGuerisonLoading ? (
+                <div className="flex justify-center py-20">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {ressourcesGuerison
+                    .filter(r => {
+                      if (ressourcesFilterType !== 'tous' && r.type_resource !== ressourcesFilterType) return false;
+                      if (ressourcesSearchQuery && !r.title?.toLowerCase().includes(ressourcesSearchQuery.toLowerCase()) && !r.description?.toLowerCase().includes(ressourcesSearchQuery.toLowerCase())) return false;
+                      return true;
+                    })
+                    .map((ressource) => (
+                      <Card 
+                        key={ressource.id_resource} 
+                        className="bg-white border-gray-200 cursor-pointer hover:shadow-lg transition-shadow"
+                        onClick={() => {
+                          setSelectedRessource(ressource);
+                          setIsRessourceDialogOpen(true);
+                        }}
+                      >
+                        <CardHeader>
+                          <div className="flex items-start justify-between">
+                            <CardTitle className="text-gray-900 text-lg">{ressource.title || ressource.nom}</CardTitle>
+                            <Badge className={ressource.type_resource === 'parcours' ? 'bg-purple-500' : 'bg-blue-500'}>
+                              {ressource.type_resource === 'parcours' ? 'Parcours' : 'Ressource'}
+                            </Badge>
+                          </div>
+                          <CardDescription className="text-gray-600 mt-2">
+                            {ressource.description?.substring(0, 100)}...
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <Button className="w-full bg-purple-600 text-white hover:bg-purple-700">
+                            Voir les détails
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  {ressourcesGuerison.filter(r => {
+                    if (ressourcesFilterType !== 'tous' && r.type_resource !== ressourcesFilterType) return false;
+                    if (ressourcesSearchQuery && !r.title?.toLowerCase().includes(ressourcesSearchQuery.toLowerCase()) && !r.description?.toLowerCase().includes(ressourcesSearchQuery.toLowerCase())) return false;
+                    return true;
+                  }).length === 0 && (
+                    <div className="col-span-full text-center py-12">
+                      <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-600">Aucune ressource de guérison trouvée</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Tab Content: Suivi Post-Crise */}
+            <TabsContent value="suivi-post-crise" className="space-y-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Suivi Post-Crise</h2>
+                  <p className="text-gray-600 mt-1">Système de suivi personnalisé avec alertes et historique de guérison</p>
+                </div>
+                <Button 
+                  onClick={() => {
+                    setEditingSuiviId(null);
+                    setSuiviFormData({
+                      date_debut: new Date().toISOString().split('T')[0],
+                      type_crise: 'autre',
+                      description: '',
+                      gravite: 5,
+                      objectifs: [],
+                      etat_actuel: '',
+                      besoins_specifiques: [],
+                      ressources_utilisees: [],
+                      prochaine_action: '',
+                      date_prochaine_action: '',
+                      rappel_actif: true,
+                      frequence_rappels: 'hebdomadaire',
+                      statut: 'actif',
+                      notes: ''
+                    });
+                    setIsSuiviDialogOpen(true);
+                  }}
+                  className="bg-purple-600 text-white hover:bg-purple-700"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Nouveau Suivi
+                </Button>
+              </div>
+
+              {/* Liste des suivis */}
+              {suivisPostCriseLoading ? (
+                <div className="flex justify-center py-20">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {suivisPostCrise.map((suivi) => (
+                    <Card key={suivi.id} className="bg-white border-gray-200">
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-gray-900">
+                              {suivi.type_crise.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </CardTitle>
+                            <CardDescription className="text-gray-600 mt-1">
+                              Débuté le {format(new Date(suivi.date_debut), 'dd MMMM yyyy', { locale: fr })}
+                            </CardDescription>
+                          </div>
+                          <Badge className={
+                            suivi.statut === 'resolu' ? 'bg-green-500' :
+                            suivi.statut === 'en_amelioration' ? 'bg-blue-500' :
+                            suivi.statut === 'stabilise' ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }>
+                            {suivi.statut.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-sm font-medium text-gray-700">Gravité</p>
+                            <Progress value={suivi.gravite * 10} className="h-2 mt-1 [&>div]:bg-red-500" />
+                            <p className="text-xs text-gray-500 mt-1">{suivi.gravite}/10</p>
+                          </div>
+                          {suivi.description && (
+                            <div>
+                              <p className="text-sm font-medium text-gray-700">Description</p>
+                              <p className="text-sm text-gray-600">{suivi.description}</p>
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedSuivi(suivi);
+                                fetchHistoriqueSuivi(suivi.id);
+                                setIsHistoriqueDialogOpen(true);
+                              }}
+                            >
+                              <FileText className="w-4 h-4 mr-2" />
+                              Historique
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingSuiviId(suivi.id);
+                                setSuiviFormData({
+                                  ...suivi,
+                                  date_debut: suivi.date_debut,
+                                  date_prochaine_action: suivi.date_prochaine_action || '',
+                                  objectifs: Array.isArray(suivi.objectifs) ? suivi.objectifs : [],
+                                  besoins_specifiques: Array.isArray(suivi.besoins_specifiques) ? suivi.besoins_specifiques : [],
+                                  ressources_utilisees: Array.isArray(suivi.ressources_utilisees) ? suivi.ressources_utilisees : []
+                                });
+                                setIsSuiviDialogOpen(true);
+                              }}
+                            >
+                              <Edit2 className="w-4 h-4 mr-2" />
+                              Modifier
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {suivisPostCrise.length === 0 && (
+                    <div className="text-center py-12">
+                      <Target className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-600 mb-4">Aucun suivi post-crise enregistré</p>
+                      <Button 
+                        onClick={() => setIsSuiviDialogOpen(true)}
+                        className="bg-purple-600 text-white hover:bg-purple-700"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Créer un nouveau suivi
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
           </Tabs>
         </div>
       </div>
@@ -4029,10 +4448,10 @@ const Transformation = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
-                    <SelectItem value="mensuelle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Mensuelle</SelectItem>
-                    <SelectItem value="trimestrielle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Trimestrielle</SelectItem>
-                    <SelectItem value="annuelle" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Annuelle</SelectItem>
-                    <SelectItem value="personnalisee" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Personnalisée</SelectItem>
+                    <SelectItem value="mensuelle" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Mensuelle</SelectItem>
+                    <SelectItem value="trimestrielle" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Trimestrielle</SelectItem>
+                    <SelectItem value="annuelle" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Annuelle</SelectItem>
+                    <SelectItem value="personnalisee" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Personnalisée</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -4046,16 +4465,16 @@ const Transformation = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
-                    <SelectItem value="relation_dieu" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Relation avec Dieu</SelectItem>
-                    <SelectItem value="priere" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Prière</SelectItem>
-                    <SelectItem value="parole" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Parole de Dieu</SelectItem>
-                    <SelectItem value="service" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Service</SelectItem>
-                    <SelectItem value="communaute" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Communauté</SelectItem>
-                    <SelectItem value="temperament" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Tempérament</SelectItem>
-                    <SelectItem value="finances" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Finances</SelectItem>
-                    <SelectItem value="sante" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Santé</SelectItem>
-                    <SelectItem value="relations" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Relations</SelectItem>
-                    <SelectItem value="autre" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Autre</SelectItem>
+                    <SelectItem value="relation_dieu" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Relation avec Dieu</SelectItem>
+                    <SelectItem value="priere" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Prière</SelectItem>
+                    <SelectItem value="parole" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Parole de Dieu</SelectItem>
+                    <SelectItem value="service" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Service</SelectItem>
+                    <SelectItem value="communaute" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Communauté</SelectItem>
+                    <SelectItem value="temperament" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Tempérament</SelectItem>
+                    <SelectItem value="finances" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Finances</SelectItem>
+                    <SelectItem value="sante" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Santé</SelectItem>
+                    <SelectItem value="relations" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Relations</SelectItem>
+                    <SelectItem value="autre" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Autre</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -4194,6 +4613,395 @@ const Transformation = () => {
               className="bg-red-600 hover:bg-red-700 text-white"
             >
               Supprimer définitivement
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Ressource de Guérison */}
+      <Dialog open={isRessourceDialogOpen} onOpenChange={setIsRessourceDialogOpen}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-3xl max-h-[90vh] overflow-y-auto [&>button]:hidden">
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
+            <DialogTitle className="text-gray-900 text-2xl">
+              {selectedRessource?.title || selectedRessource?.nom}
+            </DialogTitle>
+            <DialogDescription className="text-gray-600 mt-2">
+              {selectedRessource?.description}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-6 space-y-4">
+            {selectedRessource?.type_resource === 'parcours' && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <p className="text-sm text-purple-800">
+                  <strong>Type :</strong> Parcours de Transformation
+                </p>
+                {selectedRessource?.categorie && (
+                  <p className="text-sm text-purple-700 mt-1">
+                    <strong>Catégorie :</strong> {selectedRessource.categorie.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </p>
+                )}
+                {selectedRessource?.duree_jours && (
+                  <p className="text-sm text-purple-700 mt-1">
+                    <strong>Durée estimée :</strong> {selectedRessource.duree_jours} jours
+                  </p>
+                )}
+              </div>
+            )}
+            {selectedRessource?.type_resource === 'resource' && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Type :</strong> Ressource
+                </p>
+                {selectedRessource?.category && (
+                  <p className="text-sm text-blue-700 mt-1">
+                    <strong>Catégorie :</strong> {selectedRessource.category}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => setIsRessourceDialogOpen(false)} 
+              className="bg-purple-600 text-white hover:bg-purple-700"
+            >
+              Fermer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Suivi Post-Crise */}
+      <Dialog open={isSuiviDialogOpen} onOpenChange={setIsSuiviDialogOpen}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-3xl max-h-[90vh] overflow-y-auto [&>button]:hidden">
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
+            <DialogTitle className="text-gray-900">
+              {editingSuiviId ? 'Modifier le suivi' : 'Nouveau suivi post-crise'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="date_debut" className="text-gray-900">Date de début</Label>
+                <Input
+                  id="date_debut"
+                  type="date"
+                  value={suiviFormData.date_debut}
+                  onChange={(e) => setSuiviFormData({ ...suiviFormData, date_debut: e.target.value })}
+                  className="bg-white border-gray-300 text-gray-900"
+                />
+              </div>
+              <div>
+                <Label htmlFor="type_crise" className="text-gray-900">Type de crise</Label>
+                <Select
+                  value={suiviFormData.type_crise}
+                  onValueChange={(value) => setSuiviFormData({ ...suiviFormData, type_crise: value })}
+                >
+                  <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
+                    <SelectItem value="deuil" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Deuil</SelectItem>
+                    <SelectItem value="divorce" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Divorce</SelectItem>
+                    <SelectItem value="maladie" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Maladie</SelectItem>
+                    <SelectItem value="chomage" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Chômage</SelectItem>
+                    <SelectItem value="trauma" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Trauma</SelectItem>
+                    <SelectItem value="depression" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Dépression</SelectItem>
+                    <SelectItem value="addiction" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Addiction</SelectItem>
+                    <SelectItem value="conflit_familial" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Conflit Familial</SelectItem>
+                    <SelectItem value="crise_spirituelle" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Crise Spirituelle</SelectItem>
+                    <SelectItem value="autre" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Autre</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="gravite" className="text-gray-900">Gravité (1-10)</Label>
+              <Input
+                id="gravite"
+                type="number"
+                min="1"
+                max="10"
+                value={suiviFormData.gravite}
+                onChange={(e) => setSuiviFormData({ ...suiviFormData, gravite: parseInt(e.target.value) })}
+                className="bg-white border-gray-300 text-gray-900"
+              />
+              <Progress value={suiviFormData.gravite * 10} className="h-2 mt-2 [&>div]:bg-red-500" />
+            </div>
+            <div>
+              <Label htmlFor="description" className="text-gray-900">Description</Label>
+              <Textarea
+                id="description"
+                value={suiviFormData.description}
+                onChange={(e) => setSuiviFormData({ ...suiviFormData, description: e.target.value })}
+                placeholder="Décrivez la situation..."
+                rows={4}
+                className="bg-white border-gray-300 text-gray-900"
+              />
+            </div>
+            <div>
+              <Label htmlFor="etat_actuel" className="text-gray-900">État actuel</Label>
+              <Textarea
+                id="etat_actuel"
+                value={suiviFormData.etat_actuel}
+                onChange={(e) => setSuiviFormData({ ...suiviFormData, etat_actuel: e.target.value })}
+                placeholder="Comment vous sentez-vous actuellement ?"
+                rows={3}
+                className="bg-white border-gray-300 text-gray-900"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="frequence_rappels" className="text-gray-900">Fréquence des rappels</Label>
+                <Select
+                  value={suiviFormData.frequence_rappels}
+                  onValueChange={(value) => setSuiviFormData({ ...suiviFormData, frequence_rappels: value })}
+                >
+                  <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
+                    <SelectItem value="quotidien" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Quotidien</SelectItem>
+                    <SelectItem value="hebdomadaire" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Hebdomadaire</SelectItem>
+                    <SelectItem value="bihebdomadaire" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Bihebdomadaire</SelectItem>
+                    <SelectItem value="mensuel" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Mensuel</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="statut" className="text-gray-900">Statut</Label>
+                <Select
+                  value={suiviFormData.statut}
+                  onValueChange={(value) => setSuiviFormData({ ...suiviFormData, statut: value })}
+                >
+                  <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
+                    <SelectItem value="actif" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Actif</SelectItem>
+                    <SelectItem value="en_amelioration" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">En Amélioration</SelectItem>
+                    <SelectItem value="stabilise" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Stabilisé</SelectItem>
+                    <SelectItem value="resolu" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Résolu</SelectItem>
+                    <SelectItem value="archive" className="!text-gray-900 focus:bg-gray-300 hover:bg-gray-300 focus:!text-gray-900 cursor-pointer">Archivé</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="notes" className="text-gray-900">Notes</Label>
+              <Textarea
+                id="notes"
+                value={suiviFormData.notes}
+                onChange={(e) => setSuiviFormData({ ...suiviFormData, notes: e.target.value })}
+                placeholder="Notes personnelles..."
+                rows={3}
+                className="bg-white border-gray-300 text-gray-900"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsSuiviDialogOpen(false)} className="bg-white border border-gray-300 text-purple-600 hover:bg-gray-50">
+              Annuler
+            </Button>
+            <Button onClick={handleSaveSuivi} className="bg-purple-600 hover:bg-purple-700 text-white">
+              <Save className="w-4 h-4 mr-2" />
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Historique de Guérison */}
+      <Dialog open={isHistoriqueDialogOpen} onOpenChange={setIsHistoriqueDialogOpen}>
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-4xl max-h-[90vh] overflow-y-auto [&>button]:hidden">
+          <div className="absolute right-4 top-4 z-50">
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogClose>
+          </div>
+          <DialogHeader className="pr-10">
+            <DialogTitle className="text-gray-900">
+              Historique de Guérison
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Suivi de l'évolution de votre guérison
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-6 space-y-6">
+            {/* Formulaire pour ajouter une nouvelle entrée */}
+            <Card className="bg-purple-50 border-purple-200">
+              <CardHeader>
+                <CardTitle className="text-gray-900">Nouvelle entrée d'historique</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="date_suivi" className="text-gray-900">Date</Label>
+                    <Input
+                      id="date_suivi"
+                      type="date"
+                      value={historiqueFormData.date_suivi}
+                      onChange={(e) => setHistoriqueFormData({ ...historiqueFormData, date_suivi: e.target.value })}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="etat_mental" className="text-gray-900">État Mental (1-10)</Label>
+                    <Input
+                      id="etat_mental"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={historiqueFormData.etat_mental}
+                      onChange={(e) => setHistoriqueFormData({ ...historiqueFormData, etat_mental: parseInt(e.target.value) })}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="etat_spirituel" className="text-gray-900">État Spirituel (1-10)</Label>
+                    <Input
+                      id="etat_spirituel"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={historiqueFormData.etat_spirituel}
+                      onChange={(e) => setHistoriqueFormData({ ...historiqueFormData, etat_spirituel: parseInt(e.target.value) })}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="etat_physique" className="text-gray-900">État Physique (1-10)</Label>
+                    <Input
+                      id="etat_physique"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={historiqueFormData.etat_physique}
+                      onChange={(e) => setHistoriqueFormData({ ...historiqueFormData, etat_physique: parseInt(e.target.value) })}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="progres_observes" className="text-gray-900">Progrès observés</Label>
+                  <Textarea
+                    id="progres_observes"
+                    value={historiqueFormData.progres_observes}
+                    onChange={(e) => setHistoriqueFormData({ ...historiqueFormData, progres_observes: e.target.value })}
+                    placeholder="Quels progrès avez-vous observés ?"
+                    rows={3}
+                    className="bg-white border-gray-300 text-gray-900"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="victoires" className="text-gray-900">Victoires</Label>
+                  <Textarea
+                    id="victoires"
+                    value={historiqueFormData.victoires}
+                    onChange={(e) => setHistoriqueFormData({ ...historiqueFormData, victoires: e.target.value })}
+                    placeholder="Quelles victoires avez-vous remportées ?"
+                    rows={2}
+                    className="bg-white border-gray-300 text-gray-900"
+                  />
+                </div>
+                <Button onClick={handleSaveHistorique} className="w-full bg-purple-600 hover:bg-purple-700 text-white">
+                  <Save className="w-4 h-4 mr-2" />
+                  Ajouter cette entrée
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Liste de l'historique */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900">Historique</h3>
+              {historiqueSuivi.length === 0 ? (
+                <p className="text-gray-600 text-center py-8">Aucune entrée d'historique pour le moment</p>
+              ) : (
+                historiqueSuivi.map((entry) => (
+                  <Card key={entry.id} className="bg-white border-gray-200">
+                    <CardHeader>
+                      <CardTitle className="text-gray-900 text-base">
+                        {format(new Date(entry.date_suivi), 'dd MMMM yyyy', { locale: fr })}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <p className="text-sm text-gray-600">État Mental</p>
+                          <Progress value={entry.etat_mental * 10} className="h-2 mt-1" />
+                          <p className="text-xs text-gray-500 mt-1">{entry.etat_mental}/10</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">État Spirituel</p>
+                          <Progress value={entry.etat_spirituel * 10} className="h-2 mt-1" />
+                          <p className="text-xs text-gray-500 mt-1">{entry.etat_spirituel}/10</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">État Physique</p>
+                          <Progress value={entry.etat_physique * 10} className="h-2 mt-1" />
+                          <p className="text-xs text-gray-500 mt-1">{entry.etat_physique}/10</p>
+                        </div>
+                      </div>
+                      {entry.progres_observes && (
+                        <div className="mb-2">
+                          <p className="text-sm font-medium text-gray-700">Progrès observés</p>
+                          <p className="text-sm text-gray-600">{entry.progres_observes}</p>
+                        </div>
+                      )}
+                      {entry.victoires && (
+                        <div className="mb-2">
+                          <p className="text-sm font-medium text-gray-700">Victoires</p>
+                          <p className="text-sm text-gray-600">{entry.victoires}</p>
+                        </div>
+                      )}
+                      {entry.notes && (
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Notes</p>
+                          <p className="text-sm text-gray-600">{entry.notes}</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => setIsHistoriqueDialogOpen(false)} 
+              className="bg-purple-600 text-white hover:bg-purple-700"
+            >
+              Fermer
             </Button>
           </DialogFooter>
         </DialogContent>
