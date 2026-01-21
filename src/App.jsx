@@ -54,6 +54,7 @@ import MeetingScheduler from './pages/MeetingScheduler';
 import MySummaries from './pages/MySummaries';
 import AttendanceTracking from './pages/AttendanceTracking';
 import FamillesDisciples from './pages/FamillesDisciples';
+import GenealogicalTree from './pages/GenealogicalTree';
 
 // New Feature Pages
 import AppointmentsList from './pages/AppointmentsList';
@@ -192,6 +193,7 @@ function AppRoutes() {
         <Route path="attendance" element={<AttendanceTracking />} /> 
         <Route path="statistics" element={<Statistics />} />
         <Route path="familles" element={<FamillesDisciples />} />
+        <Route path="genealogical-tree" element={<GenealogicalTree />} />
 
         {/* New Appointment System Routes */}
         <Route path="my-appointments" element={<AppointmentsList />} />

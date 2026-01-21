@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   GitFork, 
@@ -11,22 +11,36 @@ import {
   User,
   Users,
   MapPin,
-  Home
+  Home,
+  ArrowUp,
+  ArrowDown,
+  GitBranch,
+  X
 } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getAvatarColor, getInitials } from '@/lib/utils';
 import { Helmet } from 'react-helmet';
+import SearchBar from '@/components/GenealogicalTree/SearchBar';
+import PersonDetails from '@/components/GenealogicalTree/PersonDetails';
+import { fetchDescendants, fetchAscendants, fetchCompleteTree } from '@/lib/genealogicalUtils';
 
 // --- Recursive Tree Node for Desktop ---
-const TreeNode = ({ node, level = 0 }) => {
+const TreeNode = ({ node, level = 0, onNodeClick, isAncestor = false }) => {
+  // Protection contre les nodes invalides
+  if (!node || !node.id) {
+    return null;
+  }
+  
   const hasChildren = node.children && node.children.length > 0;
-  const avatarColor = getAvatarColor(node.name);
+  const avatarColor = getAvatarColor(node.name || '');
 
   return (
     <div className="flex flex-col items-center">
@@ -34,12 +48,14 @@ const TreeNode = ({ node, level = 0 }) => {
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.3 }}
+        onClick={() => onNodeClick && onNodeClick(node)}
         className={`
           relative z-10 flex flex-col items-center p-3 rounded-xl border bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer min-w-[140px] max-w-[180px]
           ${level === 0 ? 'border-primary/50 bg-primary/5' : 'border-slate-200'}
+          ${isAncestor ? 'border-blue-300 bg-blue-50' : ''}
         `}
       >
-        <Avatar className={`h-12 w-12 mb-2 border-2 ${level === 0 ? 'border-primary' : 'border-white'} shadow-sm`}>
+        <Avatar className={`h-12 w-12 mb-2 border-2 ${level === 0 ? 'border-primary' : isAncestor ? 'border-blue-400' : 'border-white'} shadow-sm`}>
             <AvatarImage src={node.avatar_url} />
             <AvatarFallback className={`${avatarColor} text-white`}>{getInitials(node.name)}</AvatarFallback>
         </Avatar>
@@ -59,32 +75,28 @@ const TreeNode = ({ node, level = 0 }) => {
       {hasChildren && (
         <div className="relative flex flex-col items-center mt-4">
           {/* Vertical line from parent to children container */}
-          <div className="w-px h-8 bg-slate-300"></div>
+          <div className={`w-px h-8 ${isAncestor ? 'bg-blue-300' : 'bg-slate-300'}`}></div>
           
           <div className="flex gap-8 relative pt-4">
              {/* Horizontal connector line */}
              {node.children.length > 1 && (
-                <div className="absolute top-0 left-0 right-0 h-px bg-slate-300 mx-[calc(50%/var(--child-count))]"></div> 
+                <div className={`absolute top-0 left-0 right-0 h-px ${isAncestor ? 'bg-blue-300' : 'bg-slate-300'} mx-[calc(50%/var(--child-count))]`}></div> 
              )}
-             {/* Note: The horizontal line logic in CSS flex trees can be tricky. 
-                 A simpler CSS-only approach often uses ::before/::after on the children wrapper.
-                 For this implementation, we'll use a standard flex approach with connecting lines.
-             */}
              
              {node.children.map((child, index) => (
                <div key={child.id} className="flex flex-col items-center relative">
                   {/* Vertical line entering the child */}
-                  <div className="absolute top-[-16px] left-1/2 -translate-x-1/2 w-px h-4 bg-slate-300"></div>
+                  <div className={`absolute top-[-16px] left-1/2 -translate-x-1/2 w-px h-4 ${isAncestor ? 'bg-blue-300' : 'bg-slate-300'}`}></div>
                   {/* Horizontal line segments for siblings */}
                    <div 
-                     className={`absolute top-[-16px] h-px bg-slate-300 
+                     className={`absolute top-[-16px] h-px ${isAncestor ? 'bg-blue-300' : 'bg-slate-300'} 
                         ${index === 0 ? 'left-1/2 w-1/2' : ''} 
                         ${index === node.children.length - 1 ? 'right-1/2 w-1/2' : ''}
                         ${index > 0 && index < node.children.length - 1 ? 'w-full' : ''}
                      `}
                    ></div>
 
-                  <TreeNode node={child} level={level + 1} />
+                  <TreeNode node={child} level={level + 1} onNodeClick={onNodeClick} isAncestor={isAncestor} />
                </div>
              ))}
           </div>
@@ -95,13 +107,105 @@ const TreeNode = ({ node, level = 0 }) => {
 };
 
 // --- Desktop Tree View Component ---
-const DesktopTreeView = ({ data }) => {
+const DesktopTreeView = ({ data, ancestors = [], viewMode = 'descendants', onNodeClick }) => {
   const [scale, setScale] = useState(1);
   const containerRef = useRef(null);
+
+  // Protection contre les données invalides
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center h-full text-slate-400">
+        <p>Aucune donnée à afficher</p>
+      </div>
+    );
+  }
 
   const handleZoomIn = () => setScale(prev => Math.min(prev + 0.2, 2));
   const handleZoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.4));
   const handleReset = () => setScale(1);
+
+  // Vue complète : afficher ascendants en haut, personne au centre, descendants en bas
+  const renderCompleteView = () => {
+    return (
+      <div className="flex flex-col items-center gap-8 py-8">
+        {/* Ascendants (en haut, inversés) */}
+        {ancestors.length > 0 && (
+          <div className="flex flex-col items-center gap-4">
+            <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">
+              Ascendants
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              {ancestors.map((ancestor, idx) => (
+                <React.Fragment key={ancestor.id || idx}>
+                  <TreeNode node={ancestor} level={ancestors.length - idx} onNodeClick={onNodeClick} isAncestor={true} />
+                  {idx < ancestors.length - 1 && (
+                    <div className="w-px h-6 bg-blue-300"></div>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+            {data && <div className="w-px h-8 bg-blue-300"></div>}
+          </div>
+        )}
+
+        {/* Personne centrale */}
+        {data && (
+          <div className="flex flex-col items-center">
+            <div className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-2">
+              Personne sélectionnée
+            </div>
+            <TreeNode node={data} level={0} onNodeClick={onNodeClick} />
+          </div>
+        )}
+
+        {/* Descendants (en bas) */}
+        {data && data.children && data.children.length > 0 && (
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-px h-8 bg-slate-300"></div>
+            <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
+              Descendants
+            </div>
+            <TreeNode node={data} level={0} onNodeClick={onNodeClick} />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Vue descendants uniquement
+  const renderDescendantsView = () => {
+    return data ? <TreeNode node={data} level={0} onNodeClick={onNodeClick} /> : null;
+  };
+
+  // Vue ascendants uniquement (inversée)
+  const renderAscendantsView = () => {
+    if (ancestors.length === 0) return <div className="text-slate-400">Aucun ascendant trouvé</div>;
+    
+    return (
+      <div className="flex flex-col items-center gap-4 py-8">
+        <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">
+          Ascendants
+        </div>
+        {ancestors.map((ancestor, idx) => (
+          <React.Fragment key={ancestor.id || idx}>
+            <TreeNode node={ancestor} level={ancestors.length - idx} onNodeClick={onNodeClick} isAncestor={true} />
+            {idx < ancestors.length - 1 && (
+              <div className="w-px h-6 bg-blue-300"></div>
+            )}
+          </React.Fragment>
+        ))}
+        {data && (
+          <>
+            <div className="w-px h-8 bg-blue-300"></div>
+            <div className="text-xs font-semibold text-purple-600 uppercase tracking-wider mt-4">
+              Personne sélectionnée
+            </div>
+            <TreeNode node={data} level={0} onNodeClick={onNodeClick} />
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="relative w-full h-[calc(100vh-140px)] overflow-hidden bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
@@ -118,18 +222,19 @@ const DesktopTreeView = ({ data }) => {
         </Button>
       </div>
 
-      <div className="absolute inset-0 overflow-auto cursor-grab active:cursor-grabbing p-20 flex justify-center min-w-full">
+      <div 
+        ref={containerRef}
+        className="absolute inset-0 overflow-auto cursor-grab active:cursor-grabbing p-20 flex justify-center min-w-full"
+      >
          <motion.div 
             style={{ scale, transformOrigin: 'top center' }}
             drag
             dragConstraints={containerRef}
             className="flex justify-center"
          >
-             {data ? (
-                <TreeNode node={data} />
-             ) : (
-                <div className="text-slate-400">Aucune donnée à afficher</div>
-             )}
+             {viewMode === 'complete' ? renderCompleteView() :
+              viewMode === 'ascendants' ? renderAscendantsView() :
+              renderDescendantsView()}
          </motion.div>
       </div>
     </div>
@@ -138,9 +243,16 @@ const DesktopTreeView = ({ data }) => {
 
 
 // --- Mobile Tree View Component (Drill-down) ---
-const MobileTreeView = ({ data }) => {
-  const [history, setHistory] = useState([data]); // Stack of nodes to track path
+const MobileTreeView = ({ data, ancestors = [], viewMode = 'descendants', onNodeClick }) => {
+  const [history, setHistory] = useState(data ? [data] : []); // Stack of nodes to track path
   const currentNode = history[history.length - 1]; // Current view
+
+  // Mettre à jour l'historique quand data change
+  useEffect(() => {
+    if (data) {
+      setHistory([data]);
+    }
+  }, [data]);
 
   const handleNavigateDown = (childNode) => {
     setHistory([...history, childNode]);
@@ -158,7 +270,7 @@ const MobileTreeView = ({ data }) => {
     }
   };
 
-  if (!data) return <div className="p-4 text-center text-slate-500">Chargement...</div>;
+  if (!data && !currentNode) return <div className="p-4 text-center text-slate-500">Chargement...</div>;
 
   return (
     <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -220,7 +332,10 @@ const MobileTreeView = ({ data }) => {
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         whileTap={{ scale: 0.98 }}
-                        onClick={() => handleNavigateDown(child)}
+                        onClick={() => {
+                          handleNavigateDown(child);
+                          onNodeClick && onNodeClick(child);
+                        }}
                         className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-primary/30 hover:bg-slate-50 transition-all cursor-pointer bg-white shadow-sm"
                      >
                         <div className="flex items-center gap-3">
@@ -257,10 +372,16 @@ const MobileTreeView = ({ data }) => {
 
 // --- Main Page Component ---
 const GenealogicalTree = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [treeData, setTreeData] = useState(null);
+  const [ancestors, setAncestors] = useState([]);
+  const [selectedPerson, setSelectedPerson] = useState(null);
+  const [viewMode, setViewMode] = useState('descendants'); // 'descendants', 'ascendants', 'complete'
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [showDetails, setShowDetails] = useState(false);
+  const [error, setError] = useState(null);
 
   // Resize listener
   useEffect(() => {
@@ -269,95 +390,221 @@ const GenealogicalTree = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Fetch Tree Data
-  useEffect(() => {
-    const fetchTree = async () => {
-      if (!user) return;
-      setLoading(true);
+  // Charger l'arbre de l'utilisateur connecté par défaut
+  const loadUserTree = useCallback(async () => {
+    if (!user) {
+      console.log('GenealogicalTree: Pas d\'utilisateur, arrêt du chargement');
+      setLoading(false);
+      return;
+    }
+    
+    console.log('GenealogicalTree: Début du chargement pour utilisateur:', user.id);
+    setLoading(true);
+    setError(null);
 
-      try {
-        // Fetch current user details as root
-        const { data: userData, error: userError } = await supabase
-            .from('profils')
-            .select('id, first_name, last_name, avatar_url, role')
-            .eq('id', user.id)
-            .single();
+    // Timeout de sécurité (30 secondes)
+    const timeoutId = setTimeout(() => {
+      console.warn('GenealogicalTree: Timeout du chargement après 30s');
+      setLoading(false);
+      setError('Le chargement prend plus de temps que prévu. Veuillez réessayer.');
+    }, 30000);
 
-        if (userError) throw userError;
+    try {
+      console.log('GenealogicalTree: Récupération des descendants...');
+      const descendantsTree = await fetchDescendants(user.id, 'profil');
+      console.log('GenealogicalTree: Descendants récupérés:', descendantsTree ? 'Oui' : 'Non');
+      
+      console.log('GenealogicalTree: Récupération des ascendants...');
+      const ascendantsResult = await fetchAscendants(user.id, 'profil');
+      console.log('GenealogicalTree: Ascendants récupérés:', ascendantsResult);
 
-        // Fetch all disciples recursively (simulated with flat fetch for now + simple reconstruction)
-        // In a real optimized app, this might be a recursive CTE in SQL
-        const { data: disciplesData, error: disciplesError } = await supabase
-            .from('cercle_personnes')
-            .select('id, name, first_name, last_name, avatar_url, parent_disciple_id, user_id, group_id')
-            .eq('circle_type', 'Disciple')
-            .order('name');
-            
-        if (disciplesError) throw disciplesError;
-
-        // Build the tree
-        const root = {
-            id: user.id,
-            name: `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.email,
-            avatar_url: userData.avatar_url,
-            role: userData.role,
-            children: []
-        };
-
-        // Note: The current DB structure has 'cercle_personnes' which tracks people.
-        // We need to link them. Assuming 'parent_disciple_id' points to another entry in 'cercle_personnes'.
-        // BUT the root is a 'profils' user. 
-        // For this demo, let's assume 'cercle_personnes.user_id' refers to the mentor (the root user).
+      // Toujours définir treeData, même si null
+      if (descendantsTree) {
+        setTreeData(descendantsTree);
+      } else {
+        // Créer un arbre minimal avec l'utilisateur comme racine
+        const { data: userData } = await supabase
+          .from('profils')
+          .select('id, first_name, last_name, email, avatar_url, role')
+          .eq('id', user.id)
+          .maybeSingle();
         
-        // Let's attach direct disciples to root
-        const directDisciples = disciplesData.filter(d => d.user_id === user.id);
-        
-        // Recursive function to attach children
-        // (This assumes we have a way to track sub-disciples. If 'user_id' is always the root mentor, 
-        // the current DB schema might be flat. We will assume a flat structure for now where all are direct children 
-        // unless specific parent_disciple_id logic exists. 
-        // To make the tree interesting, we will simulate a hierarchy if 'parent_disciple_id' is null or matches root)
-        
-        const buildHierarchy = (parentId) => {
-             return disciplesData
-                .filter(d => d.parent_disciple_id === parentId) // Find children of this node
-                .map(d => ({
-                    id: d.id,
-                    name: d.name || `${d.first_name} ${d.last_name}`,
-                    avatar_url: d.avatar_url,
-                    role: 'Disciple',
-                    children: buildHierarchy(d.id) // Recurse
-                }));
-        };
-
-        // If parent_disciple_id is used for hierarchy within the disciple table:
-        // We find top-level disciples (those belonging to user, with no parent within the disciple table, or parent is the user?)
-        // Since 'parent_disciple_id' references 'cercle_personnes(id)', it can't reference the 'profils' root directly by foreign key usually 
-        // unless UUIDs match. Let's assume top level have NULL parent_disciple_id
-        
-        const topLevelDisciples = disciplesData
-            .filter(d => d.user_id === user.id && !d.parent_disciple_id)
-            .map(d => ({
-                id: d.id,
-                name: d.name || `${d.first_name} ${d.last_name}`,
-                avatar_url: d.avatar_url,
-                role: 'Disciple',
-                children: buildHierarchy(d.id)
-            }));
-
-        root.children = topLevelDisciples;
-        setTreeData(root);
-
-      } catch (error) {
-        console.error('Error building tree:', error);
-      } finally {
-        setLoading(false);
+        setTreeData({
+          id: user.id,
+          name: userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.email || 'Moi' : 'Moi',
+          avatar_url: userData?.avatar_url,
+          role: userData?.role || 'user',
+          children: []
+        });
       }
-    };
-
-    fetchTree();
+      
+      setAncestors(ascendantsResult?.ancestors || []);
+      setSelectedPerson({
+        id: user.id,
+        type: 'profil',
+        name: descendantsTree?.name || 'Moi',
+        ...(descendantsTree || {})
+      });
+    } catch (error) {
+      console.error('Erreur chargement arbre utilisateur:', error);
+      setError(error.message || 'Erreur lors du chargement de l\'arbre');
+      // Même en cas d'erreur, définir un arbre minimal
+      setTreeData({
+        id: user.id,
+        name: 'Moi',
+        children: []
+      });
+      setAncestors([]);
+      setSelectedPerson({
+        id: user.id,
+        type: 'profil',
+        name: 'Moi'
+      });
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      console.log('GenealogicalTree: Fin du chargement');
+      setLoading(false);
+    }
   }, [user]);
 
+  // Charger l'arbre d'une personne sélectionnée
+  const loadPersonTree = useCallback(async (person, mode = viewMode) => {
+    if (!person || !person.id) {
+      console.warn('loadPersonTree: person ou person.id manquant', person);
+      return;
+    }
+    
+    setLoading(true);
+
+    try {
+      let descendantsTree = null;
+      let ascendantsResult = { person: null, ancestors: [] };
+
+      if (mode === 'descendants' || mode === 'complete') {
+        descendantsTree = await fetchDescendants(person.id, person.type);
+      }
+
+      if (mode === 'ascendants' || mode === 'complete') {
+        ascendantsResult = await fetchAscendants(person.id, person.type);
+      }
+
+      if (descendantsTree) {
+        setTreeData(descendantsTree);
+      } else if (ascendantsResult.person) {
+        // Si pas de descendants, utiliser la personne elle-même comme racine
+        setTreeData({
+          ...ascendantsResult.person,
+          children: []
+        });
+      } else {
+        // Si aucune donnée, utiliser la personne elle-même avec un arbre minimal
+        setTreeData({
+          ...person,
+          children: person.children || []
+        });
+      }
+
+      setAncestors(ascendantsResult.ancestors || []);
+    } catch (error) {
+      console.error('Erreur chargement arbre personne:', error);
+      // Même en cas d'erreur, définir un arbre minimal pour éviter l'écran blanc
+      setTreeData({
+        ...person,
+        children: []
+      });
+      setAncestors([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [viewMode]);
+
+  // Charger l'arbre au montage (attendre que l'auth soit terminée)
+  useEffect(() => {
+    // Attendre que l'authentification soit terminée
+    if (authLoading) {
+      return; // Ne rien faire tant que l'auth charge
+    }
+    
+    if (user) {
+      loadUserTree();
+    } else {
+      // Si pas d'utilisateur après le chargement de l'auth, arrêter le chargement
+      setLoading(false);
+    }
+  }, [user, authLoading, loadUserTree]);
+
+  // Recharger quand le mode de vue change (seulement si une personne est déjà sélectionnée et différente de l'utilisateur)
+  // Utiliser une ref pour éviter les boucles infinies
+  const isInitialLoad = useRef(true);
+  const lastViewMode = useRef(viewMode);
+  
+  useEffect(() => {
+    // Ignorer le premier rendu
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      lastViewMode.current = viewMode;
+      return;
+    }
+    
+    // Seulement recharger si le mode de vue a vraiment changé
+    if (viewMode !== lastViewMode.current && selectedPerson && selectedPerson.id && selectedPerson.id !== user?.id) {
+      lastViewMode.current = viewMode;
+      loadPersonTree(selectedPerson, viewMode);
+    }
+  }, [viewMode, selectedPerson, user, loadPersonTree]);
+
+  const handleSelectPerson = useCallback((person) => {
+    if (person && person.id) {
+      setSelectedPerson(person);
+      loadPersonTree(person, viewMode);
+      setShowDetails(true);
+    }
+  }, [viewMode, loadPersonTree]);
+
+  const handleResetToSelf = useCallback(() => {
+    loadUserTree();
+    setShowDetails(false);
+  }, [loadUserTree]);
+
+  const handleNodeClick = (node) => {
+    setSelectedPerson(node);
+    setShowDetails(true);
+  };
+
+  const handleViewProfile = (personId) => {
+    navigate(`/profile/${personId}`);
+  };
+
+  const handleContact = (email) => {
+    window.location.href = `mailto:${email}`;
+  };
+
+  const handleViewTree = (person) => {
+    handleSelectPerson(person);
+  };
+
+
+  // Afficher un message d'erreur si nécessaire
+  if (error && !treeData) {
+    return (
+      <>
+        <Helmet>
+          <title>Arbre Généalogique | DiscipleLife</title>
+        </Helmet>
+        <div className="h-full flex items-center justify-center">
+          <div className="text-center">
+            <GitFork className="h-16 w-16 mx-auto mb-4 text-red-400" />
+            <p className="text-red-600 mb-4">{error}</p>
+            <Button onClick={() => { setError(null); loadUserTree(); }}>
+              Réessayer
+            </Button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -366,30 +613,119 @@ const GenealogicalTree = () => {
       </Helmet>
 
       <div className="h-full flex flex-col space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-              <GitFork className="text-primary" />
-              Arbre Généalogique
-            </h1>
-            <p className="text-slate-500 dark:text-slate-400">
-              Visualisez votre descendance spirituelle et l'impact de votre ministère.
-            </p>
+        {/* Header avec recherche */}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+                <GitFork className="text-primary" />
+                Arbre Généalogique
+              </h1>
+              <p className="text-slate-500 dark:text-slate-400">
+                Visualisez votre descendance spirituelle et l'impact de votre ministère.
+              </p>
+            </div>
           </div>
+
+          {/* Barre de recherche */}
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <SearchBar
+                onSelectPerson={handleSelectPerson}
+                currentPersonId={selectedPerson?.id}
+                onResetToSelf={handleResetToSelf}
+              />
+            </div>
+          </div>
+
+          {/* Mode de visualisation */}
+          <Tabs value={viewMode} onValueChange={setViewMode} className="w-full">
+            <TabsList className="grid w-full max-w-md grid-cols-3">
+              <TabsTrigger value="descendants" className="flex items-center gap-2">
+                <ArrowDown size={16} />
+                Descendants
+              </TabsTrigger>
+              <TabsTrigger value="ascendants" className="flex items-center gap-2">
+                <ArrowUp size={16} />
+                Ascendants
+              </TabsTrigger>
+              <TabsTrigger value="complete" className="flex items-center gap-2">
+                <GitBranch size={16} />
+                Vue complète
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
+        {/* Contenu principal */}
         {loading ? (
-            <div className="flex-1 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <div className="flex-1 flex items-center justify-center min-h-[500px]">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <p className="text-sm text-slate-500">Chargement de l'arbre généalogique...</p>
             </div>
+          </div>
+        ) : !treeData ? (
+          <div className="flex-1 flex items-center justify-center min-h-[500px]">
+            <div className="text-center">
+              <GitFork className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+              <p className="text-gray-500 mb-4">Aucune donnée disponible pour l'arbre généalogique.</p>
+              <Button onClick={loadUserTree} className="mt-4">
+                Recharger
+              </Button>
+            </div>
+          </div>
         ) : (
-            <div className="flex-1 min-h-[500px]">
-                {isMobile ? (
-                    <MobileTreeView data={treeData} />
-                ) : (
-                    <DesktopTreeView data={treeData} />
-                )}
+            <div className="flex-1 min-h-[500px] flex gap-4">
+            {/* Arbre */}
+            <div className={`flex-1 ${showDetails && !isMobile ? 'w-2/3' : 'w-full'}`}>
+              {isMobile ? (
+                <MobileTreeView
+                  data={treeData}
+                  ancestors={ancestors}
+                  viewMode={viewMode}
+                  onNodeClick={handleNodeClick}
+                />
+              ) : (
+                <DesktopTreeView
+                  data={treeData}
+                  ancestors={ancestors}
+                  viewMode={viewMode}
+                  onNodeClick={handleNodeClick}
+                />
+              )}
             </div>
+
+            {/* Panneau de détails (desktop uniquement) */}
+            {showDetails && selectedPerson && !isMobile && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="w-1/3"
+              >
+                <div className="sticky top-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-gray-700">Détails</h3>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowDetails(false)}
+                      className="h-6 w-6"
+                    >
+                      <X size={14} />
+                    </Button>
+                  </div>
+                  <PersonDetails
+                    person={selectedPerson}
+                    onViewProfile={handleViewProfile}
+                    onContact={handleContact}
+                    onViewTree={handleViewTree}
+                  />
+                </div>
+              </motion.div>
+            )}
+          </div>
         )}
       </div>
     </>

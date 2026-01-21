@@ -21,7 +21,8 @@ import {
   CalendarCheck,
   UserPlus,
   Award,
-  Building2
+  Building2,
+  GitFork
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -86,6 +87,7 @@ const Layout = () => {
     { label: 'Tableau de bord', path: '/dashboard', icon: LayoutDashboard, iconColor: 'text-blue-400' },
     { label: 'Suivi de Présence', path: '/attendance', icon: CalendarCheck, iconColor: 'text-blue-500' },
     { label: 'Familles de Disciples', path: '/familles', icon: Building2, iconColor: 'text-indigo-500' },
+    { label: 'Arbre Généalogique', path: '/genealogical-tree', icon: GitFork, iconColor: 'text-purple-600' },
     { label: 'Évangélisation', path: '/evangelization', icon: UserPlus, iconColor: 'text-teal-500' },
     { label: 'Engagement', path: '/engagement', icon: Award, iconColor: 'text-purple-500' },
     { label: 'Transformation', path: '/transformation', icon: Heart, iconColor: 'text-pink-500' },
