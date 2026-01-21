@@ -13,10 +13,12 @@ import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 const MentorDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { handleError } = useErrorHandler();
   const [stats, setStats] = useState({
     total: 0,
     nonCroyants: 0,
@@ -156,7 +158,7 @@ const MentorDashboard = () => {
       });
 
     } catch (error) {
-      console.error("Error fetching mentor data", error);
+      handleError(error, { context: 'fetchMentorData' }, "Impossible de charger les données du mentor.");
     } finally {
       setLoading(false);
     }
@@ -215,7 +217,7 @@ const MentorDashboard = () => {
 
       return activeDisciples;
     } catch (error) {
-      console.error("Error fetching disciples with activity", error);
+      handleError(error, { context: 'fetchDisciplesWithActivity' }, "Impossible de charger les disciples avec activité.");
       return [];
     }
   };

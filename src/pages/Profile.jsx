@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/components/ui/use-toast';
 import { getInitials } from '@/lib/utils';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { Loader2, Camera, Save, User } from 'lucide-react';
 import { compressImage } from '@/lib/ImageCompression';
 import { Progress } from '@/components/ui/progress';
@@ -15,6 +16,7 @@ import { Progress } from '@/components/ui/progress';
 const Profile = () => {
   const { user, refreshProfile } = useAuth();
   const { toast } = useToast();
+  const { handleError } = useErrorHandler();
   
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +55,7 @@ const Profile = () => {
         }
       }
     } catch (error) {
-      console.error(error);
+      handleError(error, { context: 'fetchProfile' }, "Impossible de charger le profil.");
     } finally {
       setLoading(false);
     }
@@ -102,8 +104,7 @@ const Profile = () => {
       setUploadProgress(0);
 
     } catch (error) {
-      console.error(error);
-      toast({ variant: "destructive", title: "Erreur", description: "Échec de la mise à jour." });
+      handleError(error, { context: 'handleUpdate' }, "Échec de la mise à jour du profil.");
     } finally {
       setSaving(false);
     }

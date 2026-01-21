@@ -21,10 +21,12 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 const AdminReportsView = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { handleError } = useErrorHandler();
   const [reports, setReports] = useState([]);
   
   const months = [
@@ -90,12 +92,7 @@ const AdminReportsView = () => {
       setTotalPages(Math.ceil((count || 0) / itemsPerPage));
 
     } catch (error) {
-      console.error("Error fetching reports:", error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les rapports."
-      });
+      handleError(error, { context: 'fetchReports' }, "Impossible de charger les rapports.");
     } finally {
       setLoading(false);
     }
@@ -124,7 +121,7 @@ const AdminReportsView = () => {
           setReports(prev => prev.map(r => r.id === report.id ? { ...r, is_read: true } : r));
         }
       } catch (err) {
-        console.error("Failed to mark as read", err);
+        handleError(err, { context: 'handleViewReport', reportId: report.id }, "Impossible de marquer le rapport comme lu.");
       }
     }
   };

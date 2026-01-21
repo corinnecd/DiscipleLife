@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
@@ -51,8 +52,7 @@ const AdminAccessCodeManager = () => {
       if (error) throw error;
       setCodes(data || []);
     } catch (error) {
-      console.error("Error fetching codes:", error);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les codes." });
+      handleError(error, { context: 'fetchCodes' }, "Impossible de charger les codes.");
     } finally {
       setLoading(false);
     }
@@ -105,7 +105,7 @@ const AdminAccessCodeManager = () => {
       toast({ title: "Code créé", description: `Le code ${data.code} est actif.` });
 
     } catch (error) {
-      toast({ variant: "destructive", title: "Erreur", description: error.message });
+      handleError(error, { context: 'handleCreate' }, "Impossible de créer le code.");
     } finally {
       setCreating(false);
     }

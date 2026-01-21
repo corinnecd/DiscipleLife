@@ -10,6 +10,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +31,7 @@ const Transformation = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { handleError } = useErrorHandler();
   const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('bibliotheque');
@@ -129,6 +131,52 @@ const Transformation = () => {
   const [evaluationFilterDateDebut, setEvaluationFilterDateDebut] = useState('');
   const [evaluationFilterDateFin, setEvaluationFilterDateFin] = useState('');
 
+  // États pour les ressources de guérison et restauration
+  const [ressourcesGuerison, setRessourcesGuerison] = useState([]);
+  const [ressourcesGuerisonLoading, setRessourcesGuerisonLoading] = useState(true);
+  const [ressourcesFilterType, setRessourcesFilterType] = useState('tous');
+  const [ressourcesSearchQuery, setRessourcesSearchQuery] = useState('');
+  const [selectedRessource, setSelectedRessource] = useState(null);
+  const [isRessourceDialogOpen, setIsRessourceDialogOpen] = useState(false);
+
+  // États pour le suivi post-crise
+  const [suivisPostCrise, setSuivisPostCrise] = useState([]);
+  const [suivisPostCriseLoading, setSuivisPostCriseLoading] = useState(true);
+  const [isSuiviDialogOpen, setIsSuiviDialogOpen] = useState(false);
+  const [isHistoriqueDialogOpen, setIsHistoriqueDialogOpen] = useState(false);
+  const [selectedSuivi, setSelectedSuivi] = useState(null);
+  const [historiqueSuivi, setHistoriqueSuivi] = useState([]);
+  const [suiviFormData, setSuiviFormData] = useState({
+    date_debut: new Date().toISOString().split('T')[0],
+    type_crise: 'autre',
+    description: '',
+    gravite: 5,
+    objectifs: [],
+    etat_actuel: '',
+    besoins_specifiques: [],
+    ressources_utilisees: [],
+    prochaine_action: '',
+    date_prochaine_action: '',
+    rappel_actif: true,
+    frequence_rappels: 'hebdomadaire',
+    statut: 'actif',
+    notes: ''
+  });
+  const [historiqueFormData, setHistoriqueFormData] = useState({
+    date_suivi: new Date().toISOString().split('T')[0],
+    etat_mental: 5,
+    etat_spirituel: 5,
+    etat_physique: 5,
+    progres_observes: '',
+    defis_rencontres: '',
+    victoires: '',
+    versets_bibliques: [],
+    prieres_exaucees: [],
+    actions_prises: [],
+    notes: ''
+  });
+  const [editingSuiviId, setEditingSuiviId] = useState(null);
+
   useEffect(() => {
     if (user) {
       fetchAllData();
@@ -146,7 +194,7 @@ const Transformation = () => {
           await fetchAllData();
           console.log('✅ Données rafraîchies avec succès');
         } catch (error) {
-          console.error('❌ Erreur lors du rafraîchissement:', error);
+          handleError(error, { context: 'refreshData' }, "Erreur lors du rafraîchissement des données.");
         }
       };
       
@@ -195,12 +243,7 @@ const Transformation = () => {
         fetchDisciples()
       ]);
     } catch (error) {
-      console.error('Error fetching data:', error);
-      toast({
-        title: 'Erreur',
-        description: 'Impossible de charger les données',
-        variant: 'destructive'
-      });
+      handleError(error, { context: 'fetchData' }, "Impossible de charger les données.");
     } finally {
       setLoading(false);
     }

@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,7 @@ import { Progress } from '@/components/ui/progress';
 
 const AdminTestimonyModeration = () => {
   const { toast } = useToast();
+  const { handleError } = useErrorHandler();
   const [testimonies, setTestimonies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pending'); // pending, approved, rejected
@@ -52,8 +54,7 @@ const AdminTestimonyModeration = () => {
       if (error) throw error;
       setTestimonies(data || []);
     } catch (error) {
-      console.error('Error:', error);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les témoignages" });
+      handleError(error, { context: 'fetchTestimonies' }, "Impossible de charger les témoignages.");
     } finally {
       setLoading(false);
     }
@@ -81,7 +82,7 @@ const AdminTestimonyModeration = () => {
       if (rejectDialog.isOpen) setRejectDialog({ isOpen: false, id: null, reason: '' });
 
     } catch (error) {
-      toast({ variant: "destructive", title: "Erreur", description: "Mise à jour échouée." });
+      handleError(error, { context: 'handleStatusChange', testimonyId: id }, "Mise à jour échouée.");
     }
   };
 

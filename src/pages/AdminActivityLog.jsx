@@ -19,10 +19,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ExportUtils } from '@/lib/ExportUtils';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 const LOGS_PER_PAGE = 50;
 
 const AdminActivityLog = () => {
+  const { handleError } = useErrorHandler();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalPages, setTotalPages] = useState(1);
@@ -83,7 +85,7 @@ const AdminActivityLog = () => {
       setTotalPages(Math.ceil((count || 0) / LOGS_PER_PAGE));
 
     } catch (error) {
-      console.error('Error fetching logs:', error);
+      handleError(error, { context: 'fetchLogs' }, "Impossible de charger les logs d'activité.");
     } finally {
       setLoading(false);
     }

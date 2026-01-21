@@ -33,11 +33,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/components/ui/use-toast';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 const ITEMS_PER_PAGE = 20;
 
 const AdminFeedback = () => {
   const { toast } = useToast();
+  const { handleError } = useErrorHandler();
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
@@ -126,11 +128,7 @@ const AdminFeedback = () => {
         className: "bg-green-600 text-white border-none"
       });
     } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de mettre à jour le statut."
-      });
+      handleError(error, { context: 'handleStatusChange', feedbackId: id }, "Impossible de mettre à jour le statut.");
     } finally {
       setUpdatingId(null);
     }
@@ -189,11 +187,7 @@ const AdminFeedback = () => {
         className: "bg-gray-800 text-white border-gray-700"
       });
     } catch (error) {
-       toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de supprimer le feedback."
-      });
+      handleError(error, { context: 'handleDelete', feedbackId: id }, "Impossible de supprimer le feedback.");
     } finally {
       setUpdatingId(null);
     }

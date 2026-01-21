@@ -225,13 +225,25 @@ export const getOrSetCache = async (key, asyncFn, ttl = DEFAULT_TTL) => {
   const cached = getCache(key);
   if (cached !== null) {
     console.log(`Cache hit: ${key}`);
+    // Enregistrer un cache hit
+    if (typeof window !== 'undefined' && window.performanceMonitor) {
+      window.performanceMonitor.recordApiCall(key, 'GET', null, true);
+    }
     return cached;
   }
 
   // Cache miss, execute function and cache result
   console.log(`Cache miss: ${key}`);
+  const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
   try {
     const data = await asyncFn();
+    const duration = typeof performance !== 'undefined' ? performance.now() - startTime : Date.now() - startTime;
+    
+    // Enregistrer un cache miss
+    if (typeof window !== 'undefined' && window.performanceMonitor) {
+      window.performanceMonitor.recordApiCall(key, 'GET', duration, false);
+    }
+    
     setCache(key, data, ttl);
     return data;
   } catch (error) {

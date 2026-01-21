@@ -66,6 +66,7 @@ import AdminTestimonyModeration from './pages/AdminTestimonyModeration';
 import AdminAccessCodeManager from './pages/AdminAccessCodeManager';
 import AdminActivityLog from './pages/AdminActivityLog';
 import AdminFeedback from './pages/AdminFeedback';
+import PerformanceDashboard from './components/PerformanceDashboard';
 
 import { Helmet } from 'react-helmet';
 import { Toaster } from "@/components/ui/toaster";
@@ -233,6 +234,11 @@ function AppRoutes() {
         <Route path="admin/access-codes" element={<AdminAccessCodeManager />} />
         <Route path="admin/activity-logs" element={<AdminActivityLog />} />
         <Route path="admin/feedback" element={<AdminFeedback />} />
+        <Route path="admin/performance" element={
+          <ProtectedRoute requiredRole="admin">
+            <PerformanceDashboard />
+          </ProtectedRoute>
+        } />
 
       </Route>
 

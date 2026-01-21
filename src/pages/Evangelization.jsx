@@ -13,6 +13,7 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,6 +33,7 @@ const Evangelization = () => {
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { handleError } = useErrorHandler();
   const [activeTab, setActiveTab] = useState('visiteurs');
   
   // États pour les visiteurs
@@ -197,12 +199,7 @@ const Evangelization = () => {
       if (error) throw error;
       setVisiteurs(data || []);
     } catch (error) {
-      console.error('Erreur lors du chargement des visiteurs:', error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les visiteurs.",
-      });
+      handleError(error, { context: 'fetchVisiteurs' }, "Impossible de charger les visiteurs.");
     } finally {
       setVisiteursLoading(false);
     }
@@ -245,12 +242,7 @@ const Evangelization = () => {
       resetVisiteurForm();
       fetchVisiteurs();
     } catch (error) {
-      console.error('Erreur lors de l\'enregistrement:', error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Une erreur est survenue lors de l'enregistrement.",
-      });
+      handleError(error, { context: 'handleSaveVisiteur', visiteurId: editingVisiteurId }, "Une erreur est survenue lors de l'enregistrement.");
     }
   };
 
@@ -279,12 +271,7 @@ const Evangelization = () => {
       toast({ title: "Supprimé", description: "Visiteur supprimé." });
       fetchVisiteurs();
     } catch (error) {
-      console.error('Erreur lors de la suppression:', error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de supprimer.",
-      });
+      handleError(error, { context: 'handleDeleteVisiteur', visiteurId: id }, "Impossible de supprimer le visiteur.");
     }
   };
 

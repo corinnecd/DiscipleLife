@@ -26,11 +26,13 @@ import { supabase } from '@/lib/customSupabaseClient';
 import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 const DiscipleDashboard = ({ targetDiscipleId = null }) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { handleError } = useErrorHandler();
   const { id } = useParams(); 
   
   const effectiveId = targetDiscipleId || id || user?.id;
@@ -97,7 +99,7 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
       });
 
     } catch (error) {
-      console.error("Error loading disciple dashboard", error);
+      handleError(error, { context: 'fetchDashboardData', discipleId: effectiveId }, "Impossible de charger le tableau de bord.");
     } finally {
       setLoading(false);
     }

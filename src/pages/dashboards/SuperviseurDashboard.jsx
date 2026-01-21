@@ -181,7 +181,7 @@ const SuperviseurDashboard = () => {
               await generateFormationVideoChartData();
               console.log('✅ Données formations/vidéos générées (lazy loading)');
             } catch (error) {
-              console.error('❌ Erreur génération formations/vidéos:', error);
+              handleError(error, { context: 'generateFormationVideoChartData', lazyLoad: true }, "Impossible de générer les données des formations et vidéos.");
             }
           }
         },
@@ -201,7 +201,7 @@ const SuperviseurDashboard = () => {
               await calculateStatutsSpirituels();
               console.log('✅ Statuts spirituels calculés (lazy loading)');
             } catch (error) {
-              console.error('❌ Erreur calcul statuts spirituels:', error);
+              handleError(error, { context: 'calculateStatutsSpirituels', lazyLoad: true }, "Impossible de calculer la répartition des statuts spirituels.");
             }
           }
         },
@@ -221,7 +221,7 @@ const SuperviseurDashboard = () => {
               await fetchActiviteRecente();
               console.log('✅ Activité récente récupérée (lazy loading)');
             } catch (error) {
-              console.error('❌ Erreur récupération activité récente:', error);
+              handleError(error, { context: 'fetchActiviteRecente', lazyLoad: true }, "Impossible de récupérer l'activité récente.");
             }
           }
         },
@@ -359,11 +359,11 @@ const SuperviseurDashboard = () => {
       });
 
       if (familleError) {
-        console.error('❌ Erreur lors de la récupération de la famille:', familleError);
+        handleError(familleError, { context: 'fetchSuperviseurData', step: 'familleData' }, "Impossible de récupérer les données de la famille.");
         throw familleError;
       }
       if (superviseurError) {
-        console.error('❌ Erreur lors de la récupération du superviseur:', superviseurError);
+        handleError(superviseurError, { context: 'fetchSuperviseurData', step: 'superviseurData' }, "Impossible de récupérer les données du superviseur.");
         throw superviseurError;
       }
 
