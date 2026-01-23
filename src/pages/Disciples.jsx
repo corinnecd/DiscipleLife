@@ -13,6 +13,8 @@ import { getAvatarColor, getInitials } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { compressImage } from '@/lib/ImageCompression';
 
 const STATUS_LABELS = {
@@ -79,6 +81,8 @@ const Disciples = () => {
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formationsPCNC = ['001', '101', '201', 'RTT', 'IEBI', 'PILLIERS'];
+  
   const [formData, setFormData] = useState({
       firstName: '',
       lastName: '',
@@ -90,7 +94,10 @@ const Disciples = () => {
       level: 'unbelievers', // Default: Non-croyant
       parentId: null,
       isBaptized: 'non', // 'oui' ou 'non'
-      baptismDate: '' // Date du baptême si oui
+      baptismDate: '', // Date du baptême si oui
+      nombreDisciples: 0,
+      formationsPCNC: [],
+      observations: ''
   });
   
   // Avatar Upload State
@@ -374,7 +381,10 @@ const Disciples = () => {
             firstName: '', lastName: '', email: '', phone: '',
             church: '', country: '', startDate: new Date().toISOString().split('T')[0],
             level: 'unbelievers', parentId: null,
-            isBaptized: 'non', baptismDate: ''
+            isBaptized: 'non', baptismDate: '',
+            nombreDisciples: 0,
+            formationsPCNC: [],
+            observations: ''
         });
         setAvatarFile(null);
         setAvatarPreview(null);
@@ -578,39 +588,39 @@ const Disciples = () => {
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label className="text-gray-900">Prénom *</Label>
-                        <Input name="firstName" value={formData.firstName} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900" />
+                        <Input name="firstName" value={formData.firstName} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300" />
                     </div>
                     <div className="space-y-2">
                         <Label className="text-gray-900">Nom</Label>
-                        <Input name="lastName" value={formData.lastName} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900" />
+                        <Input name="lastName" value={formData.lastName} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300" />
                     </div>
                 </div>
 
                 <div className="space-y-2">
                     <Label className="text-gray-900">Email</Label>
-                    <Input type="email" name="email" value={formData.email} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900" />
+                    <Input type="email" name="email" value={formData.email} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300" />
                 </div>
                 
                 <div className="space-y-2">
                     <Label className="text-gray-900">Téléphone</Label>
-                    <Input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900" />
+                    <Input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label className="text-gray-900">Église</Label>
-                        <Input name="church" value={formData.church} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900" />
+                        <Input name="church" value={formData.church} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300" />
                     </div>
                     <div className="space-y-2">
                         <Label className="text-gray-900">Pays</Label>
-                        <Input name="country" value={formData.country} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900" />
+                        <Input name="country" value={formData.country} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300" />
                     </div>
                 </div>
 
                 <div className="space-y-2">
                     <Label className="text-gray-900">Niveau Spirituel</Label>
                     <Select value={formData.level} onValueChange={(val) => setFormData(p => ({...p, level: val}))}>
-                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                        <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300">
                             <SelectValue placeholder="Sélectionner un niveau" />
                         </SelectTrigger>
                         <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
@@ -618,20 +628,22 @@ const Disciples = () => {
                             <SelectItem value="newBelievers" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Nouveau converti</SelectItem>
                             <SelectItem value="established" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Disciple affermi</SelectItem>
                             <SelectItem value="makers" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Faiseur de disciples</SelectItem>
+                            <SelectItem value="bergers" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Berger</SelectItem>
+                            <SelectItem value="pasteurs" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Pasteur</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
 
                 <div className="space-y-2">
                     <Label className="text-gray-900">Date de début</Label>
-                    <Input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900" />
+                    <Input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300" />
                 </div>
                 
                  <div className="space-y-2">
-                    <Label className="text-gray-900">Disciple de (Parent) - Optionnel</Label>
+                    <Label className="text-gray-900">Suivi par : (Obligatoire)</Label>
                     <Select value={formData.parentId || "none"} onValueChange={(val) => setFormData(p => ({...p, parentId: val === "none" ? null : val}))}>
-                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                            <SelectValue placeholder="Aucun (Racine)" />
+                        <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300">
+                            <SelectValue placeholder="Sélectionner un responsable" />
                         </SelectTrigger>
                         <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200] max-h-60 overflow-y-auto">
                             <SelectItem value="none" className="!text-gray-900 focus:bg-gray-100 focus:!text-gray-900 cursor-pointer">Aucun (Racine)</SelectItem>
@@ -658,7 +670,7 @@ const Disciples = () => {
                         value={formData.isBaptized} 
                         onValueChange={(val) => setFormData(p => ({...p, isBaptized: val, baptismDate: val === 'non' ? '' : p.baptismDate}))}
                     >
-                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                        <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300">
                             <SelectValue placeholder="Sélectionner" />
                         </SelectTrigger>
                         <SelectContent className="bg-white border-gray-200 !text-gray-900 z-[200]">
@@ -676,13 +688,13 @@ const Disciples = () => {
                             name="baptismDate" 
                             value={formData.baptismDate} 
                             onChange={handleInputChange} 
-                            className="bg-white border-gray-300 text-gray-900" 
+                            className="bg-white border-gray-300 text-gray-900 focus:ring-0 focus:border-gray-300" 
                         />
                     </div>
                 )}
             </div>
             <DialogFooter>
-                <Button variant="ghost" onClick={() => setIsAddModalOpen(false)} className="text-gray-600 hover:text-gray-900">Annuler</Button>
+                <Button onClick={() => setIsAddModalOpen(false)} className="bg-blue-600 hover:bg-green-600 text-white">Annuler</Button>
                 <Button onClick={handleAddDisciple} disabled={isSubmitting} className="bg-purple-600 hover:bg-purple-700 text-white">
                     {isSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : null}
                     Enregistrer

@@ -230,7 +230,9 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
       'newBelievers': 'Nouveau converti',
       'established': 'Disciple affermi',
       'makers': 'Mentor',
-      'pillars': 'Pilier'
+      'bergers': 'Berger',
+      'pillars': 'Pilier',
+      'pasteurs': 'Pasteur'
     };
     setFullFormData({
       firstName: '',
@@ -584,7 +586,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                           <Label htmlFor="firstName" className="text-slate-700 font-medium text-center block">Prénom *</Label>
                           <Input 
                             id="firstName" 
-                            className="bg-white border-slate-300 text-slate-900 text-center w-full" 
+                            className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
                             value={fullFormData.firstName}
                             onChange={(e) => setFullFormData({...fullFormData, firstName: e.target.value})}
                             required
@@ -594,7 +596,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                           <Label htmlFor="lastName" className="text-slate-700 font-medium text-center block">Nom</Label>
                           <Input 
                             id="lastName" 
-                            className="bg-white border-slate-300 text-slate-900 text-center w-full"
+                            className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300"
                             value={fullFormData.lastName}
                             onChange={(e) => setFullFormData({...fullFormData, lastName: e.target.value})}
                           />
@@ -627,7 +629,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                           <Label htmlFor="church" className="text-slate-700 font-medium text-center block">Église</Label>
                           <Input 
                             id="church" 
-                            className="bg-white border-slate-300 text-slate-900 text-center w-full" 
+                            className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
                             value={fullFormData.church}
                             onChange={(e) => setFullFormData({...fullFormData, church: e.target.value})}
                           />
@@ -636,7 +638,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                           <Label htmlFor="country" className="text-slate-700 font-medium text-center block">Pays</Label>
                           <Input 
                             id="country" 
-                            className="bg-white border-slate-300 text-slate-900 text-center w-full" 
+                            className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
                             value={fullFormData.country}
                             onChange={(e) => setFullFormData({...fullFormData, country: e.target.value})}
                           />
@@ -649,7 +651,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                           value={fullFormData.spiritualLevel} 
                           onValueChange={(val) => setFullFormData({...fullFormData, spiritualLevel: val})}
                         >
-                          <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full">
+                          <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
@@ -659,7 +661,9 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                             <SelectItem value="Nouveau converti" className="focus:bg-gray-100 focus:!text-gray-900">Nouveau converti</SelectItem>
                             <SelectItem value="Disciple affermi" className="focus:bg-gray-100 focus:!text-gray-900">Disciple affermi</SelectItem>
                             <SelectItem value="Mentor" className="focus:bg-gray-100 focus:!text-gray-900">Mentor</SelectItem>
+                            <SelectItem value="Berger" className="focus:bg-gray-100 focus:!text-gray-900">Berger</SelectItem>
                             {isSupervisor && <SelectItem value="Pilier" className="focus:bg-gray-100 focus:!text-gray-900">Pilier</SelectItem>}
+                            <SelectItem value="Pasteur" className="focus:bg-gray-100 focus:!text-gray-900">Pasteur</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -676,13 +680,13 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                       </div>
 
                       <div className="space-y-2 max-w-2xl mx-auto">
-                        <Label className="text-slate-700 font-medium text-center block">Disciple de (Parent) - Optionnel</Label>
+                        <Label className="text-slate-700 font-medium text-center block">Suivi par : (Obligatoire)</Label>
                         <Select 
                           value={fullFormData.parentDisciple}
                           onValueChange={(val) => setFullFormData({...fullFormData, parentDisciple: val})}
                         >
-                          <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full">
-                            <SelectValue placeholder="Aucun (Racine)" />
+                          <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
+                            <SelectValue placeholder="Sélectionner un responsable" />
                           </SelectTrigger>
                           <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200] max-h-[300px] overflow-y-auto">
                             <SelectItem value="none" className="focus:bg-gray-100 focus:!text-gray-900">Aucun (Racine)</SelectItem>
@@ -701,7 +705,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                           value={fullFormData.isBaptized} 
                           onValueChange={(val) => setFullFormData({...fullFormData, isBaptized: val, baptismDate: val === 'non' ? '' : fullFormData.baptismDate})}
                         >
-                          <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full">
+                          <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
@@ -727,12 +731,11 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                       <div className="flex gap-3 pt-4 justify-center max-w-2xl mx-auto">
                         <Button 
                           type="button"
-                          variant="outline" 
                           onClick={() => {
                             setIsAdding(false);
                             initializeFormData();
                           }} 
-                          className="flex-1 max-w-xs border-gray-300 text-gray-700 hover:bg-gray-50"
+                          className="flex-1 max-w-xs bg-blue-600 hover:bg-green-600 text-white"
                         >
                           Annuler
                         </Button>

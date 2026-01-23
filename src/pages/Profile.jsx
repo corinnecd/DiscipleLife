@@ -1,22 +1,25 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/components/ui/use-toast';
+import { Checkbox } from '@/components/ui/checkbox';
 import { getInitials } from '@/lib/utils';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
-import { Loader2, Camera, Save, User } from 'lucide-react';
+import { Loader2, Camera, Save, User, X } from 'lucide-react';
 import { compressImage } from '@/lib/ImageCompression';
 import { Progress } from '@/components/ui/progress';
 
 const Profile = () => {
-  const { user, refreshProfile } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const { handleError } = useErrorHandler();
+  const navigate = useNavigate();
   
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,6 +29,12 @@ const Profile = () => {
   // Avatar Upload
   const [avatarFile, setAvatarFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // Formations PCNC disponibles
+  const formationsPCNC = ['001', '101', '201', 'RTT', 'IEBI', 'PILLIERS'];
+  
+  // État pour les formations sélectionnées (tableau)
+  const [selectedFormations, setSelectedFormations] = useState([]);
 
   useEffect(() => {
     if (user) fetchProfile();
@@ -41,6 +50,17 @@ const Profile = () => {
       
       if (error) throw error;
       setProfile(data);
+      
+      // Initialiser les formations sélectionnées depuis la base de données
+      if (data.formations_pcnc_realisees) {
+        const formations = data.formations_pcnc_realisees
+          .split(',')
+          .map(f => f.trim())
+          .filter(f => f !== '');
+        setSelectedFormations(formations);
+      } else {
+        setSelectedFormations([]);
+      }
 
       // Si le profil est un superviseur, récupérer le nom de la famille
       if (data.role === 'superviseur') {
@@ -86,24 +106,69 @@ const Profile = () => {
       }
 
       // 2. Update Profile
-      const { error } = await supabase
+      const formationsValue = selectedFormations.length > 0 
+        ? selectedFormations.join(', ') 
+        : null;
+      
+      // Log pour déboguer
+      console.log('Formations à sauvegarder:', formationsValue);
+      console.log('selectedFormations:', selectedFormations);
+      
+      const { error, data } = await supabase
         .from('profils')
         .update({
           first_name: profile.first_name,
           last_name: profile.last_name,
           avatar_url: avatarUrl,
+          formations_pcnc_realisees: formationsValue,
           updated_at: new Date().toISOString()
         })
-        .eq('id', user.id);
+        .eq('id', user.id)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur Supabase:', error);
+        console.error('Code erreur:', error.code);
+        console.error('Message erreur:', error.message);
+        console.error('Détails erreur:', error.details);
+        throw error;
+      }
       
-      await refreshProfile(); // Refresh context
-      toast({ title: "Profil mis à jour", description: "Vos modifications ont été enregistrées." });
+      console.log('Profil mis à jour avec succès:', data);
+      
+      // Afficher le toast avec durée de 3 secondes
+      const toastId = toast({ 
+        title: "Profil mis à jour", 
+        description: "Vos modifications ont été enregistrées.",
+        className: "bg-green-600 text-white border-0 p-4 [&>div]:text-white [&>div>div]:text-white [&>div]:text-sm [&>div>div]:text-xs",
+        duration: 3000
+      });
+      
+      // Forcer la fermeture après 3 secondes
+      setTimeout(() => {
+        toastId.dismiss();
+      }, 3000);
+      
       setAvatarFile(null);
       setUploadProgress(0);
+      
+      // Rediriger vers la page d'accueil après 3 secondes
+      setTimeout(() => {
+        navigate('/home');
+      }, 3000);
 
     } catch (error) {
+      console.error('Erreur complète lors de la mise à jour:', error);
+      const errorMessage = error?.message || error?.details || "Erreur inconnue";
+      const errorCode = error?.code || "UNKNOWN";
+      
+      // Message d'erreur plus détaillé
+      toast({
+        title: "Erreur lors de la sauvegarde",
+        description: `Code: ${errorCode}. ${errorMessage}`,
+        variant: "destructive"
+      });
+      
       handleError(error, { context: 'handleUpdate' }, "Échec de la mise à jour du profil.");
     } finally {
       setSaving(false);
@@ -178,6 +243,37 @@ const Profile = () => {
                          onChange={e => setProfile({...profile, last_name: e.target.value})}
                          className="bg-white border-gray-300 text-gray-900"
                       />
+                   </div>
+                </div>
+
+                {/* Formations PCNC réalisées */}
+                <div className="space-y-3">
+                   <label className="text-sm font-medium text-gray-900">Formations PCNC réalisées</label>
+                   
+                   {/* Cases à cocher pour les formations */}
+                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {formationsPCNC.map((formation) => (
+                         <div key={formation} className="flex items-center space-x-2">
+                            <Checkbox
+                               id={`formation-${formation}`}
+                               checked={selectedFormations.includes(formation)}
+                               onCheckedChange={(checked) => {
+                                  if (checked) {
+                                     setSelectedFormations([...selectedFormations, formation]);
+                                  } else {
+                                     setSelectedFormations(selectedFormations.filter(f => f !== formation));
+                                  }
+                               }}
+                               className="border-gray-300"
+                            />
+                            <label
+                               htmlFor={`formation-${formation}`}
+                               className="text-sm font-medium text-gray-900 cursor-pointer"
+                            >
+                               {formation}
+                            </label>
+                         </div>
+                      ))}
                    </div>
                 </div>
 
