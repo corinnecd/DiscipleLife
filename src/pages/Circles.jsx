@@ -847,12 +847,19 @@ const Circles = () => {
 
   useEffect(() => { fetchCounts(); }, [user]);
 
-  const renderCircle = (key, angle, radius) => {
+  const renderCircle = (key, angle, radius, isCenter = false) => {
     const category = CATEGORIES[key];
     const count = counts[key] || 0;
-    // Calculer la position en fonction de l'angle et du rayon
-    const x = Math.cos(angle * Math.PI / 180) * radius;
-    const y = Math.sin(angle * Math.PI / 180) * radius;
+    
+    // Si c'est le cercle central, position fixe au centre
+    let x = 0;
+    let y = 0;
+    
+    if (!isCenter && angle !== undefined && radius !== undefined) {
+      // Calculer la position en fonction de l'angle et du rayon
+      x = Math.cos(angle * Math.PI / 180) * radius;
+      y = Math.sin(angle * Math.PI / 180) * radius;
+    }
     
     return (
         <motion.div 
@@ -860,16 +867,17 @@ const Circles = () => {
             whileHover={{ scale: 1.08, zIndex: 20 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setActiveCategory(category)}
-            className={`absolute w-32 h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 lg:w-44 lg:h-44 rounded-full ${category.color} flex flex-col items-center justify-center cursor-pointer shadow-lg hover:shadow-xl hover:ring-2 hover:ring-white/40 z-10 transition-all duration-300`}
+            className={`absolute w-40 h-40 sm:w-44 sm:h-44 md:w-48 md:h-48 lg:w-52 lg:h-52 xl:w-56 xl:h-56 rounded-full ${category.color} flex flex-col items-center justify-center cursor-pointer shadow-lg hover:shadow-xl hover:ring-2 hover:ring-white/40 z-10 transition-all duration-300`}
             style={{
-              left: `calc(50% + ${x}px)`,
-              top: `calc(50% + ${y}px)`,
-              transform: 'translate(-50%, -50%)'
+              left: isCenter ? '50%' : `calc(50% + ${x}px)`,
+              top: isCenter ? '50%' : `calc(50% + ${y}px)`,
+              transform: 'translate(-50%, -50%)',
+              zIndex: isCenter ? 5 : 10
             }}
          >
              <div className="flex flex-col items-center justify-center text-center px-2">
-                <span className="text-[8px] sm:text-[9px] md:text-[10px] lg:text-[11px] font-bold text-white/90 uppercase tracking-wider mb-1 whitespace-pre-line leading-tight">{category.title}</span>
-                {count === 0 ? <Plus className="text-white/60" size={20} /> : <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white drop-shadow-md">{count}</span>}
+                <span className="text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] xl:text-[13px] font-bold text-white/90 uppercase tracking-wider mb-1 whitespace-pre-line leading-tight">{category.title}</span>
+                {count === 0 ? <Plus className="text-white/60" size={22} /> : <span className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-white drop-shadow-md">{count}</span>}
              </div>
          </motion.div>
     );
@@ -883,30 +891,20 @@ const Circles = () => {
             <p className="text-sm md:text-base text-gray-600 max-w-md mx-auto">Identifiez et priez pour les personnes que Dieu a placées dans votre vie.</p>
         </div>
 
-        <div className="relative w-full max-w-4xl flex items-center justify-center my-8">
-          <div className="relative w-[600px] h-[600px] sm:w-[700px] sm:h-[700px] md:w-[800px] md:h-[800px] lg:w-[900px] lg:h-[900px]">
-            {/* Disposition en cercle avec intersections légères */}
-            {/* 7 cercles disposés en cercle - angles équidistants avec rayon ajusté pour intersections */}
-            {isSupervisor ? (
-              <>
-                {renderCircle('newArrivals', -90, 200)} {/* Haut */}
-                {renderCircle('evangelized', -51.4, 210)} {/* Haut-droite */}
-                {renderCircle('unbelievers', -12.9, 210)} {/* Droite-haut */}
-                {renderCircle('newBelievers', 25.7, 210)} {/* Droite-bas */}
-                {renderCircle('makers', 64.3, 210)} {/* Bas-droite */}
-                {renderCircle('established', 102.9, 210)} {/* Bas-gauche */}
-                {renderCircle('pillars', 141.4, 210)} {/* Gauche-bas */}
-              </>
-            ) : (
-              <>
-                {renderCircle('newArrivals', -90, 200)} {/* Haut */}
-                {renderCircle('evangelized', -45, 210)} {/* Haut-droite */}
-                {renderCircle('unbelievers', 0, 200)} {/* Droite */}
-                {renderCircle('newBelievers', 45, 210)} {/* Bas-droite */}
-                {renderCircle('makers', 90, 200)} {/* Bas */}
-                {renderCircle('established', 135, 210)} {/* Bas-gauche */}
-              </>
-            )}
+        <div className="relative w-full max-w-5xl flex items-center justify-center my-8">
+          <div className="relative w-[700px] h-[700px] sm:w-[800px] sm:h-[800px] md:w-[900px] md:h-[900px] lg:w-[1000px] lg:h-[1000px] xl:w-[1100px] xl:h-[1100px]">
+            {/* Cercle Piliers au centre */}
+            {isSupervisor && renderCircle('pillars', 0, 0, true)}
+            
+            {/* 6 autres cercles disposés en cercle fermé autour du cercle central */}
+            {/* Angles équidistants : 360/6 = 60 degrés entre chaque cercle */}
+            {/* Rayon ajusté pour créer des intersections avec le cercle central et entre eux */}
+            {renderCircle('newArrivals', -90, 240)} {/* Haut */}
+            {renderCircle('evangelized', -30, 250)} {/* Haut-droite */}
+            {renderCircle('unbelievers', 30, 250)} {/* Droite */}
+            {renderCircle('newBelievers', 90, 240)} {/* Bas-droite */}
+            {renderCircle('makers', 150, 250)} {/* Bas */}
+            {renderCircle('established', 210, 250)} {/* Bas-gauche */}
           </div>
         </div>
         
