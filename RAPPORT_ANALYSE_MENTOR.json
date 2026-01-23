@@ -1,0 +1,1905 @@
+{
+  "date": "2026-01-23T19:22:16.788Z",
+  "baseDeDonnees": {
+    "mentors": 0,
+    "mentorsPilliers": 0
+  },
+  "code": {
+    "fichiers": 55,
+    "occurrences": 297,
+    "details": {
+      "src/App.jsx": [
+        {
+          "file": "src/App.jsx",
+          "line": 95,
+          "content": "'mentor': '/space/mentor',",
+          "matches": 2
+        },
+        {
+          "file": "src/App.jsx",
+          "line": 125,
+          "content": "if (role === 'mentor') {",
+          "matches": 1
+        },
+        {
+          "file": "src/App.jsx",
+          "line": 140,
+          "content": "<Route path=\"/signup/mentor\" element={<SignupMentor />} />",
+          "matches": 1
+        },
+        {
+          "file": "src/App.jsx",
+          "line": 160,
+          "content": "- Superviseur : ne peut pas accéder au dashboard pasteur, mais peut accéder au dashboard mentor et disciple",
+          "matches": 1
+        },
+        {
+          "file": "src/App.jsx",
+          "line": 161,
+          "content": "- Mentor : ne peut pas accéder au dashboard pasteur ni au dashboard superviseur",
+          "matches": 1
+        },
+        {
+          "file": "src/App.jsx",
+          "line": 173,
+          "content": "<Route path=\"space/mentor\" element={",
+          "matches": 1
+        },
+        {
+          "file": "src/App.jsx",
+          "line": 174,
+          "content": "<ProtectedDashboard allowedRoles={['super_admin', 'admin', 'pasteur', 'superviseur', 'mentor']} dashboardName=\"Dashboard Mentor\">",
+          "matches": 2
+        },
+        {
+          "file": "src/App.jsx",
+          "line": 216,
+          "content": "{/* Mentor Specific Features */}",
+          "matches": 1
+        }
+      ],
+      "src/components/GenealogicalTree/PersonDetails.jsx": [
+        {
+          "file": "src/components/GenealogicalTree/PersonDetails.jsx",
+          "line": 22,
+          "content": "'mentor': 'Mentor (Pilier)',",
+          "matches": 2
+        }
+      ],
+      "src/components/GenealogicalTree/SearchBar.jsx": [
+        {
+          "file": "src/components/GenealogicalTree/SearchBar.jsx",
+          "line": 4,
+          "content": "* Permet de rechercher n'importe quelle personne (pasteur, superviseur, mentor, disciple)",
+          "matches": 1
+        }
+      ],
+      "src/components/PrivacyToggle.jsx": [
+        {
+          "file": "src/components/PrivacyToggle.jsx",
+          "line": 7,
+          "content": "{ value: 'mentor_only', label: 'Mentor seul', icon: Lock },",
+          "matches": 1
+        }
+      ],
+      "src/components/ProtectedRoute.jsx": [
+        {
+          "file": "src/components/ProtectedRoute.jsx",
+          "line": 44,
+          "content": "// Mentor/Berger a accès à sa vue",
+          "matches": 1
+        },
+        {
+          "file": "src/components/ProtectedRoute.jsx",
+          "line": 45,
+          "content": "if (role === 'mentor' && requiredRole === 'mentor') {",
+          "matches": 2
+        }
+      ],
+      "src/components/VoiceInbox.jsx": [
+        {
+          "file": "src/components/VoiceInbox.jsx",
+          "line": 60,
+          "content": "<h3 className=\"text-lg font-semibold text-slate-900\">Messages Vocaux de votre Mentor</h3>",
+          "matches": 1
+        }
+      ],
+      "src/context/RoleContext.jsx": [
+        {
+          "file": "src/context/RoleContext.jsx",
+          "line": 57,
+          "content": "userRole === 'mentor' ||",
+          "matches": 1
+        },
+        {
+          "file": "src/context/RoleContext.jsx",
+          "line": 82,
+          "content": "isMentor: role === 'mentor',",
+          "matches": 1
+        },
+        {
+          "file": "src/context/RoleContext.jsx",
+          "line": 92,
+          "content": "hasBergerView: role === 'mentor' || permissions.canHaveDisciples,",
+          "matches": 1
+        },
+        {
+          "file": "src/context/RoleContext.jsx",
+          "line": 94,
+          "content": "canHaveDisciples: permissions.canHaveDisciples || role === 'mentor' || role === 'superviseur' || role === 'admin' || role === 'super_admin' || role === 'pasteur'",
+          "matches": 1
+        }
+      ],
+      "src/lib/genealogicalUtils.js": [
+        {
+          "file": "src/lib/genealogicalUtils.js",
+          "line": 83,
+          "content": "user_id: c.user_id, // Mentor qui suit cette personne",
+          "matches": 1
+        },
+        {
+          "file": "src/lib/genealogicalUtils.js",
+          "line": 163,
+          "content": "// Disciple → trouver son mentor (via famille_id ou cercle_personnes)",
+          "matches": 1
+        },
+        {
+          "file": "src/lib/genealogicalUtils.js",
+          "line": 195,
+          "content": "// user_id est le mentor",
+          "matches": 1
+        },
+        {
+          "file": "src/lib/genealogicalUtils.js",
+          "line": 215,
+          "content": "} else if (data.role === 'mentor') {",
+          "matches": 1
+        },
+        {
+          "file": "src/lib/genealogicalUtils.js",
+          "line": 216,
+          "content": "// Mentor → trouver son superviseur (via famille)",
+          "matches": 1
+        },
+        {
+          "file": "src/lib/genealogicalUtils.js",
+          "line": 282,
+          "content": "// Trouver le parent (mentor via user_id ou parent_disciple_id)",
+          "matches": 1
+        },
+        {
+          "file": "src/lib/genealogicalUtils.js",
+          "line": 284,
+          "content": "// user_id est le mentor",
+          "matches": 1
+        },
+        {
+          "file": "src/lib/genealogicalUtils.js",
+          "line": 381,
+          "content": "if (data.role === 'mentor' || data.role === 'superviseur' || data.role === 'pasteur') {",
+          "matches": 1
+        },
+        {
+          "file": "src/lib/genealogicalUtils.js",
+          "line": 514,
+          "content": "'mentor': 'Mentor (Pilier)',",
+          "matches": 2
+        }
+      ],
+      "src/pages/AccessCode.jsx": [
+        {
+          "file": "src/pages/AccessCode.jsx",
+          "line": 77,
+          "content": "// For this implementation, let's assume we update a profile field or notify admin/mentor.",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AccessCode.jsx",
+          "line": 78,
+          "content": "// Or better, let's assume we insert into 'disciples' table if it's a mentor group code?",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AccessCode.jsx",
+          "line": 87,
+          "content": "mentor_id: codeData.created_by, // Assuming creator is mentor",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AccessCode.jsx",
+          "line": 105,
+          "content": "await supabase.from('profils').update({ role: 'mentor' }).eq('id', user.id);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AccessCode.jsx",
+          "line": 106,
+          "content": "benefitDescription = \"Votre rôle a été mis à jour (Mentor).\";",
+          "matches": 1
+        }
+      ],
+      "src/pages/AdminAccessCodeManager.jsx": [
+        {
+          "file": "src/pages/AdminAccessCodeManager.jsx",
+          "line": 254,
+          "content": "<SelectItem value=\"role\">Assigner Rôle (Mentor)</SelectItem>",
+          "matches": 1
+        }
+      ],
+      "src/pages/AdminAnalytics.jsx": [
+        {
+          "file": "src/pages/AdminAnalytics.jsx",
+          "line": 84,
+          "content": "supabase.from('profils').select('*', { count: 'exact', head: true }).eq('role', 'mentor'),",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AdminAnalytics.jsx",
+          "line": 335,
+          "content": "topPerformers.mentors.map((mentor, i) => (",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AdminAnalytics.jsx",
+          "line": 336,
+          "content": "<div key={mentor.id} className=\"flex items-center justify-between p-2 rounded-lg hover:bg-slate-50\">",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AdminAnalytics.jsx",
+          "line": 341,
+          "content": "<div className=\"text-sm font-medium\">{mentor.name}</div>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AdminAnalytics.jsx",
+          "line": 344,
+          "content": "{mentor.count}",
+          "matches": 1
+        }
+      ],
+      "src/pages/AdminReportsView.jsx": [
+        {
+          "file": "src/pages/AdminReportsView.jsx",
+          "line": 273,
+          "content": "<th className=\"px-6 py-4\">Mentor</th>",
+          "matches": 1
+        }
+      ],
+      "src/pages/AppointmentsList.jsx": [
+        {
+          "file": "src/pages/AppointmentsList.jsx",
+          "line": 30,
+          "content": "discipleId: null, // If mentor creating for disciple",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AppointmentsList.jsx",
+          "line": 59,
+          "content": "mentor:mentor_id(first_name, last_name)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AppointmentsList.jsx",
+          "line": 116,
+          "content": "// Check if mentor creating for disciple",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AppointmentsList.jsx",
+          "line": 118,
+          "content": "// If user is disciple, they might schedule with mentor. If mentor, need target.",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/AppointmentsList.jsx",
+          "line": 119,
+          "content": "// Assuming mentor view for now based on prompt context.",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/AppointmentsList.jsx",
+          "line": 123,
+          "content": "mentor_id: user.id, // Assuming creator is mentor",
+          "matches": 1
+        }
+      ],
+      "src/pages/Auth.jsx": [
+        {
+          "file": "src/pages/Auth.jsx",
+          "line": 64,
+          "content": "'mentor': '/space/mentor',",
+          "matches": 2
+        }
+      ],
+      "src/pages/Circles.jsx": [
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 82,
+          "content": "longDescription: \"Ce sont des disciples qui sont déjà mentors et qui ont été approuvés par le superviseur pour devenir des piliers. Le passage de Mentor à Pilier nécessite l'approbation du superviseur.\",",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 144,
+          "content": "// Récupérer tous les mentors (profils avec role='mentor' ou can_have_disciples=true)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 169,
+          "content": "mentorsData.forEach(mentor => {",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 170,
+          "content": "if (mentor.role === 'mentor' || mentor.role === 'admin' || mentor.is_approved_as_disciple_maker) {",
+          "matches": 4
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 171,
+          "content": "const fullName = `${mentor.first_name || ''} ${mentor.last_name || ''}`.trim() || 'Mentor';",
+          "matches": 3
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 173,
+          "content": "id: mentor.id,",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 175,
+          "content": "type: 'mentor'",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 189,
+          "content": "const fullName = `${mentorProfile.first_name || ''} ${mentorProfile.last_name || ''}`.trim() || 'Mentor';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 193,
+          "content": "type: 'mentor'",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 232,
+          "content": "'makers': 'Mentor',",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 257,
+          "content": "case 'makers': return 'Mentor';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 270,
+          "content": "case 'Mentor': return 'makers';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 287,
+          "content": "// Déterminer si le parent est un mentor (ID de profils) ou un disciple (ID de cercle_personnes)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 290,
+          "content": "// Vérifier si c'est un mentor ou un disciple",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 293,
+          "content": "if (selectedParent.type === 'mentor') {",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 303,
+          "content": "console.error('Erreur vérification entrée mentor:', mentorEntryError);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 306,
+          "content": "description: \"Impossible de vérifier l'entrée du mentor. Le disciple sera créé sans parent.\",",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 311,
+          "content": "// Le mentor a déjà une entrée dans cercle_personnes, utiliser cet ID",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 314,
+          "content": "// Le mentor n'a pas d'entrée, créer une entrée minimale pour permettre la liaison",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 323,
+          "content": ": 'Mentor';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 340,
+          "content": "console.error('Erreur création entrée mentor:', createMentorEntryError);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 343,
+          "content": "description: \"Impossible de créer l'entrée du mentor. Le disciple sera créé sans parent.\",",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 661,
+          "content": "<SelectItem value=\"Mentor\" className=\"focus:bg-gray-100 focus:!text-gray-900\">Mentor</SelectItem>",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/Circles.jsx",
+          "line": 691,
+          "content": "{member.name} {member.type === 'mentor' ? '(Mentor)' : '(Disciple)'}",
+          "matches": 2
+        }
+      ],
+      "src/pages/CreateDiscipleAccounts.jsx": [
+        {
+          "file": "src/pages/CreateDiscipleAccounts.jsx",
+          "line": 26,
+          "content": "// Récupérer tous les disciples du mentor actuel",
+          "matches": 1
+        }
+      ],
+      "src/pages/Dashboard.jsx": [
+        {
+          "file": "src/pages/Dashboard.jsx",
+          "line": 29,
+          "content": "if (role === 'mentor') {",
+          "matches": 1
+        }
+      ],
+      "src/pages/DashboardHome.jsx": [
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 41,
+          "content": "// - Superviseur : ne peut pas accéder au dashboard pasteur, mais peut accéder au dashboard mentor et disciple",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 42,
+          "content": "// - Mentor : ne peut pas accéder au dashboard pasteur ni au dashboard superviseur",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 50,
+          "content": "// Superviseur : peut accéder à son dashboard, au dashboard mentor et au dashboard disciple (pas pasteur)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 52,
+          "content": "return targetRole === 'superviseur' || targetRole === 'mentor' || targetRole === 'disciple';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 55,
+          "content": "// Mentor : ne peut accéder qu'à son dashboard (pas pasteur, pas superviseur)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 56,
+          "content": "if (role === 'mentor') {",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 57,
+          "content": "return targetRole === 'mentor';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 76,
+          "content": "description: `Vous n'avez pas les permissions nécessaires pour accéder au ${targetRole === 'pasteur' ? 'Dashboard Pasteur' : targetRole === 'superviseur' ? 'Dashboard Superviseur' : targetRole === 'mentor' ? 'Dashboard Mentor' : 'Dashboard Disciple'}.`",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 210,
+          "content": "onClick={() => handleNavigate('mentor', '/space/mentor')}",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/DashboardHome.jsx",
+          "line": 214,
+          "content": "Dashboard Mentor",
+          "matches": 1
+        }
+      ],
+      "src/pages/Disciples.jsx": [
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 126,
+          "content": "// Récupérer tous les mentors (profils avec role='mentor' ou can_have_disciples=true)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 151,
+          "content": "mentorsData.forEach(mentor => {",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 152,
+          "content": "if (mentor.role === 'mentor' || mentor.role === 'admin' || mentor.is_approved_as_disciple_maker) {",
+          "matches": 4
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 153,
+          "content": "const fullName = `${mentor.first_name || ''} ${mentor.last_name || ''}`.trim() || 'Mentor';",
+          "matches": 3
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 155,
+          "content": "id: mentor.id,",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 157,
+          "content": "type: 'mentor'",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 171,
+          "content": "const fullName = `${mentorProfile.first_name || ''} ${mentorProfile.last_name || ''}`.trim() || 'Mentor';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 175,
+          "content": "type: 'mentor'",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 263,
+          "content": "// Déterminer si le parent est un mentor (ID de profils) ou un disciple (ID de cercle_personnes)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 266,
+          "content": "// Vérifier si c'est un mentor ou un disciple",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 269,
+          "content": "if (selectedParent.type === 'mentor') {",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 279,
+          "content": "console.error('Erreur vérification entrée mentor:', mentorEntryError);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 282,
+          "content": "description: \"Impossible de vérifier l'entrée du mentor. Le disciple sera créé sans parent.\",",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 287,
+          "content": "// Le mentor a déjà une entrée dans cercle_personnes, utiliser cet ID",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 290,
+          "content": "// Le mentor n'a pas d'entrée, créer une entrée minimale pour permettre la liaison",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 299,
+          "content": ": 'Mentor';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 316,
+          "content": "console.error('Erreur création entrée mentor:', createMentorEntryError);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 319,
+          "content": "description: \"Impossible de créer l'entrée du mentor. Le disciple sera créé sans parent.\",",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 642,
+          "content": "return a.type === 'mentor' ? -1 : 1;",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/Disciples.jsx",
+          "line": 648,
+          "content": "{member.name} {member.type === 'mentor' ? '(Mentor)' : '(Disciple)'}",
+          "matches": 2
+        }
+      ],
+      "src/pages/Evangelization.jsx": [
+        {
+          "file": "src/pages/Evangelization.jsx",
+          "line": 910,
+          "content": ".in('role', ['admin', 'mentor'])",
+          "matches": 1
+        }
+      ],
+      "src/pages/FAQ.jsx": [
+        {
+          "file": "src/pages/FAQ.jsx",
+          "line": 51,
+          "content": "answer: \"Le niveau spirituel est généralement évalué par votre mentor. Cependant, vous pouvez voir votre progression dans votre profil. Discutez-en avec votre leader pour mettre à jour votre statut.\"",
+          "matches": 1
+        }
+      ],
+      "src/pages/FamillesDisciples.jsx": [
+        {
+          "file": "src/pages/FamillesDisciples.jsx",
+          "line": 524,
+          "content": "if (profil.role === 'mentor') titre = 'Mentor';",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/FamillesDisciples.jsx",
+          "line": 713,
+          "content": "// Récupérer tous les disciples qui ont ce membre comme user_id (mentor/superviseur)",
+          "matches": 1
+        }
+      ],
+      "src/pages/HelpFAQ.jsx": [
+        {
+          "file": "src/pages/HelpFAQ.jsx",
+          "line": 34,
+          "content": "answer: \"Pour créer un compte disciple, votre mentor doit vous envoyer une invitation par email. Cliquez sur le lien reçu pour configurer votre mot de passe et votre profil initial.\"",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/HelpFAQ.jsx",
+          "line": 58,
+          "content": "answer: \"Un cercle est un groupe restreint de disciples qui partagent leur progression, leurs requêtes de prière et leurs études bibliques sous la supervision d'un mentor.\"",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/HelpFAQ.jsx",
+          "line": 344,
+          "content": "<h4 className=\"font-medium text-sm text-gray-200 group-hover:text-purple-400 transition-colors\">Découvrir l'interface Mentor</h4>",
+          "matches": 1
+        }
+      ],
+      "src/pages/HomePage.jsx": [
+        {
+          "file": "src/pages/HomePage.jsx",
+          "line": 86,
+          "content": "onClick={() => navigate('/signup/mentor')}",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/HomePage.jsx",
+          "line": 89,
+          "content": "<UserCheck className=\"mr-2\" /> Je suis Mentor",
+          "matches": 1
+        }
+      ],
+      "src/pages/MentorRichDashboard.jsx": [
+        {
+          "file": "src/pages/MentorRichDashboard.jsx",
+          "line": 136,
+          "content": "console.error(\"Error fetching mentor data\", error);",
+          "matches": 1
+        }
+      ],
+      "src/pages/MySummaries.jsx": [
+        {
+          "file": "src/pages/MySummaries.jsx",
+          "line": 51,
+          "content": "<p className=\"text-slate-500\">Partagez votre progression et vos réflexions avec votre mentor et votre groupe.</p>",
+          "matches": 1
+        }
+      ],
+      "src/pages/SendReport.jsx": [
+        {
+          "file": "src/pages/SendReport.jsx",
+          "line": 165,
+          "content": "// Fetch attendance counts for the selected month (mentor + disciples)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/SendReport.jsx",
+          "line": 189,
+          "content": "// Inclure l'ID du mentor lui-même",
+          "matches": 1
+        }
+      ],
+      "src/pages/SignupMentor.jsx": [
+        {
+          "file": "src/pages/SignupMentor.jsx",
+          "line": 27,
+          "content": "titre: '' // Nouveau champ pour le titre (Pasteur, Berger, Mentor)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/SignupMentor.jsx",
+          "line": 60,
+          "content": "role: 'mentor', // Explicitly setting mentor role",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/SignupMentor.jsx",
+          "line": 83,
+          "content": "description: \"Bienvenue, Mentor. Vérifiez votre email pour confirmer.\",",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/SignupMentor.jsx",
+          "line": 107,
+          "content": "<CardTitle className=\"text-2xl\">Inscription Mentor</CardTitle>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/SignupMentor.jsx",
+          "line": 139,
+          "content": "<SelectItem value=\"Mentor\" className=\"text-white focus:bg-purple-500/20\">",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/SignupMentor.jsx",
+          "line": 140,
+          "content": "Mentor",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/SignupMentor.jsx",
+          "line": 167,
+          "content": "{loading ? <Loader2 className=\"animate-spin\" /> : \"Créer mon compte Mentor\"}",
+          "matches": 1
+        }
+      ],
+      "src/pages/SignupSuperviseur.jsx": [
+        {
+          "file": "src/pages/SignupSuperviseur.jsx",
+          "line": 28,
+          "content": "titre: '' // Nouveau champ pour le titre (Pasteur, Berger, Mentor)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/SignupSuperviseur.jsx",
+          "line": 212,
+          "content": "<SelectItem value=\"Mentor\" className=\"text-white focus:bg-amber-500/20\">",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/SignupSuperviseur.jsx",
+          "line": 213,
+          "content": "Mentor",
+          "matches": 1
+        }
+      ],
+      "src/pages/Statistics.jsx": [
+        {
+          "file": "src/pages/Statistics.jsx",
+          "line": 103,
+          "content": "// OPTIMISATION: Utiliser le cache pour les événements mentor (TTL: 5 minutes)",
+          "matches": 1
+        }
+      ],
+      "src/pages/TestimonyForm.jsx": [
+        {
+          "file": "src/pages/TestimonyForm.jsx",
+          "line": 56,
+          "content": "description: \"Votre témoignage est en attente de validation par un mentor.\",",
+          "matches": 1
+        }
+      ],
+      "src/pages/VoiceMessageCenter.jsx": [
+        {
+          "file": "src/pages/VoiceMessageCenter.jsx",
+          "line": 27,
+          "content": "// Assuming 'cercle_personnes' contains disciples managed by this user (mentor)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/VoiceMessageCenter.jsx",
+          "line": 29,
+          "content": "// We'll query 'cercle_personnes' where user_id matches mentor",
+          "matches": 1
+        }
+      ],
+      "src/pages/dashboards/AdminDashboard.jsx": [
+        {
+          "file": "src/pages/dashboards/AdminDashboard.jsx",
+          "line": 12,
+          "content": "* - Mentor : Dashboard Mentor",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/dashboards/AdminDashboard.jsx",
+          "line": 31,
+          "content": "// Si l'utilisateur est mentor ou peut avoir des disciples, afficher le Dashboard Mentor",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/dashboards/AdminDashboard.jsx",
+          "line": 32,
+          "content": "if (role === 'mentor' || canHaveDisciples) {",
+          "matches": 1
+        }
+      ],
+      "src/pages/dashboards/DiscipleDashboard.jsx": [
+        {
+          "file": "src/pages/dashboards/DiscipleDashboard.jsx",
+          "line": 47,
+          "content": "// Upgrade to Mentor State",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/DiscipleDashboard.jsx",
+          "line": 152,
+          "content": ".update({ role: 'mentor', is_approved_as_disciple_maker: true })",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/DiscipleDashboard.jsx",
+          "line": 170,
+          "content": "description: \"Vous êtes maintenant Mentor. Redirection vers votre nouvel espace...\",",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/DiscipleDashboard.jsx",
+          "line": 182,
+          "content": "console.error(\"Mentor upgrade error:\", error);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/DiscipleDashboard.jsx",
+          "line": 326,
+          "content": "Devenir Mentor",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/DiscipleDashboard.jsx",
+          "line": 331,
+          "content": "{/* Mentor Upgrade Modal */}",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/DiscipleDashboard.jsx",
+          "line": 338,
+          "content": "<DialogTitle className=\"text-center text-xl\">Devenir Mentor</DialogTitle>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/DiscipleDashboard.jsx",
+          "line": 340,
+          "content": "Entrez le code d'activation fourni par un responsable pour passer au statut de Mentor.",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/DiscipleDashboard.jsx",
+          "line": 350,
+          "content": "placeholder=\"Ex: MENTOR-2024-XY\"",
+          "matches": 1
+        }
+      ],
+      "src/pages/dashboards/MentorDashboard.jsx": [
+        {
+          "file": "src/pages/dashboards/MentorDashboard.jsx",
+          "line": 75,
+          "content": "// OPTIMISATION: Utiliser le cache pour les données du mentor (TTL: 2 minutes)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/MentorDashboard.jsx",
+          "line": 161,
+          "content": "handleError(error, { context: 'fetchMentorData' }, \"Impossible de charger les données du mentor.\");",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/MentorDashboard.jsx",
+          "line": 177,
+          "content": "// Fetch appointments for these disciples (where mentor is current user)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/MentorDashboard.jsx",
+          "line": 291,
+          "content": "<h1 className=\"text-2xl font-bold text-gray-900 flex items-center gap-2\">Tableau de Bord Mentor</h1>",
+          "matches": 1
+        }
+      ],
+      "src/pages/dashboards/PasteurDashboard.jsx": [
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 943,
+          "content": "// Récupérer tous les mentors (role='mentor' ou is_approved_as_disciple_maker=true) des familles sous la responsabilité du pasteur",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 948,
+          "content": "// Récupérer tous les profils avec role='mentor' ou is_approved_as_disciple_maker=true qui appartiennent aux familles",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 953,
+          "content": ".or('role.eq.mentor,is_approved_as_disciple_maker.eq.true');",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 959,
+          "content": "// Pour chaque mentor, calculer les stats",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 961,
+          "content": "mentorsProfils.map(async (mentor) => {",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 963,
+          "content": "const famille = familles.find(f => f.famille?.id === mentor.famille_id);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 966,
+          "content": "// 2. Compter le nombre de disciples (depuis cercle_personnes où user_id = mentor.id)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 970,
+          "content": ".eq('user_id', mentor.id);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 972,
+          "content": "if (countError) console.error(`Erreur comptage disciples pour mentor ${mentor.id}:`, countError);",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 983,
+          "content": ".eq('user_id', mentor.id);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1022,
+          "content": "mentor_id: mentor.id,",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1023,
+          "content": "nom: mentor.last_name || '',",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1024,
+          "content": "prenom: mentor.first_name || '',",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1063,
+          "content": "const filteredMentors = mentorsConsolides.filter(mentor => {",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1066,
+          "content": "const nomMentor = normalizeString(`${mentor.prenom} ${mentor.nom}`);",
+          "matches": 2
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1067,
+          "content": "const nomEglise = normalizeString(mentor.eglise || '');",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1074,
+          "content": "const exportData = filteredMentors.map(mentor => ({",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1075,
+          "content": "Nom: mentor.nom || '',",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1076,
+          "content": "Prénom: mentor.prenom || '',",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1077,
+          "content": "Église: mentor.eglise || 'N/A',",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1078,
+          "content": "'Nombre de Disciples': mentor.nombre_disciples || 0,",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1079,
+          "content": "'Avancement (%)': mentor.avancement_pourcentage || 0,",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1080,
+          "content": "'Disciples Présents': mentor.disciples_presents || 0,",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 1081,
+          "content": "'Taux Participation Semaine (%)': mentor.taux_participation_semaine || 0",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2005,
+          "content": "Vue d'ensemble de tous les mentors (piliers) avec leurs statistiques de progression ({filteredMentors.length} mentor{filteredMentors.length > 1 ? 's' : ''})",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2032,
+          "content": "placeholder=\"Rechercher un mentor (nom, prénom, église)...\"",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2058,
+          "content": "? 'Aucun mentor trouvé pour votre recherche.'",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2059,
+          "content": ": 'Aucun mentor trouvé dans les familles sous votre responsabilité.'}",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2077,
+          "content": "{filteredMentors.map((mentor) => (",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2078,
+          "content": "<TableRow key={mentor.mentor_id} className=\"hover:bg-gray-50 transition-colors\">",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2080,
+          "content": "<span className=\"font-semibold text-gray-900\">{mentor.nom}</span>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2083,
+          "content": "<span className=\"font-semibold text-gray-900\">{mentor.prenom}</span>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2086,
+          "content": "<span className=\"text-gray-700\">{mentor.eglise}</span>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2089,
+          "content": "<span className=\"font-semibold text-gray-900\">{mentor.nombre_disciples}</span>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2096,
+          "content": "mentor.avancement_pourcentage >= 100",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2098,
+          "content": ": mentor.avancement_pourcentage >= 50",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2102,
+          "content": "style={{ width: `${Math.min(mentor.avancement_pourcentage, 100)}%` }}",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2106,
+          "content": "{mentor.avancement_pourcentage}%",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2111,
+          "content": "<span className=\"font-semibold text-gray-900\">{mentor.disciples_presents}</span>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2115,
+          "content": "mentor.taux_participation_semaine >= 70",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2117,
+          "content": ": mentor.taux_participation_semaine >= 50",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/PasteurDashboard.jsx",
+          "line": 2121,
+          "content": "{mentor.taux_participation_semaine}%",
+          "matches": 1
+        }
+      ],
+      "src/pages/dashboards/SuperviseurDashboard.jsx": [
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 295,
+          "content": "// Fonction pour mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 306,
+          "content": "console.log('✅ Aucun disciple à mettre à jour en Mentor/Pilier');",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 310,
+          "content": "console.log(`🔄 Mise à jour de ${membresAUpdater.length} disciple(s) en Mentor/Pilier:`,",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 318,
+          "content": "role: 'mentor',",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 330,
+          "content": "console.log(`✅ ${membre.first_name} ${membre.last_name} mis à jour en Mentor/Pilier`);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 340,
+          "content": "console.log(`✅ ${successCount} disciple(s) automatiquement promus Mentor/Pilier (mise à jour silencieuse)`);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 466,
+          "content": "mentor_user_id: d.user_id // Stocker le user_id qui est le mentor",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 513,
+          "content": ".or('role.eq.mentor,is_approved_as_disciple_maker.eq.true') : Promise.resolve({ data: [] }),",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 613,
+          "content": "// 1. Trouver le mentor",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 743,
+          "content": ".or('role.eq.mentor,is_approved_as_disciple_maker.eq.true');",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 748,
+          "content": "// Pour chaque mentor, calculer les stats",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 750,
+          "content": "mentorsProfils.map(async (mentor) => {",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 752,
+          "content": "const nom = mentor.last_name || '';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 753,
+          "content": "const prenom = mentor.first_name || '';",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 762,
+          "content": ".eq('user_id', mentor.id);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 774,
+          "content": ".eq('user_id', mentor.id);",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 811,
+          "content": "mentor_id: mentor.id,",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 1256,
+          "content": "// Mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 2212,
+          "content": "// Récupérer tous les disciples qui ont ce membre comme user_id (mentor/superviseur)",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4335,
+          "content": "<p className=\"text-gray-500\">Aucun mentor trouvé dans votre famille.</p>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4352,
+          "content": "{mentorsConsolides.map((mentor) => (",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4353,
+          "content": "<TableRow key={mentor.mentor_id} className=\"hover:bg-gray-50 hover:text-black\">",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4354,
+          "content": "<TableCell className=\"font-semibold text-gray-900\">{mentor.nom}</TableCell>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4355,
+          "content": "<TableCell className=\"font-semibold text-gray-900\">{mentor.prenom}</TableCell>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4356,
+          "content": "<TableCell className=\"text-gray-700\">{mentor.eglise}</TableCell>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4358,
+          "content": "<span className=\"font-semibold text-gray-900\">{mentor.nombre_disciples}</span>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4365,
+          "content": "mentor.avancement_pourcentage >= 100",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4367,
+          "content": ": mentor.avancement_pourcentage >= 50",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4371,
+          "content": "style={{ width: `${Math.min(mentor.avancement_pourcentage, 100)}%` }}",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4375,
+          "content": "{mentor.avancement_pourcentage}%",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4380,
+          "content": "<span className=\"font-semibold text-gray-900\">{mentor.disciples_presents}</span>",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4384,
+          "content": "mentor.taux_participation_semaine >= 70",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4386,
+          "content": ": mentor.taux_participation_semaine >= 50",
+          "matches": 1
+        },
+        {
+          "file": "src/pages/dashboards/SuperviseurDashboard.jsx",
+          "line": 4390,
+          "content": "{mentor.taux_participation_semaine}%",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/001_objectif1_evangelisation_tables.sql": [
+        {
+          "file": "sql/migrations/001_objectif1_evangelisation_tables.sql",
+          "line": 82,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/001_objectif1_evangelisation_tables.sql",
+          "line": 92,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/001_objectif1_evangelisation_tables.sql",
+          "line": 98,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/001_objectif1_evangelisation_tables.sql",
+          "line": 109,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/001_objectif1_evangelisation_tables.sql",
+          "line": 125,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/001_objectif1_evangelisation_tables.sql",
+          "line": 135,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/002_objectif1_codes_invitation.sql": [
+        {
+          "file": "sql/migrations/002_objectif1_codes_invitation.sql",
+          "line": 58,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/002_objectif1_codes_invitation.sql",
+          "line": 75,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/002_objectif1_codes_invitation.sql",
+          "line": 85,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/003_objectif1a_nouvelles_ames.sql": [
+        {
+          "file": "sql/migrations/003_objectif1a_nouvelles_ames.sql",
+          "line": 108,
+          "content": "EXISTS (SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor'))",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/003_objectif1a_nouvelles_ames.sql",
+          "line": 116,
+          "content": "EXISTS (SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor'))",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/003_objectif1a_nouvelles_ames.sql",
+          "line": 156,
+          "content": "EXISTS (SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor'))",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/003_objectif1a_nouvelles_ames.sql",
+          "line": 164,
+          "content": "EXISTS (SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor'))",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/006_fix_codes_invitation_lien.sql": [
+        {
+          "file": "sql/migrations/006_fix_codes_invitation_lien.sql",
+          "line": 71,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/006_fix_codes_invitation_lien.sql",
+          "line": 171,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/006_fix_codes_invitation_lien.sql",
+          "line": 186,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/006_fix_codes_invitation_lien.sql",
+          "line": 194,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/007_create_codes_invitation_complete.sql": [
+        {
+          "file": "sql/migrations/007_create_codes_invitation_complete.sql",
+          "line": 95,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/007_create_codes_invitation_complete.sql",
+          "line": 175,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/007_create_codes_invitation_complete.sql",
+          "line": 193,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/007_create_codes_invitation_complete.sql",
+          "line": 201,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/008_verification_et_creation_codes_invitation.sql": [
+        {
+          "file": "sql/migrations/008_verification_et_creation_codes_invitation.sql",
+          "line": 77,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/008_verification_et_creation_codes_invitation.sql",
+          "line": 253,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/008_verification_et_creation_codes_invitation.sql",
+          "line": 273,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/008_verification_et_creation_codes_invitation.sql",
+          "line": 281,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/009_create_codes_invitation_simple.sql": [
+        {
+          "file": "sql/migrations/009_create_codes_invitation_simple.sql",
+          "line": 135,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/009_create_codes_invitation_simple.sql",
+          "line": 253,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/009_create_codes_invitation_simple.sql",
+          "line": 273,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/009_create_codes_invitation_simple.sql",
+          "line": 281,
+          "content": "AND role IN ('admin', 'mentor')",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/015_finalisation_objectif1.sql": [
+        {
+          "file": "sql/migrations/015_finalisation_objectif1.sql",
+          "line": 139,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/015_finalisation_objectif1.sql",
+          "line": 147,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/015_finalisation_objectif1.sql",
+          "line": 152,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/015_finalisation_objectif1.sql",
+          "line": 170,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/015_finalisation_objectif1.sql",
+          "line": 192,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/015_finalisation_objectif1.sql",
+          "line": 201,
+          "content": "SELECT 1 FROM profils WHERE id = auth.uid() AND role IN ('admin', 'mentor')",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/035_add_famille_to_profils.sql": [
+        {
+          "file": "sql/migrations/035_add_famille_to_profils.sql",
+          "line": 18,
+          "content": "-- Ajouter la colonne mentor_id à profils (pour les disciples qui ont un mentor)",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/035_add_famille_to_profils.sql",
+          "line": 38,
+          "content": "CHECK (role IN ('super_admin', 'admin', 'pasteur', 'superviseur', 'mentor', 'disciple', 'tutore'));",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/035_add_famille_to_profils.sql",
+          "line": 57,
+          "content": "COMMENT ON COLUMN profils.mentor_id IS 'ID du mentor/pilier pour les disciples';",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/040_create_piliers_mentors.sql": [
+        {
+          "file": "sql/migrations/040_create_piliers_mentors.sql",
+          "line": 10,
+          "content": "pilier_id UUID REFERENCES profils(id) ON DELETE CASCADE NOT NULL, -- Le mentor/pilier",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/058_add_titre_to_profils.sql": [
+        {
+          "file": "sql/migrations/058_add_titre_to_profils.sql",
+          "line": 2,
+          "content": "-- Ce champ permet de stocker le titre du superviseur/mentor (Pasteur, Berger, Mentor)",
+          "matches": 2
+        },
+        {
+          "file": "sql/migrations/058_add_titre_to_profils.sql",
+          "line": 10,
+          "content": "COMMENT ON COLUMN profils.titre IS 'Titre du superviseur ou mentor: Pasteur, Berger, ou Mentor';",
+          "matches": 2
+        }
+      ],
+      "sql/migrations/073_objectif3_suivi_post_crise.sql": [
+        {
+          "file": "sql/migrations/073_objectif3_suivi_post_crise.sql",
+          "line": 37,
+          "content": "mentor_id UUID REFERENCES profils(id) ON DELETE SET NULL, -- Mentor accompagnateur (optionnel)",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/073_objectif3_suivi_post_crise.sql",
+          "line": 232,
+          "content": "AND (role = 'mentor' OR role = 'superviseur' OR role = 'pasteur' OR role = 'admin')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/073_objectif3_suivi_post_crise.sql",
+          "line": 299,
+          "content": "AND (role = 'mentor' OR role = 'superviseur' OR role = 'pasteur' OR role = 'admin')",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/075_promote_disciples_to_mentors.sql": [
+        {
+          "file": "sql/migrations/075_promote_disciples_to_mentors.sql",
+          "line": 1,
+          "content": "-- Migration: Promouvoir les disciples qui ont des disciples au statut de mentor",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/075_promote_disciples_to_mentors.sql",
+          "line": 3,
+          "content": "--              et met à jour leur rôle de 'disciple' à 'mentor'",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/075_promote_disciples_to_mentors.sql",
+          "line": 33,
+          "content": "-- Mettre à jour le rôle de 'disciple' à 'mentor'",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/075_promote_disciples_to_mentors.sql",
+          "line": 36,
+          "content": "SET role = 'mentor',",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/075_promote_disciples_to_mentors.sql",
+          "line": 45,
+          "content": "RAISE NOTICE 'Disciple promu au statut de mentor: % % (ID: %, % disciple(s))',",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/075_promote_disciples_to_mentors.sql",
+          "line": 53,
+          "content": "RAISE NOTICE 'Migration terminée: % disciple(s) promu(s) au statut de mentor', updated_count;",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/075_promote_disciples_to_mentors.sql",
+          "line": 66,
+          "content": "WHERE p.role = 'mentor'",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/075_test_promotion_safe.sql": [
+        {
+          "file": "sql/migrations/075_test_promotion_safe.sql",
+          "line": 17,
+          "content": "ELSE 'Déjà mentor'",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/075_test_promotion_safe.sql",
+          "line": 23,
+          "content": "WHERE p.role IN ('disciple', 'mentor')",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/075_test_promotion_safe.sql",
+          "line": 32,
+          "content": "COUNT(*) FILTER (WHERE p.role = 'mentor') AS deja_mentors,",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/075_test_promotion_safe.sql",
+          "line": 43,
+          "content": "WHERE p.role IN ('disciple', 'mentor')",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/075_verify_disciples_with_disciples.sql": [
+        {
+          "file": "sql/migrations/075_verify_disciples_with_disciples.sql",
+          "line": 3,
+          "content": "--              et qui seront promus au statut de mentor",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/076_trigger_auto_promote_disciple_to_mentor.sql": [
+        {
+          "file": "sql/migrations/076_trigger_auto_promote_disciple_to_mentor.sql",
+          "line": 3,
+          "content": "--              en 'mentor' lorsqu'il obtient son premier disciple dans cercle_personnes",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/076_trigger_auto_promote_disciple_to_mentor.sql",
+          "line": 6,
+          "content": "-- Fonction pour vérifier et promouvoir un disciple en mentor",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/076_trigger_auto_promote_disciple_to_mentor.sql",
+          "line": 36,
+          "content": "-- Si l'utilisateur a au moins un disciple, le promouvoir en mentor",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/076_trigger_auto_promote_disciple_to_mentor.sql",
+          "line": 39,
+          "content": "SET role = 'mentor',",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/076_trigger_auto_promote_disciple_to_mentor.sql",
+          "line": 44,
+          "content": "RAISE NOTICE 'Disciple promu automatiquement au statut de mentor (ID: %, % disciple(s))',",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/076_trigger_auto_promote_disciple_to_mentor.sql",
+          "line": 66,
+          "content": "'Fonction trigger qui promeut automatiquement un disciple en mentor lorsqu''il obtient son premier disciple';",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/078_create_cercle_personnes_entries.sql": [
+        {
+          "file": "sql/migrations/078_create_cercle_personnes_entries.sql",
+          "line": 2,
+          "content": "-- Description: Crée les relations disciple-mentor dans cercle_personnes basées sur les familles",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/078_create_cercle_personnes_entries.sql",
+          "line": 26,
+          "content": "-- 1. Créer ou vérifier l'entrée du superviseur (mentor) dans cercle_personnes",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/078_create_cercle_personnes_entries.sql",
+          "line": 90,
+          "content": "famille_record.superviseur_id, -- Le superviseur est le mentor",
+          "matches": 1
+        }
+      ],
+      "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql": [
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 1,
+          "content": "-- Migration: Modifier \"mentor\" en \"Mentor_pillier\"",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 2,
+          "content": "-- Description: Remplace toutes les occurrences de role='mentor' par role='Mentor_pillier' dans la table profils",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 10,
+          "content": "COUNT(*) FILTER (WHERE role = 'mentor') AS mentors_actuels,",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 13,
+          "content": "WHERE role IN ('mentor', 'Mentor_pillier');",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 25,
+          "content": "WHERE role = 'mentor'",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 28,
+          "content": "-- 3. Migration: Remplacer 'mentor' par 'Mentor_pillier'",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 33,
+          "content": "RAISE NOTICE 'Début de la migration mentor → Mentor_pillier...';",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 38,
+          "content": "WHERE role = 'mentor';",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 49,
+          "content": "COUNT(*) FILTER (WHERE role = 'mentor') AS mentors_restants",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 51,
+          "content": "WHERE role IN ('mentor', 'Mentor_pillier');",
+          "matches": 1
+        },
+        {
+          "file": "sql/migrations/080_migrate_mentor_to_mentor_pillier.sql",
+          "line": 71,
+          "content": "WHERE role IN ('mentor', 'Mentor_pillier')",
+          "matches": 1
+        }
+      ]
+    }
+  }
+}
