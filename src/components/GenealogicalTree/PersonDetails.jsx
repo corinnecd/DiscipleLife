@@ -43,7 +43,7 @@ const PersonDetails = ({ person, onViewProfile, onContact, onViewTree }) => {
           </Avatar>
           <div className="flex-1 min-w-0">
             <CardTitle className="text-lg truncate">{person.name}</CardTitle>
-            <Badge variant="outline" className="mt-1">
+            <Badge variant="outline" className="mt-1 text-black border-gray-300 bg-white">
               {getRoleLabel(person.role)}
             </Badge>
           </div>
@@ -91,7 +91,7 @@ const PersonDetails = ({ person, onViewProfile, onContact, onViewTree }) => {
               variant="outline"
               size="sm"
               onClick={() => onViewTree(person)}
-              className="w-full justify-start"
+              className="w-full justify-start text-black hover:text-black border-gray-300 bg-white hover:bg-gray-50"
             >
               <GitBranch className="h-4 w-4 mr-2" />
               Voir son arbre
@@ -102,7 +102,7 @@ const PersonDetails = ({ person, onViewProfile, onContact, onViewTree }) => {
               variant="outline"
               size="sm"
               onClick={() => onViewProfile(person.id)}
-              className="w-full justify-start"
+              className="w-full justify-start text-black hover:text-black border-gray-300 bg-white hover:bg-gray-50"
             >
               <ExternalLink className="h-4 w-4 mr-2" />
               Voir le profil
@@ -113,7 +113,7 @@ const PersonDetails = ({ person, onViewProfile, onContact, onViewTree }) => {
               variant="outline"
               size="sm"
               onClick={() => onContact(person.email)}
-              className="w-full justify-start"
+              className="w-full justify-start text-black hover:text-black border-gray-300 bg-white hover:bg-gray-50"
             >
               <MessageCircle className="h-4 w-4 mr-2" />
               Contacter

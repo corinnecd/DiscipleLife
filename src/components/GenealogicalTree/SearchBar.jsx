@@ -110,7 +110,7 @@ const SearchBar = ({ onSelectPerson, currentPersonId, onResetToSelf }) => {
             variant="outline"
             size="sm"
             onClick={handleReset}
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 h-7 text-xs"
+            className="absolute right-2 top-1/2 transform -translate-y-1/2 h-7 text-xs bg-blue-500 text-white hover:bg-purple-600 hover:text-white border-blue-500 hover:border-purple-600"
           >
             Mon arbre
           </Button>

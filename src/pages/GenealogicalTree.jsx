@@ -15,7 +15,13 @@ import {
   ArrowUp,
   ArrowDown,
   GitBranch,
-  X
+  X,
+  Table,
+  List,
+  Download,
+  Printer,
+  Upload,
+  FileText
 } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
@@ -31,6 +37,9 @@ import { Helmet } from 'react-helmet';
 import SearchBar from '@/components/GenealogicalTree/SearchBar';
 import PersonDetails from '@/components/GenealogicalTree/PersonDetails';
 import { fetchDescendants, fetchAscendants, fetchCompleteTree } from '@/lib/genealogicalUtils';
+import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 // --- Recursive Tree Node for Desktop ---
 const TreeNode = ({ node, level = 0, onNodeClick, isAncestor = false }) => {
@@ -66,7 +75,7 @@ const TreeNode = ({ node, level = 0, onNodeClick, isAncestor = false }) => {
         </div>
         
         {hasChildren && (
-            <Badge variant="secondary" className="mt-2 text-[10px] h-5 px-1.5 bg-slate-100 text-slate-600">
+            <Badge variant="secondary" className="mt-2 text-[10px] h-5 px-1.5 bg-blue-500 text-white hover:bg-blue-500 hover:text-gray-400 cursor-pointer transition-colors">
                 {node.children.length} {node.children.length === 1 ? 'disciple' : 'disciples'}
             </Badge>
         )}
@@ -270,7 +279,7 @@ const MobileTreeView = ({ data, ancestors = [], viewMode = 'descendants', onNode
     }
   };
 
-  if (!data && !currentNode) return <div className="p-4 text-center text-slate-500">Chargement...</div>;
+  if (!data && !currentNode) return null;
 
   return (
     <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -369,6 +378,198 @@ const MobileTreeView = ({ data, ancestors = [], viewMode = 'descendants', onNode
   );
 };
 
+// --- Table View Component ---
+const TableView = ({ data, ancestors = [], onRowClick }) => {
+  const flatData = [];
+  
+  // Ajouter les ascendants
+  if (ancestors && ancestors.length > 0) {
+    ancestors.forEach((ancestor, idx) => {
+      flatData.push({
+        ...ancestor,
+        level: ancestors.length - idx,
+        isAncestor: true
+      });
+    });
+  }
+  
+  // Ajouter la personne principale
+  if (data) {
+    flatData.push({
+      ...data,
+      level: 0,
+      isAncestor: false
+    });
+    
+    // Fonction récursive pour aplatir les enfants
+    const flattenChildren = (node, level = 1) => {
+      if (node.children && node.children.length > 0) {
+        node.children.forEach(child => {
+          flatData.push({
+            ...child,
+            level: level,
+            isAncestor: false
+          });
+          flattenChildren(child, level + 1);
+        });
+      }
+    };
+    
+    flattenChildren(data);
+  }
+
+  return (
+    <div className="w-full overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-sm print:shadow-none">
+      <table className="w-full border-collapse">
+        <thead className="bg-slate-50 print:bg-white">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider border-b">Niveau</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider border-b">Nom</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider border-b">Email</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider border-b">Rôle</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider border-b">Disciples</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider border-b">Type</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-200">
+          {flatData.map((person, idx) => (
+            <tr
+              key={person.id || idx}
+              onClick={() => onRowClick && onRowClick(person)}
+              className={`hover:bg-slate-50 cursor-pointer transition-colors ${
+                person.isAncestor ? 'bg-blue-50' : person.level === 0 ? 'bg-primary/5' : ''
+              }`}
+            >
+              <td className="px-4 py-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    person.isAncestor ? 'bg-blue-500' : person.level === 0 ? 'bg-primary' : 'bg-slate-300'
+                  }`}></div>
+                  <span className="text-slate-600">{person.level}</span>
+                </div>
+              </td>
+              <td className="px-4 py-3 text-sm">
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={person.avatar_url} />
+                    <AvatarFallback className={`${getAvatarColor(person.name)} text-white text-xs`}>
+                      {getInitials(person.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="font-medium text-slate-900">{person.name}</span>
+                </div>
+              </td>
+              <td className="px-4 py-3 text-sm text-slate-600">{person.email || '-'}</td>
+              <td className="px-4 py-3 text-sm">
+                <Badge variant="outline" className="text-black border-gray-300 bg-white">{person.role || 'Disciple'}</Badge>
+              </td>
+              <td className="px-4 py-3 text-sm text-slate-600">
+                {person.children?.length || 0}
+              </td>
+              <td className="px-4 py-3 text-sm text-slate-500">
+                {person.type === 'profil' ? 'Profil' : 'Cercle'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// --- List View Component ---
+const ListView = ({ data, ancestors = [], onItemClick }) => {
+  const flatData = [];
+  
+  // Ajouter les ascendants
+  if (ancestors && ancestors.length > 0) {
+    ancestors.forEach((ancestor, idx) => {
+      flatData.push({
+        ...ancestor,
+        level: ancestors.length - idx,
+        isAncestor: true
+      });
+    });
+  }
+  
+  // Ajouter la personne principale
+  if (data) {
+    flatData.push({
+      ...data,
+      level: 0,
+      isAncestor: false
+    });
+    
+    // Fonction récursive pour aplatir les enfants
+    const flattenChildren = (node, level = 1) => {
+      if (node.children && node.children.length > 0) {
+        node.children.forEach(child => {
+          flatData.push({
+            ...child,
+            level: level,
+            isAncestor: false
+          });
+          flattenChildren(child, level + 1);
+        });
+      }
+    };
+    
+    flattenChildren(data);
+  }
+
+  return (
+    <div className="w-full space-y-2 bg-white rounded-xl border border-slate-200 shadow-sm p-4 print:shadow-none">
+      {flatData.map((person, idx) => (
+        <motion.div
+          key={person.id || idx}
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: idx * 0.05 }}
+          onClick={() => onItemClick && onItemClick(person)}
+          className={`flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
+            person.isAncestor 
+              ? 'border-blue-200 bg-blue-50' 
+              : person.level === 0 
+              ? 'border-primary/30 bg-primary/5' 
+              : 'border-slate-200 bg-white hover:border-primary/30'
+          }`}
+        >
+          <div className="flex items-center gap-3 flex-1">
+            <div className="flex items-center gap-2 min-w-[40px]">
+              <div className={`w-2 h-2 rounded-full ${
+                person.isAncestor ? 'bg-blue-500' : person.level === 0 ? 'bg-primary' : 'bg-slate-300'
+              }`}></div>
+              <span className="text-xs text-slate-500 font-mono">{person.level}</span>
+            </div>
+            <Avatar className="h-10 w-10">
+              <AvatarImage src={person.avatar_url} />
+              <AvatarFallback className={`${getAvatarColor(person.name)} text-white`}>
+                {getInitials(person.name)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <h4 className="font-semibold text-slate-900 truncate">{person.name}</h4>
+              <div className="flex items-center gap-3 mt-1">
+                {person.email && (
+                  <p className="text-xs text-slate-500 truncate">{person.email}</p>
+                )}
+                <Badge variant="outline" className="text-xs text-black border-gray-300 bg-white">
+                  {person.role || 'Disciple'}
+                </Badge>
+                {person.children && person.children.length > 0 && (
+                  <span className="text-xs text-slate-500">
+                    {person.children.length} {person.children.length === 1 ? 'disciple' : 'disciples'}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <ChevronRight size={18} className="text-slate-300" />
+        </motion.div>
+      ))}
+    </div>
+  );
+};
 
 // --- Main Page Component ---
 const GenealogicalTree = () => {
@@ -378,10 +579,12 @@ const GenealogicalTree = () => {
   const [ancestors, setAncestors] = useState([]);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [viewMode, setViewMode] = useState('descendants'); // 'descendants', 'ascendants', 'complete'
+  const [displayMode, setDisplayMode] = useState('tree'); // 'tree', 'table', 'list'
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showDetails, setShowDetails] = useState(false);
   const [error, setError] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   // Resize listener
   useEffect(() => {
@@ -581,10 +784,100 @@ const GenealogicalTree = () => {
     window.location.href = `mailto:${email}`;
   };
 
-  const handleViewTree = (person) => {
-    handleSelectPerson(person);
+  const handleViewTree = useCallback((person) => {
+    if (person && person.id) {
+      console.log('Chargement de l\'arbre pour:', person);
+      setSelectedPerson(person);
+      loadPersonTree(person, viewMode);
+      // Fermer le panneau de détails pour voir l'arbre complet
+      setShowDetails(false);
+    }
+  }, [viewMode, loadPersonTree]);
+
+  // Fonction pour aplatir l'arbre en liste pour tableau/liste
+  const flattenTree = (node, level = 0, parentName = '') => {
+    if (!node) return [];
+    
+    const items = [{
+      id: node.id,
+      name: node.name || 'Sans nom',
+      email: node.email || '',
+      role: node.role || 'Disciple',
+      level: level,
+      parent: parentName,
+      childrenCount: node.children?.length || 0,
+      avatar_url: node.avatar_url,
+      type: node.type || 'profil'
+    }];
+    
+    if (node.children && node.children.length > 0) {
+      node.children.forEach(child => {
+        items.push(...flattenTree(child, level + 1, node.name));
+      });
+    }
+    
+    return items;
   };
 
+  // Export PDF
+  const handleExportPDF = async () => {
+    setExporting(true);
+    try {
+      const elementId = `genealogical-tree-${displayMode}`;
+      const filename = `arbre_genealogique_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}.pdf`;
+      await exportElementToPDF(elementId, filename);
+    } catch (error) {
+      console.error('Erreur export PDF:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Export CSV/Excel
+  const handleExportCSV = () => {
+    try {
+      if (!treeData) {
+        return;
+      }
+
+      const flatData = flattenTree(treeData);
+      const filename = `arbre_genealogique_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}.csv`;
+      
+      exportToExcel(flatData, filename, {
+        title: 'Arbre Généalogique - DiscipleLife',
+        description: `Export de l'arbre généalogique de ${selectedPerson?.name || 'Moi'}`,
+        author: user?.email || 'DiscipleLife',
+        additionalInfo: {
+          'Mode de vue': viewMode,
+          'Date d\'export': format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })
+        }
+      });
+    } catch (error) {
+      console.error('Erreur export CSV:', error);
+    }
+  };
+
+  // Impression
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // Upload vers Supabase Storage (optionnel)
+  const handleUpload = async () => {
+    setExporting(true);
+    try {
+      // Créer un PDF temporaire
+      const elementId = `genealogical-tree-${displayMode}`;
+      const filename = `arbre_genealogique_${user.id}_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}.pdf`;
+      
+      // Pour l'upload, on peut créer le PDF en mémoire et l'uploader
+      // Note: Cette fonctionnalité nécessite une configuration Supabase Storage
+    } catch (error) {
+      console.error('Erreur upload:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Afficher un message d'erreur si nécessaire
   if (error && !treeData) {
@@ -610,20 +903,77 @@ const GenealogicalTree = () => {
     <>
       <Helmet>
         <title>Arbre Généalogique | DiscipleLife</title>
+        <style>{`
+          @media print {
+            .print\\:hidden { display: none !important; }
+            .print\\:block { display: block !important; }
+            body { background: white; }
+            .no-print { display: none !important; }
+            .print\\:shadow-none { box-shadow: none !important; }
+            .print\\:bg-white { background: white !important; }
+            .print\\:border-none { border: none !important; }
+            .print\\:max-w-none { max-width: none !important; }
+            .print\\:h-auto { height: auto !important; }
+          }
+        `}</style>
       </Helmet>
 
       <div className="h-full flex flex-col space-y-4">
         {/* Header avec recherche */}
         <div className="flex flex-col gap-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold tracking-tight text-black flex items-center gap-2">
                 <GitFork className="text-primary" />
                 Arbre Généalogique
               </h1>
               <p className="text-slate-500 dark:text-slate-400">
                 Visualisez votre descendance spirituelle et l'impact de votre ministère.
               </p>
+            </div>
+            
+            {/* Boutons d'export, upload et impression alignés avec le titre */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportPDF}
+                disabled={exporting || !treeData}
+                className="gap-2 bg-red-500 text-black hover:bg-red-600 border-red-500 hover:border-red-600"
+              >
+                <Download size={16} />
+                PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCSV}
+                disabled={exporting || !treeData}
+                className="gap-2 bg-green-500 text-black hover:bg-green-600 border-green-500 hover:border-green-600"
+              >
+                <FileText size={16} />
+                CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrint}
+                disabled={!treeData}
+                className="gap-2 print:hidden bg-gray-200 text-black hover:bg-gray-300 border-gray-300"
+              >
+                <Printer size={16} />
+                Imprimer
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleUpload}
+                disabled={exporting || !treeData}
+                className="gap-2 bg-gray-200 text-black hover:bg-gray-300 border-gray-300"
+              >
+                <Upload size={16} />
+                Upload
+              </Button>
             </div>
           </div>
 
@@ -638,34 +988,40 @@ const GenealogicalTree = () => {
             </div>
           </div>
 
-          {/* Mode de visualisation */}
-          <Tabs value={viewMode} onValueChange={setViewMode} className="w-full">
-            <TabsList className="grid w-full max-w-md grid-cols-3">
-              <TabsTrigger value="descendants" className="flex items-center gap-2">
-                <ArrowDown size={16} />
-                Descendants
-              </TabsTrigger>
-              <TabsTrigger value="ascendants" className="flex items-center gap-2">
-                <ArrowUp size={16} />
-                Ascendants
-              </TabsTrigger>
-              <TabsTrigger value="complete" className="flex items-center gap-2">
-                <GitBranch size={16} />
-                Vue complète
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {/* Boutons d'affichage */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Sélecteur de type d'affichage */}
+            <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+              <Button
+                variant={displayMode === 'tree' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDisplayMode('tree')}
+                className="h-8"
+              >
+                <GitFork size={16} />
+              </Button>
+              <Button
+                variant={displayMode === 'table' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDisplayMode('table')}
+                className="h-8"
+              >
+                <Table size={16} />
+              </Button>
+              <Button
+                variant={displayMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDisplayMode('list')}
+                className="h-8"
+              >
+                <List size={16} />
+              </Button>
+            </div>
+          </div>
         </div>
 
         {/* Contenu principal */}
-        {loading ? (
-          <div className="flex-1 flex items-center justify-center min-h-[500px]">
-            <div className="flex flex-col items-center gap-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-              <p className="text-sm text-slate-500">Chargement de l'arbre généalogique...</p>
-            </div>
-          </div>
-        ) : !treeData ? (
+        {!treeData && !loading ? (
           <div className="flex-1 flex items-center justify-center min-h-[500px]">
             <div className="text-center">
               <GitFork className="h-16 w-16 mx-auto mb-4 text-gray-400" />
@@ -676,10 +1032,22 @@ const GenealogicalTree = () => {
             </div>
           </div>
         ) : (
-            <div className="flex-1 min-h-[500px] flex gap-4">
-            {/* Arbre */}
-            <div className={`flex-1 ${showDetails && !isMobile ? 'w-2/3' : 'w-full'}`}>
-              {isMobile ? (
+            <div className="flex-1 min-h-[500px] flex gap-4" id={`genealogical-tree-${displayMode}`}>
+            {/* Contenu selon le mode d'affichage */}
+            <div className={`flex-1 ${showDetails && !isMobile && displayMode === 'tree' ? 'w-2/3' : 'w-full'}`}>
+              {displayMode === 'table' ? (
+                <TableView
+                  data={treeData}
+                  ancestors={ancestors}
+                  onRowClick={handleNodeClick}
+                />
+              ) : displayMode === 'list' ? (
+                <ListView
+                  data={treeData}
+                  ancestors={ancestors}
+                  onItemClick={handleNodeClick}
+                />
+              ) : isMobile ? (
                 <MobileTreeView
                   data={treeData}
                   ancestors={ancestors}
