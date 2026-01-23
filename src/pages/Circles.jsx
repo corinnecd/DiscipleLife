@@ -31,7 +31,7 @@ const CATEGORIES = {
   evangelized: {
     id: 'evangelized',
     title: 'PERSONNES\nÉVANGÉLISÉES',
-    color: 'bg-indigo-500', 
+    color: 'bg-pink-500', 
     textColor: 'text-white',
     description: "Personnes qui ont été évangélisées.",
     longDescription: "Personnes avec qui vous avez partagé l'Évangile et qui sont en chemin vers la conversion.",
@@ -48,7 +48,7 @@ const CATEGORIES = {
   },
   newBelievers: {
     id: 'newBelievers',
-    title: 'NOUVEAUX CONVERTIS',
+    title: 'NOUVEAUX\nCONVERTIS',
     color: 'bg-teal-500', 
     textColor: 'text-white',
     description: "Nouveaux disciples de Christ que vous formez.",
@@ -66,7 +66,7 @@ const CATEGORIES = {
   },
   makers: {
     id: 'makers',
-    title: 'FAISEURS DE DISCIPLES',
+    title: 'MENTORS',
     color: 'bg-yellow-500',
     textColor: 'text-white', 
     description: "Ceux qui forment activement d'autres disciples.",
@@ -229,7 +229,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
       'unbelievers': 'Non-croyant',
       'newBelievers': 'Nouveau converti',
       'established': 'Disciple affermi',
-      'makers': 'Faiseur de disciples',
+      'makers': 'Mentor',
       'pillars': 'Pilier'
     };
     setFullFormData({
@@ -254,7 +254,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
           case 'unbelievers': return 'Non-croyant';
           case 'newBelievers': return 'Nouveau converti';
           case 'established': return 'Disciple affermi';
-          case 'makers': return 'Faiseur de disciples';
+          case 'makers': return 'Mentor';
           case 'pillars': return 'Pilier';
           default: return 'Non-croyant';
       }
@@ -267,7 +267,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
          case 'Non-croyant': return 'unbelievers';
          case 'Nouveau converti': return 'newBelievers';
          case 'Disciple affermi': return 'established';
-         case 'Faiseur de disciples': return 'makers';
+         case 'Mentor': return 'makers';
          case 'Pilier': return 'pillars';
          default: return 'unbelievers';
      }
@@ -330,7 +330,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                     first_name: mentorProfile?.first_name || null,
                     last_name: mentorProfile?.last_name || null,
                     email: mentorProfile?.email || null,
-                    circle_type: 'Faiseur de Disciples',
+                    circle_type: 'makers',
                     created_at: new Date().toISOString()
                   })
                   .select('id')
@@ -480,10 +480,15 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
   return (
     <>
       <motion.div
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        initial={{ x: '100%', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '100%', opacity: 0 }}
+        transition={{ 
+          type: 'spring', 
+          damping: 30, 
+          stiffness: 300,
+          mass: 0.8
+        }}
         className={`fixed inset-0 z-[40] flex flex-col ${category.color} overflow-y-auto overflow-x-hidden`}
       >
         <div className="relative p-4 pt-6 flex justify-end">
@@ -493,12 +498,31 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
         </div>
         <div className="flex-1 px-6 pb-10 flex flex-col">
           <div className="flex-1 max-w-2xl mx-auto w-full text-center">
-              <h2 className="text-2xl md:text-3xl font-bold text-white mb-3 tracking-tight whitespace-pre-line text-center">{category.title}</h2>
-              <div className="flex items-center justify-center gap-2 mb-6">
+              <motion.h2 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.1 }}
+                className="text-2xl md:text-3xl font-bold text-white mb-3 tracking-tight whitespace-pre-line text-center"
+              >
+                {category.title}
+              </motion.h2>
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.2 }}
+                className="flex items-center justify-center gap-2 mb-6"
+              >
                 <p className={`text-lg ${category.textColor} font-medium leading-tight text-center`}>{category.description}</p>
                 <div className="bg-white/20 rounded-full p-1"><ArrowRight size={12} className="text-white rotate-90" /></div>
-              </div>
-              <p className={`${category.textColor} text-sm leading-relaxed opacity-90 mb-6 text-center`}>{category.longDescription}</p>
+              </motion.div>
+              <motion.p 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.3 }}
+                className={`${category.textColor} text-sm leading-relaxed opacity-90 mb-6 text-center`}
+              >
+                {category.longDescription}
+              </motion.p>
 
               {!isAdding && (
                 <div className="flex justify-center mb-6">
@@ -523,8 +547,13 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
 
               {isAdding && (
                   <motion.div 
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
+                    initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                    transition={{ 
+                      duration: 0.3,
+                      ease: [0.25, 0.46, 0.45, 0.94]
+                    }}
                     className="bg-white rounded-xl shadow-xl mb-6 p-6 mx-auto max-w-3xl w-full"
                   >
                     <div className="flex items-center justify-between mb-4">
@@ -629,7 +658,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                             <SelectItem value="Non-croyant" className="focus:bg-gray-100 focus:!text-gray-900">Non-croyant</SelectItem>
                             <SelectItem value="Nouveau converti" className="focus:bg-gray-100 focus:!text-gray-900">Nouveau converti</SelectItem>
                             <SelectItem value="Disciple affermi" className="focus:bg-gray-100 focus:!text-gray-900">Disciple affermi</SelectItem>
-                            <SelectItem value="Faiseur de disciples" className="focus:bg-gray-100 focus:!text-gray-900">Faiseur de disciples</SelectItem>
+                            <SelectItem value="Mentor" className="focus:bg-gray-100 focus:!text-gray-900">Mentor</SelectItem>
                             {isSupervisor && <SelectItem value="Pilier" className="focus:bg-gray-100 focus:!text-gray-900">Pilier</SelectItem>}
                           </SelectContent>
                         </Select>
@@ -722,10 +751,18 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                   {loading ? (
                     <div className="text-white/60 text-center py-4 col-span-2">Chargement...</div>
                   ) : (
-                    people.map((person) => (
-                        <div 
-                            key={person.id} 
-                            className="bg-transparent border border-white/30 rounded-xl p-3 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between group animate-in slide-in-from-bottom-2 gap-2 sm:gap-0"
+                    people.map((person, index) => (
+                        <motion.div 
+                            key={person.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ 
+                              duration: 0.3,
+                              delay: index * 0.05,
+                              ease: [0.25, 0.46, 0.45, 0.94]
+                            }}
+                            className="bg-transparent border border-white/30 rounded-xl p-3 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between group gap-2 sm:gap-0"
                         >
                             <span className="text-base font-medium truncate w-full sm:w-auto sm:flex-1 sm:mr-2">{person.name}</span>
                             <div className="flex items-center justify-end w-full sm:w-auto gap-1 md:gap-2">
@@ -750,7 +787,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                                 )}
                                 <button onClick={() => setDeleteConfirmPerson(person)} className="text-white/70 hover:text-white hover:bg-white/10 rounded p-1 transition-colors"><Trash2 size={20} /></button>
                             </div>
-                        </div>
+                        </motion.div>
                     ))
                   )}
                   {!loading && people.length === 0 && !isAdding && (
@@ -772,8 +809,24 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
       {/* Confirmation Modal for Public Visibility */}
       <AnimatePresence>
         {publicConfirmPerson && (
-           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-               <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-xl border border-gray-200">
+           <motion.div 
+             initial={{ opacity: 0 }} 
+             animate={{ opacity: 1 }} 
+             exit={{ opacity: 0 }}
+             transition={{ duration: 0.2 }}
+             className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+           >
+               <motion.div 
+                 initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+                 animate={{ scale: 1, opacity: 1, y: 0 }} 
+                 exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                 transition={{ 
+                   type: 'spring',
+                   damping: 25,
+                   stiffness: 300
+                 }}
+                 className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-xl border border-gray-200"
+               >
                    <div className="p-6">
                        <h3 className="text-2xl font-bold text-gray-900 mb-4">Rendre Public ?</h3>
                        <p className="text-gray-600 mb-6 leading-relaxed">Voulez-vous rendre ce nom public ? Cela permettra aux autres membres de votre groupe de voir ce nom.</p>
@@ -790,8 +843,24 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
       {/* Confirmation Modal for Deletion */}
       <AnimatePresence>
         {deleteConfirmPerson && (
-           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-               <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-xl border border-gray-200">
+           <motion.div 
+             initial={{ opacity: 0 }} 
+             animate={{ opacity: 1 }} 
+             exit={{ opacity: 0 }}
+             transition={{ duration: 0.2 }}
+             className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+           >
+               <motion.div 
+                 initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+                 animate={{ scale: 1, opacity: 1, y: 0 }} 
+                 exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                 transition={{ 
+                   type: 'spring',
+                   damping: 25,
+                   stiffness: 300
+                 }}
+                 className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-xl border border-gray-200"
+               >
                    <div className="p-6 text-center">
                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4 text-red-600"><Trash2 size={20} /></div>
                        <h3 className="text-xl font-bold text-gray-900 mb-2">Supprimer {deleteConfirmPerson.name} ?</h3>
@@ -847,7 +916,7 @@ const Circles = () => {
 
   useEffect(() => { fetchCounts(); }, [user]);
 
-  const renderCircle = (key, angle, radius, isCenter = false) => {
+  const renderCircle = (key, angle, radius, isCenter = false, index = 0) => {
     const category = CATEGORIES[key];
     const count = counts[key] || 0;
     
@@ -864,60 +933,93 @@ const Circles = () => {
     return (
         <motion.div 
             key={key}
-            whileHover={{ scale: 1.08, zIndex: 20 }}
-            whileTap={{ scale: 0.95 }}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ 
+              duration: 0.5, 
+              delay: isCenter ? 0 : index * 0.1,
+              ease: [0.25, 0.46, 0.45, 0.94]
+            }}
+            whileHover={{ 
+              zIndex: 20,
+              scale: 1.02,
+              transition: { 
+                duration: 0.4, 
+                ease: [0.25, 0.1, 0.25, 1],
+                type: "tween"
+              }
+            }}
+            whileTap={{ 
+              scale: 0.98,
+              transition: { duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }
+            }}
             onClick={() => setActiveCategory(category)}
-            className={`absolute w-40 h-40 sm:w-44 sm:h-44 md:w-48 md:h-48 lg:w-52 lg:h-52 xl:w-56 xl:h-56 rounded-full ${category.color} flex flex-col items-center justify-center cursor-pointer shadow-lg hover:shadow-xl hover:ring-2 hover:ring-white/40 z-10 transition-all duration-300`}
+            className={`absolute w-40 h-40 sm:w-44 sm:h-44 md:w-48 md:h-48 lg:w-52 lg:h-52 xl:w-56 xl:h-56 rounded-full ${category.color} flex flex-col items-center justify-center cursor-pointer shadow-lg hover:shadow-xl hover:ring-2 hover:ring-white/40 z-10 transition-all duration-[400ms] ease-[cubic-bezier(0.25,0.1,0.25,1)]`}
             style={{
               left: isCenter ? '50%' : `calc(50% + ${x}px)`,
               top: isCenter ? '50%' : `calc(50% + ${y}px)`,
               transform: 'translate(-50%, -50%)',
-              zIndex: isCenter ? 5 : 10
+              transformOrigin: 'center center',
+              zIndex: isCenter ? 20 : 10,
+              willChange: 'transform, z-index'
             }}
          >
-             <div className="flex flex-col items-center justify-center text-center px-2">
-                <span className="text-[9px] sm:text-[10px] md:text-[11px] lg:text-[12px] xl:text-[13px] font-bold text-white/90 uppercase tracking-wider mb-1 whitespace-pre-line leading-tight">{category.title}</span>
+             <motion.div 
+               className="flex flex-col items-center justify-center text-center px-2"
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               transition={{ delay: (isCenter ? 0 : index * 0.1) + 0.2, duration: 0.3 }}
+             >
+                <span className="text-[11px] sm:text-[12px] md:text-[13px] lg:text-[14px] xl:text-[15px] font-bold text-white/90 uppercase tracking-wider mb-1 whitespace-pre-line leading-tight">{category.title}</span>
                 {count === 0 ? <Plus className="text-white/60" size={22} /> : <span className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-white drop-shadow-md">{count}</span>}
-             </div>
+             </motion.div>
          </motion.div>
     );
   };
 
   return (
-    <div className="h-full flex flex-col items-center justify-center w-full relative overflow-y-auto overflow-x-hidden min-h-[600px] py-8 px-4 sm:px-6 bg-gray-50">
-        
-        <div className="text-center mb-4 z-0 px-4 mt-4 md:mt-0">
-            <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">Cercles de Disciples</h2>
-            <p className="text-sm md:text-base text-gray-600 max-w-md mx-auto">Identifiez et priez pour les personnes que Dieu a placées dans votre vie.</p>
-        </div>
+    <>
+    <div className="h-full flex flex-col items-center justify-center w-full relative overflow-y-auto overflow-x-hidden min-h-[600px] py-8 bg-gray-50">
+        {/* Conteneur principal - tous les éléments centrés sur le même axe vertical avec largeur maximale */}
+        <div className="w-full max-w-[1400px] mx-auto flex flex-col items-center justify-center px-4 sm:px-6">
+            {/* Section Titres - en haut de la page, sur la gauche, texte centré, sur une seule ligne */}
+            <div className="w-full flex flex-col items-center justify-center mb-6 pl-48">
+                <div className="text-center w-full max-w-xs">
+                    <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2 whitespace-nowrap">Cercles de Disciples</h2>
+                    <p className="text-sm md:text-base text-gray-600">Identifiez et priez pour les personnes que Dieu a placées dans votre vie.</p>
+                </div>
+            </div>
 
-        <div className="relative w-full max-w-5xl flex items-center justify-center my-8">
-          <div className="relative w-[700px] h-[700px] sm:w-[800px] sm:h-[800px] md:w-[900px] md:h-[900px] lg:w-[1000px] lg:h-[1000px] xl:w-[1100px] xl:h-[1100px]">
-            {/* Cercle Piliers au centre */}
-            {isSupervisor && renderCircle('pillars', 0, 0, true)}
+            {/* Section Cercles - parfaitement centrée avec mx-auto */}
+            <div className="relative flex items-center justify-center flex-shrink-0">
+              <div className="relative w-[700px] h-[700px] sm:w-[800px] sm:h-[800px] md:w-[900px] md:h-[900px] lg:w-[1000px] lg:h-[1000px] xl:w-[1100px] xl:h-[1100px]">
+                {/* Cercle Piliers au centre */}
+                {isSupervisor && renderCircle('pillars', 0, 0, true, 0)}
+                
+                {/* 6 autres cercles disposés en cercle fermé autour du cercle central */}
+                {/* Ordre : Haut → Bas-droite → Bas → Bas-gauche (sens des aiguilles d'une montre) */}
+                {/* Rayon légèrement augmenté pour espacer les cercles périphériques */}
+                {renderCircle('evangelized', -90, 200, false, 1)} {/* Haut - PERSONNES ÉVANGÉLISÉES */}
+                {renderCircle('unbelievers', -30, 205, false, 2)} {/* Haut-droite - NON-CROYANTS */}
+                {renderCircle('newBelievers', 30, 205, false, 3)} {/* Droite - NOUVEAUX CONVERTIS */}
+                {renderCircle('newArrivals', 90, 200, false, 4)} {/* Bas-droite - NOUVEAUX ARRIVANTS */}
+                {renderCircle('established', 150, 205, false, 5)} {/* Bas - DISCIPLES AFFERMIS */}
+                {renderCircle('makers', 210, 205, false, 6)} {/* Bas-gauche - MENTORS */}
+              </div>
+            </div>
+        </div>
             
-            {/* 6 autres cercles disposés en cercle fermé autour du cercle central */}
-            {/* Angles équidistants : 360/6 = 60 degrés entre chaque cercle */}
-            {/* Rayon ajusté pour créer des intersections avec le cercle central et entre eux */}
-            {renderCircle('newArrivals', -90, 240)} {/* Haut */}
-            {renderCircle('evangelized', -30, 250)} {/* Haut-droite */}
-            {renderCircle('unbelievers', 30, 250)} {/* Droite */}
-            {renderCircle('newBelievers', 90, 240)} {/* Bas-droite */}
-            {renderCircle('makers', 150, 250)} {/* Bas */}
-            {renderCircle('established', 210, 250)} {/* Bas-gauche */}
-          </div>
-        </div>
-        
-        <div className="w-full max-w-md px-4 mt-16 flex flex-col gap-3">
-            <Button className="flex-1 py-4 text-base bg-purple-600 hover:bg-purple-700 text-white shadow-sm border border-purple-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-prayers')}>
-                <BellRing className="mr-2 h-4 w-4" />
-                Planifier une Prière
-            </Button>
-            <Button className="flex-1 py-4 text-base bg-purple-600 hover:bg-purple-700 text-white shadow-sm border border-purple-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-appointments')}>
-                <MessageCircle className="mr-2 h-4 w-4" />
-                Planifier un Échange
-            </Button>
-        </div>
+        {/* Section Boutons - déplacée sur la droite */}
+        <div className="w-full max-w-xs mt-6 flex flex-col gap-3 items-end justify-center ml-auto mr-40">
+                <Button className="w-full py-6 text-lg font-semibold bg-green-600 hover:bg-green-700 text-white shadow-sm border border-green-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-prayers')}>
+                    <BellRing className="mr-2 h-5 w-5" />
+                    Planifier une Prière
+                </Button>
+                <Button className="w-full py-6 text-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm border border-blue-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-appointments')}>
+                    <MessageCircle className="mr-2 h-5 w-5" />
+                    Planifier un Échange
+                </Button>
+            </div>
 
         <AnimatePresence>
             {activeCategory && (
@@ -925,6 +1027,7 @@ const Circles = () => {
             )}
         </AnimatePresence>
     </div>
+    </>
   );
 };
 
