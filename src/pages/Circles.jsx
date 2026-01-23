@@ -983,7 +983,7 @@ const Circles = () => {
         {/* Conteneur principal - tous les éléments centrés sur le même axe vertical avec largeur maximale */}
         <div className="w-full max-w-[1400px] mx-auto flex flex-col items-center justify-center px-4 sm:px-6">
             {/* Section Titres - en haut de la page, sur la gauche, texte centré, sur une seule ligne */}
-            <div className="w-full flex flex-col items-center justify-center mb-6 pl-48">
+            <div className="w-full flex flex-col items-center justify-center -mb-36 pl-48">
                 <div className="text-center w-full max-w-xs">
                     <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2 whitespace-nowrap">Cercles de Disciples</h2>
                     <p className="text-sm md:text-base text-gray-600">Identifiez et priez pour les personnes que Dieu a placées dans votre vie.</p>
@@ -991,7 +991,7 @@ const Circles = () => {
             </div>
 
             {/* Section Cercles - parfaitement centrée avec mx-auto */}
-            <div className="relative flex items-center justify-center flex-shrink-0">
+            <div className="relative flex items-center justify-center flex-shrink-0 mb-6">
               <div className="relative w-[700px] h-[700px] sm:w-[800px] sm:h-[800px] md:w-[900px] md:h-[900px] lg:w-[1000px] lg:h-[1000px] xl:w-[1100px] xl:h-[1100px]">
                 {/* Cercle Piliers au centre */}
                 {isSupervisor && renderCircle('pillars', 0, 0, true, 0)}
@@ -1007,19 +1007,19 @@ const Circles = () => {
                 {renderCircle('makers', 210, 205, false, 6)} {/* Bas-gauche - MENTORS */}
               </div>
             </div>
-        </div>
-            
-        {/* Section Boutons - déplacée sur la droite */}
-        <div className="w-full max-w-xs mt-6 flex flex-col gap-3 items-end justify-center ml-auto mr-40">
-                <Button className="w-full py-6 text-lg font-semibold bg-green-600 hover:bg-green-700 text-white shadow-sm border border-green-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-prayers')}>
-                    <BellRing className="mr-2 h-5 w-5" />
-                    Planifier une Prière
+
+            {/* Section Boutons - alignée avec les autres sections dans le même conteneur */}
+            <div className="w-full max-w-md flex flex-col gap-3 items-end justify-center pl-48">
+                <Button className="w-full py-6 px-6 text-lg font-semibold bg-green-600 hover:bg-green-700 text-white shadow-sm border border-green-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-prayers')}>
+                    <BellRing className="mr-2 h-5 w-5 text-white" />
+                    <span className="text-white">Planifier une Prière</span>
                 </Button>
-                <Button className="w-full py-6 text-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm border border-blue-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-appointments')}>
-                    <MessageCircle className="mr-2 h-5 w-5" />
-                    Planifier un Échange
+                <Button className="w-full py-6 px-6 text-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm border border-blue-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-appointments')}>
+                    <MessageCircle className="mr-2 h-5 w-5 text-white" />
+                    <span className="text-white">Planifier un Échange</span>
                 </Button>
             </div>
+        </div>
 
         <AnimatePresence>
             {activeCategory && (
