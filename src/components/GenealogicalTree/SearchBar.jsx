@@ -81,7 +81,7 @@ const SearchBar = ({ onSelectPerson, currentPersonId, onResetToSelf }) => {
   };
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-2xl">
+    <div ref={containerRef} className="relative w-full max-w-xl">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
         <Input
@@ -90,7 +90,7 @@ const SearchBar = ({ onSelectPerson, currentPersonId, onResetToSelf }) => {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           onFocus={() => searchTerm.length >= 2 && setShowResults(true)}
-          className="pl-10 pr-20 bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500"
+          className="pl-10 pr-28 bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500"
         />
         {searchTerm && (
           <Button
@@ -108,9 +108,9 @@ const SearchBar = ({ onSelectPerson, currentPersonId, onResetToSelf }) => {
         {currentPersonId && (
           <Button
             variant="outline"
-            size="sm"
+            size="default"
             onClick={handleReset}
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 h-7 text-xs bg-blue-500 text-white hover:bg-purple-600 hover:text-white border-blue-500 hover:border-purple-600"
+            className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 px-4 text-sm font-medium bg-blue-500 text-white hover:bg-purple-600 hover:text-white border-blue-500 hover:border-purple-600"
           >
             Mon arbre
           </Button>
@@ -119,8 +119,8 @@ const SearchBar = ({ onSelectPerson, currentPersonId, onResetToSelf }) => {
 
       {/* Résultats de recherche */}
       {showResults && (
-        <Card className="absolute z-50 w-full mt-2 max-h-96 overflow-y-auto shadow-lg border-gray-200">
-          <CardContent className="p-2">
+        <Card className="absolute z-50 w-full mt-2 max-h-96 overflow-y-auto shadow-lg border-gray-200 bg-gray-100">
+          <CardContent className="p-1">
             {isSearching ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
@@ -136,28 +136,26 @@ const SearchBar = ({ onSelectPerson, currentPersonId, onResetToSelf }) => {
                   <div
                     key={`${person.type}-${person.id}`}
                     onClick={() => handleSelect(person)}
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="flex items-center gap-3 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 cursor-pointer transition-colors h-8"
                   >
-                    <Avatar className="h-10 w-10">
+                    <Avatar className="h-6 w-6 shrink-0">
                       <AvatarImage src={person.avatar_url} />
-                      <AvatarFallback className={getAvatarColor(person.name)}>
+                      <AvatarFallback className={`${getAvatarColor(person.name)} text-xs`}>
                         {getInitials(person.name)}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
-                        {person.displayLabel || person.name}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-xs">
-                          {person.roleLabel || person.role}
-                        </Badge>
-                        {person.email && (
-                          <span className="text-xs text-gray-500 truncate">{person.email}</span>
-                        )}
-                      </div>
-                    </div>
-                    <User className="h-4 w-4 text-gray-400 shrink-0" />
+                    <p className="font-medium text-gray-900 truncate text-sm whitespace-nowrap min-w-0">
+                      {person.displayLabel || person.name}
+                    </p>
+                    <Badge variant="outline" className="text-xs border-gray-300 bg-white text-black shrink-0">
+                      {person.roleLabel || person.role}
+                    </Badge>
+                    {person.email && (
+                      <span className="text-xs text-gray-500 truncate whitespace-nowrap hidden sm:inline min-w-0">
+                        {person.email}
+                      </span>
+                    )}
+                    <User className="h-3 w-3 text-gray-400 shrink-0 ml-auto" />
                   </div>
                 ))}
               </div>

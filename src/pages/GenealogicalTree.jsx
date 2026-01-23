@@ -988,9 +988,9 @@ const GenealogicalTree = () => {
             </div>
           </div>
 
-          {/* Boutons d'affichage */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Sélecteur de type d'affichage */}
+          {/* Boutons de mode de vue et d'affichage sur la même ligne */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            {/* Boutons d'affichage (à gauche) */}
             <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
               <Button
                 variant={displayMode === 'tree' ? 'default' : 'ghost'}
@@ -1015,6 +1015,49 @@ const GenealogicalTree = () => {
                 className="h-8"
               >
                 <List size={16} />
+              </Button>
+            </div>
+
+            {/* Boutons de mode de vue (Descendants, Ascendants, Vue complète) - alignés à droite */}
+            <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+              <Button
+                variant={viewMode === 'descendants' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('descendants')}
+                className={`h-8 ${
+                  viewMode === 'descendants' 
+                    ? 'bg-green-600 text-white hover:bg-green-700' 
+                    : 'text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <ArrowDown size={16} className="mr-2" />
+                Descendants
+              </Button>
+              <Button
+                variant={viewMode === 'ascendants' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('ascendants')}
+                className={`h-8 ${
+                  viewMode === 'ascendants' 
+                    ? 'bg-purple-500 text-white hover:bg-purple-600' 
+                    : 'bg-purple-500 text-white hover:bg-purple-600'
+                }`}
+              >
+                <ArrowUp size={16} className="mr-2" />
+                Ascendants
+              </Button>
+              <Button
+                variant={viewMode === 'complete' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('complete')}
+                className={`h-8 ${
+                  viewMode === 'complete' 
+                    ? 'bg-cyan-700 text-white hover:bg-cyan-800' 
+                    : 'bg-cyan-600 text-white hover:bg-cyan-700'
+                }`}
+              >
+                <GitBranch size={16} className="mr-2" />
+                Vue complète
               </Button>
             </div>
           </div>

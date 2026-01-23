@@ -45,6 +45,7 @@ const PasteurDashboard = () => {
   const [mentorsConsolides, setMentorsConsolides] = useState([]); // Tableau consolidé des mentors
   const [loadingMentors, setLoadingMentors] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchTermMentors, setSearchTermMentors] = useState(''); // Recherche spécifique pour les mentors
   const [selectedFamille, setSelectedFamille] = useState(null);
   const [familleModalDetails, setFamilleModalDetails] = useState({ members: [], reports: [], loading: false });
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -98,12 +99,27 @@ const PasteurDashboard = () => {
     }
   });
 
+  // Statistiques par pasteur
+  const [pasteursStats, setPasteursStats] = useState([]);
+  const [totalCumuleDisciples, setTotalCumuleDisciples] = useState(0);
+  const [loadingPasteursStats, setLoadingPasteursStats] = useState(false);
+
   useEffect(() => {
     if (user) {
       fetchPasteurData();
       checkMissingReports();
+      // Appeler fetchAllPasteursStats indépendamment pour éviter les dépendances
+      fetchAllPasteursStats();
     }
   }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+
+  // Appeler fetchAllPasteursStats aussi au montage du composant
+  useEffect(() => {
+    if (user && !loading) {
+      console.log('🔄 Appel fetchAllPasteursStats depuis useEffect dédié');
+      fetchAllPasteursStats();
+    }
+  }, [user, loading]);
 
   // Charger les mentors consolidés après le chargement des familles
   useEffect(() => {
@@ -202,31 +218,10 @@ const PasteurDashboard = () => {
 
       const superviseursError = null; // Pas d'erreur si le cache fonctionne
 
-      // Récupérer les titres séparément si la colonne existe
-      let superviseursAvecTitres = superviseursData || [];
-      if (superviseursAvecTitres.length > 0) {
-        superviseursAvecTitres = await Promise.all(
-          superviseursAvecTitres.map(async (superviseur) => {
-            let titre = '';
-            try {
-              const { data: titreData } = await supabase
-                .from('profils')
-                .select('titre')
-                .eq('id', superviseur.id)
-                .maybeSingle();
-              titre = titreData?.titre || '';
-            } catch (e) {
-              // Colonne titre n'existe pas, on continue sans
-            }
-            return { ...superviseur, titre };
-          })
-        );
-      }
-
-      // Si aucun superviseur trouvé via pasteur_id, essayer via les familles (comme FamillesDisciples.jsx)
-      let superviseursFinal = superviseursAvecTitres || [];
+      // Ne pas essayer de récupérer 'titre' car la colonne n'existe pas
+      let superviseursFinal = superviseursData || [];
       
-      if (!superviseursAvecTitres || superviseursAvecTitres.length === 0) {
+      if (!superviseursFinal || superviseursFinal.length === 0) {
         console.log('Aucun superviseur trouvé via pasteur_id, tentative via familles...');
         
         // Récupérer toutes les familles avec leurs superviseurs
@@ -249,25 +244,7 @@ const PasteurDashboard = () => {
             
             if (!superviseursViaFamillesError && superviseursViaFamilles) {
               // Filtrer uniquement ceux qui ont le pasteur_id correspondant
-              const superviseursFiltres = superviseursViaFamilles.filter(s => s.pasteur_id === user.id);
-              
-              // Ajouter les titres séparément
-              superviseursFinal = await Promise.all(
-                superviseursFiltres.map(async (superviseur) => {
-                  let titre = '';
-                  try {
-                    const { data: titreData } = await supabase
-                      .from('profils')
-                      .select('titre')
-                      .eq('id', superviseur.id)
-                      .maybeSingle();
-                    titre = titreData?.titre || '';
-                  } catch (e) {
-                    // Colonne titre n'existe pas, on continue sans
-                  }
-                  return { ...superviseur, titre };
-                })
-              );
+              superviseursFinal = superviseursViaFamilles.filter(s => s.pasteur_id === user.id);
               
               console.log('Superviseurs trouvés via familles et filtrés par pasteur_id:', superviseursFinal.length);
             }
@@ -807,6 +784,153 @@ const PasteurDashboard = () => {
     }
   };
 
+  // Fonction pour récupérer les statistiques de tous les pasteurs
+  const fetchAllPasteursStats = async () => {
+    try {
+      setLoadingPasteursStats(true);
+      console.log('🔍 Début récupération stats pasteurs...');
+      const cacheKey = 'all_pasteurs_stats';
+      
+      const statsData = await getOrSetCache(
+        cacheKey,
+        async () => {
+          // Récupérer tous les pasteurs
+          const { data: pasteursData, error: pasteursError } = await supabase
+            .from('profils')
+            .select('id, first_name, last_name, email')
+            .eq('role', 'pasteur')
+            .order('first_name', { ascending: true });
+
+          if (pasteursError) {
+            console.error('❌ Erreur récupération pasteurs:', pasteursError);
+            throw pasteursError;
+          }
+          
+          console.log('📊 Pasteurs trouvés:', pasteursData?.length || 0, pasteursData);
+          
+          if (!pasteursData || pasteursData.length === 0) {
+            console.warn('⚠️ Aucun pasteur trouvé dans la base de données');
+            return [];
+          }
+
+          // Pour chaque pasteur, calculer le total de disciples sous sa tutelle
+          const pasteursAvecStats = await Promise.all(
+            pasteursData.map(async (pasteur) => {
+              console.log(`🔍 Traitement pasteur: ${pasteur.first_name} ${pasteur.last_name} (${pasteur.id})`);
+              
+              // 1. Récupérer tous les superviseurs sous sa responsabilité
+              const { data: superviseursData, error: superviseursError } = await supabase
+                .from('profils')
+                .select('id, first_name, last_name')
+                .eq('pasteur_id', pasteur.id)
+                .eq('role', 'superviseur');
+
+              if (superviseursError) {
+                console.error(`❌ Erreur récupération superviseurs pour pasteur ${pasteur.id}:`, superviseursError);
+              }
+
+              const superviseurIds = superviseursData?.map(s => s.id) || [];
+              console.log(`  📋 Superviseurs trouvés: ${superviseurIds.length}`, superviseursData?.map(s => `${s.first_name} ${s.last_name}`));
+
+              if (superviseurIds.length === 0) {
+                console.log(`  ⚠️ Aucun superviseur pour pasteur ${pasteur.first_name} ${pasteur.last_name}`);
+                return {
+                  pasteur_id: pasteur.id,
+                  prenom: pasteur.first_name || '',
+                  nom: pasteur.last_name || '',
+                  email: pasteur.email || '',
+                  total_disciples: 0
+                };
+              }
+
+              // 2. Récupérer toutes les familles de ces superviseurs
+              const { data: famillesData, error: famillesError } = await supabase
+                .from('familles_disciples')
+                .select('id, nom, superviseur_id')
+                .in('superviseur_id', superviseurIds);
+
+              if (famillesError) {
+                console.error(`❌ Erreur récupération familles pour pasteur ${pasteur.id}:`, famillesError);
+              }
+
+              const familleIds = famillesData?.map(f => f.id) || [];
+              console.log(`  🏠 Familles trouvées: ${familleIds.length}`, famillesData?.map(f => f.nom));
+
+              if (familleIds.length === 0) {
+                console.log(`  ⚠️ Aucune famille pour pasteur ${pasteur.first_name} ${pasteur.last_name}`);
+                return {
+                  pasteur_id: pasteur.id,
+                  prenom: pasteur.first_name || '',
+                  nom: pasteur.last_name || '',
+                  email: pasteur.email || '',
+                  total_disciples: 0
+                };
+              }
+
+              // 3. Compter tous les membres de ces familles (disciples + superviseurs)
+              // Compter les disciples
+              const { count: countDisciples, error: countDisciplesError } = await supabase
+                .from('profils')
+                .select('*', { count: 'exact', head: true })
+                .in('famille_id', familleIds)
+                .eq('role', 'disciple');
+
+              if (countDisciplesError) {
+                console.error(`❌ Erreur comptage disciples pour pasteur ${pasteur.id}:`, countDisciplesError);
+              } else {
+                console.log(`  👥 Disciples comptés: ${countDisciples || 0}`);
+              }
+
+              // Compter les superviseurs de ces familles (ils ont aussi un famille_id)
+              const { count: countSuperviseurs, error: countSuperviseursError } = await supabase
+                .from('profils')
+                .select('*', { count: 'exact', head: true })
+                .in('famille_id', familleIds)
+                .eq('role', 'superviseur')
+                .in('id', superviseurIds); // S'assurer que ce sont bien les superviseurs de ce pasteur
+
+              if (countSuperviseursError) {
+                console.error(`❌ Erreur comptage superviseurs pour pasteur ${pasteur.id}:`, countSuperviseursError);
+              } else {
+                console.log(`  👤 Superviseurs comptés: ${countSuperviseurs || 0}`);
+              }
+
+              const totalMembres = (countDisciples || 0) + (countSuperviseurs || 0);
+              
+              console.log(`  ✅ Pasteur ${pasteur.first_name} ${pasteur.last_name}: ${countDisciples || 0} disciples + ${countSuperviseurs || 0} superviseurs = ${totalMembres} membres`);
+
+              return {
+                pasteur_id: pasteur.id,
+                prenom: pasteur.first_name || '',
+                nom: pasteur.last_name || '',
+                email: pasteur.email || '',
+                total_disciples: totalMembres
+              };
+            })
+          );
+
+          return pasteursAvecStats;
+        },
+        2 * 60 * 1000 // Cache 2 minutes
+      );
+
+      console.log('✅ Stats pasteurs récupérées:', statsData?.length || 0, statsData);
+      setPasteursStats(statsData || []);
+      
+      // Calculer le total cumulé
+      const totalCumule = (statsData || []).reduce((sum, p) => sum + (p.total_disciples || 0), 0);
+      console.log('📈 Total cumulé disciples:', totalCumule);
+      setTotalCumuleDisciples(totalCumule);
+    } catch (error) {
+      console.error('❌ Erreur lors de la récupération des stats des pasteurs:', error);
+      setPasteursStats([]);
+      setTotalCumuleDisciples(0);
+    } finally {
+      setLoadingPasteursStats(false);
+      console.log('✅ Chargement stats pasteurs terminé');
+    }
+  };
+
   // Fonction pour récupérer les mentors consolidés avec leurs stats
   const fetchMentorsConsolides = async () => {
     try {
@@ -934,6 +1058,54 @@ const PasteurDashboard = () => {
     const identifiantFamille = normalizeString(item.famille?.identifiant_famille || '');
     return nomSuperviseur.includes(search) || nomFamille.includes(search) || identifiantFamille.includes(search);
   });
+
+  // Filtrer les mentors consolidés selon la recherche (insensible à la casse et aux accents)
+  const filteredMentors = mentorsConsolides.filter(mentor => {
+    if (!searchTermMentors) return true;
+    const search = normalizeString(searchTermMentors);
+    const nomMentor = normalizeString(`${mentor.prenom} ${mentor.nom}`);
+    const nomEglise = normalizeString(mentor.eglise || '');
+    return nomMentor.includes(search) || nomEglise.includes(search);
+  });
+
+  // Fonction pour exporter le tableau consolidé des mentors en Excel (CSV)
+  const handleExportMentorsExcel = () => {
+    try {
+      const exportData = filteredMentors.map(mentor => ({
+        Nom: mentor.nom || '',
+        Prénom: mentor.prenom || '',
+        Église: mentor.eglise || 'N/A',
+        'Nombre de Disciples': mentor.nombre_disciples || 0,
+        'Avancement (%)': mentor.avancement_pourcentage || 0,
+        'Disciples Présents': mentor.disciples_presents || 0,
+        'Taux Participation Semaine (%)': mentor.taux_participation_semaine || 0
+      }));
+
+      if (exportData.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Aucune donnée',
+          description: 'Aucune donnée à exporter.',
+        });
+        return;
+      }
+
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      const filename = `dashboard_pasteur_mentors_consolides_${timestamp}.xlsx`;
+      exportToExcel(exportData, filename, {
+        title: 'Tableau Consolidé des Mentors (Piliers)',
+        description: `Export des mentors consolidés - ${format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })}`,
+        author: user?.email || 'DiscipleLife'
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'export Excel des mentors:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: 'Impossible d\'exporter les données des mentors.',
+      });
+    }
+  };
 
   if (loading) {
     return (
@@ -1080,6 +1252,76 @@ const PasteurDashboard = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* KPI Globaux - Total Disciples par Pasteur */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Users className="h-5 w-5 text-purple-600" />
+              KPI Globaux - Total Disciples par Pasteur
+            </CardTitle>
+            <CardDescription>
+              Vue d'ensemble du nombre total de disciples sous la tutelle de chaque pasteur
+              {pasteursStats.length > 0 && ` (${pasteursStats.length} pasteur${pasteursStats.length > 1 ? 's' : ''})`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingPasteursStats ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-purple-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">Chargement des statistiques...</p>
+              </div>
+            ) : pasteursStats.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-sm text-gray-500">Aucun pasteur trouvé dans la base de données.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                {/* Cartes pour chaque pasteur */}
+                {pasteursStats.map((pasteur) => (
+                  <Card
+                    key={pasteur.pasteur_id}
+                    className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                        <Church className="h-4 w-4 text-purple-600" />
+                        {pasteur.prenom} {pasteur.nom}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-purple-600">
+                        {pasteur.total_disciples || 0}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Total Disciples
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+
+                {/* Carte Total Cumulé */}
+                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-300 shadow-md hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-blue-600" />
+                      Total Cumulé
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-blue-600">
+                      {totalCumuleDisciples}
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Tous les Disciples
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Statistiques des rapports */}
         <Card className="bg-gradient-to-br from-blue-50 to-sky-50 border-blue-200 shadow-sm">
@@ -1677,9 +1919,6 @@ const PasteurDashboard = () => {
                                 {item.superviseur.first_name} {item.superviseur.last_name}
                               </p>
                               <p className="text-sm text-gray-500">{item.superviseur.email}</p>
-                              {item.superviseur.titre && (
-                                <p className="text-xs text-gray-400">{item.superviseur.titre}</p>
-                              )}
                             </div>
                           </div>
                         </TableCell>
@@ -1763,24 +2002,62 @@ const PasteurDashboard = () => {
               <div>
                 <CardTitle className="text-lg font-semibold text-gray-900">Tableau Consolidé des Mentors (Piliers)</CardTitle>
                 <CardDescription>
-                  Vue d'ensemble de tous les mentors (piliers) avec leurs statistiques de progression
+                  Vue d'ensemble de tous les mentors (piliers) avec leurs statistiques de progression ({filteredMentors.length} mentor{filteredMentors.length > 1 ? 's' : ''})
                 </CardDescription>
               </div>
-              {loadingMentors && (
-                <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-              )}
+              <div className="flex items-center gap-2">
+                {loadingMentors && (
+                  <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportMentorsExcel}
+                  disabled={exporting || filteredMentors.length === 0}
+                  className="gap-2"
+                >
+                  <Download size={16} />
+                  Exporter CSV
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
+            {/* Barre de recherche pour les mentors */}
+            <div className="mb-4 flex items-center gap-2">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Rechercher un mentor (nom, prénom, église)..."
+                  value={searchTermMentors}
+                  onChange={(e) => setSearchTermMentors(e.target.value)}
+                  className="pl-10 bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500"
+                />
+                {searchTermMentors && (
+                  <button
+                    onClick={() => setSearchTermMentors('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500 hover:text-red-700 transition-colors"
+                    type="button"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
             {loadingMentors ? (
               <div className="text-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-purple-600 mx-auto mb-4" />
                 <p className="text-gray-500">Chargement des données des mentors...</p>
               </div>
-            ) : mentorsConsolides.length === 0 ? (
+            ) : filteredMentors.length === 0 ? (
               <div className="text-center py-12">
                 <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun mentor trouvé dans les familles sous votre responsabilité.</p>
+                <p className="text-gray-500">
+                  {searchTermMentors 
+                    ? 'Aucun mentor trouvé pour votre recherche.' 
+                    : 'Aucun mentor trouvé dans les familles sous votre responsabilité.'}
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1797,7 +2074,7 @@ const PasteurDashboard = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mentorsConsolides.map((mentor) => (
+                    {filteredMentors.map((mentor) => (
                       <TableRow key={mentor.mentor_id} className="hover:bg-gray-50 transition-colors">
                         <TableCell>
                           <span className="font-semibold text-gray-900">{mentor.nom}</span>
@@ -1955,9 +2232,6 @@ const PasteurDashboard = () => {
                           <p className="font-semibold text-gray-900 text-lg">
                             {selectedFamille.superviseur.first_name} {selectedFamille.superviseur.last_name}
                           </p>
-                          {selectedFamille.superviseur.titre && (
-                            <p className="text-xs text-gray-500">{selectedFamille.superviseur.titre}</p>
-                          )}
                           {selectedFamille.superviseur.email && (
                             <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
                               <Mail className="h-4 w-4 shrink-0" />

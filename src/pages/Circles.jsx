@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
+import { useRole } from '@/context/RoleContext';
 import { useNavigate } from 'react-router-dom';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -18,6 +19,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const CATEGORIES = {
+  newArrivals: {
+    id: 'newArrivals',
+    title: 'NOUVEAUX\nARRIVANTS',
+    color: 'bg-blue-500', 
+    textColor: 'text-white',
+    description: "Nouveaux arrivants dans votre communauté.",
+    longDescription: "Personnes qui viennent de rejoindre votre communauté et qui ont besoin d'être accueillies et intégrées.",
+    order: 1
+  },
+  evangelized: {
+    id: 'evangelized',
+    title: 'PERSONNES\nÉVANGÉLISÉES',
+    color: 'bg-indigo-500', 
+    textColor: 'text-white',
+    description: "Personnes qui ont été évangélisées.",
+    longDescription: "Personnes avec qui vous avez partagé l'Évangile et qui sont en chemin vers la conversion.",
+    order: 2
+  },
   unbelievers: {
     id: 'unbelievers',
     title: 'NON-CROYANTS',
@@ -25,7 +44,7 @@ const CATEGORIES = {
     textColor: 'text-white',
     description: "Personnes pour qui vous priez et avec qui vous tissez des liens.",
     longDescription: "Ce sont de nouveaux frères et sœurs en Christ. Ils ont besoin d'être nourris, encouragés et enseignés dans les fondements de la foi pour s'enraciner en Christ.",
-    order: 1
+    order: 3
   },
   newBelievers: {
     id: 'newBelievers',
@@ -34,7 +53,7 @@ const CATEGORIES = {
     textColor: 'text-white',
     description: "Nouveaux disciples de Christ que vous formez.",
     longDescription: "Ce sont de nouveaux frères et sœurs en Christ. Ils ont besoin d'être nourris, encouragés et enseignés dans les fondements de la foi pour s'enraciner en Christ.",
-    order: 2
+    order: 4
   },
   established: {
     id: 'established',
@@ -43,7 +62,7 @@ const CATEGORIES = {
     textColor: 'text-white',
     description: "Croyants qui grandissent et servent.",
     longDescription: "Ces disciples sont stables dans leur foi. Ils servent activement, connaissent la Parole et commencent à aider d'autres personnes à grandir spirituellement.",
-    order: 3
+    order: 5
   },
   makers: {
     id: 'makers',
@@ -52,13 +71,25 @@ const CATEGORIES = {
     textColor: 'text-white', 
     description: "Ceux qui forment activement d'autres disciples.",
     longDescription: "Leur vie est caractérisée par la reproduction spirituelle. Ils forment intentionnellement d'autres disciples qui, à leur tour, en formeront d'autres.",
-    order: 4
+    order: 6
+  },
+  pillars: {
+    id: 'pillars',
+    title: 'PILIERS',
+    color: 'bg-orange-500',
+    textColor: 'text-white',
+    description: "Mentors approuvés par le superviseur.",
+    longDescription: "Ce sont des disciples qui sont déjà mentors et qui ont été approuvés par le superviseur pour devenir des piliers. Le passage de Mentor à Pilier nécessite l'approbation du superviseur.",
+    order: 7,
+    supervisorOnly: true // Seul le superviseur peut ajouter dans ce cercle
   }
 };
 
 const CircleModal = ({ category, onClose, onUpdate }) => {
   const { user } = useAuth();
+  const { role } = useRole();
   const { toast } = useToast();
+  const isSupervisor = role === 'superviseur' || role === 'pasteur' || role === 'admin' || role === 'super_admin';
   const [people, setPeople] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false); // Pour afficher le formulaire complet directement
@@ -193,10 +224,13 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
   // Initialiser le formulaire avec le niveau spirituel correspondant à la catégorie
   const initializeFormData = () => {
     const levelMap = {
+      'newArrivals': 'Nouveau arrivant',
+      'evangelized': 'Personne évangélisée',
       'unbelievers': 'Non-croyant',
       'newBelievers': 'Nouveau converti',
       'established': 'Disciple affermi',
-      'makers': 'Faiseur de disciples'
+      'makers': 'Faiseur de disciples',
+      'pillars': 'Pilier'
     };
     setFullFormData({
       firstName: '',
@@ -215,20 +249,26 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
 
   const mapCategoryToLevel = (catId) => {
       switch(catId) {
+          case 'newArrivals': return 'Nouveau arrivant';
+          case 'evangelized': return 'Personne évangélisée';
           case 'unbelievers': return 'Non-croyant';
           case 'newBelievers': return 'Nouveau converti';
           case 'established': return 'Disciple affermi';
           case 'makers': return 'Faiseur de disciples';
+          case 'pillars': return 'Pilier';
           default: return 'Non-croyant';
       }
   };
 
   const mapLevelToCategory = (level) => {
      switch(level) {
+         case 'Nouveau arrivant': return 'newArrivals';
+         case 'Personne évangélisée': return 'evangelized';
          case 'Non-croyant': return 'unbelievers';
          case 'Nouveau converti': return 'newBelievers';
          case 'Disciple affermi': return 'established';
          case 'Faiseur de disciples': return 'makers';
+         case 'Pilier': return 'pillars';
          default: return 'unbelievers';
      }
   };
@@ -446,32 +486,38 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         className={`fixed inset-0 z-[40] flex flex-col ${category.color} overflow-y-auto overflow-x-hidden`}
       >
-        <div className="relative p-6 pt-8 flex justify-end">
-            <Button variant="ghost" size="icon" onClick={onClose} className="text-white hover:bg-white/20">
-                <X size={32} />
+        <div className="relative p-4 pt-6 flex justify-end">
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-white hover:bg-white/20 h-8 w-8">
+                <X size={20} />
             </Button>
         </div>
         <div className="flex-1 px-6 pb-10 flex flex-col">
           <div className="flex-1 max-w-2xl mx-auto w-full text-center">
-              <h2 className="text-4xl font-bold text-white mb-4 tracking-tight whitespace-pre-line text-center">{category.title}</h2>
-              <div className="flex items-center justify-center gap-2 mb-8">
-                <p className={`text-2xl ${category.textColor} font-medium leading-tight text-center`}>{category.description}</p>
-                <div className="bg-white/20 rounded-full p-1"><ArrowRight size={14} className="text-white rotate-90" /></div>
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-3 tracking-tight whitespace-pre-line text-center">{category.title}</h2>
+              <div className="flex items-center justify-center gap-2 mb-6">
+                <p className={`text-lg ${category.textColor} font-medium leading-tight text-center`}>{category.description}</p>
+                <div className="bg-white/20 rounded-full p-1"><ArrowRight size={12} className="text-white rotate-90" /></div>
               </div>
-              <p className={`${category.textColor} text-lg leading-relaxed opacity-90 mb-12 text-center`}>{category.longDescription}</p>
+              <p className={`${category.textColor} text-sm leading-relaxed opacity-90 mb-6 text-center`}>{category.longDescription}</p>
 
               {!isAdding && (
                 <div className="flex justify-center mb-6">
-                  <Button 
-                      onClick={() => {
-                        initializeFormData();
-                        setIsAdding(true);
-                      }}
-                      className="w-full max-w-md py-7 bg-white text-slate-900 hover:bg-white/90 hover:scale-[1.01] transition-all text-lg font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 px-6"
-                  >
-                      <span>AJOUTER UN NOM</span>
-                      <Plus className="text-slate-900" size={24} />
-                  </Button>
+                  {category.supervisorOnly && !isSupervisor ? (
+                    <div className="w-full max-w-md py-4 bg-white/50 text-slate-700 text-center rounded-xl shadow-lg">
+                      <p className="text-sm font-medium">Seul le superviseur peut ajouter des personnes dans ce cercle.</p>
+                    </div>
+                  ) : (
+                    <Button 
+                        onClick={() => {
+                          initializeFormData();
+                          setIsAdding(true);
+                        }}
+                        className="w-full max-w-md py-5 bg-white text-slate-900 hover:bg-white/90 hover:scale-[1.01] transition-all text-base font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 px-6"
+                    >
+                        <span>AJOUTER UN NOM</span>
+                        <Plus className="text-slate-900" size={20} />
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -481,8 +527,8 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                     animate={{ opacity: 1, y: 0 }}
                     className="bg-white rounded-xl shadow-xl mb-6 p-6 mx-auto max-w-3xl w-full"
                   >
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-2xl font-bold text-slate-900 text-center flex-1">Nouvelle Identité de Disciple</h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xl font-bold text-slate-900 text-center flex-1">Nouvelle Identité de Disciple</h3>
                       <Button 
                         variant="ghost" 
                         size="icon" 
@@ -490,9 +536,9 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                           setIsAdding(false);
                           initializeFormData();
                         }}
-                        className="text-slate-600 hover:text-slate-900"
+                        className="text-slate-600 hover:text-slate-900 h-8 w-8"
                       >
-                        <X size={24} />
+                        <X size={18} />
                       </Button>
                     </div>
                     
@@ -578,10 +624,13 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
+                            <SelectItem value="Nouveau arrivant" className="focus:bg-gray-100 focus:!text-gray-900">Nouveau arrivant</SelectItem>
+                            <SelectItem value="Personne évangélisée" className="focus:bg-gray-100 focus:!text-gray-900">Personne évangélisée</SelectItem>
                             <SelectItem value="Non-croyant" className="focus:bg-gray-100 focus:!text-gray-900">Non-croyant</SelectItem>
                             <SelectItem value="Nouveau converti" className="focus:bg-gray-100 focus:!text-gray-900">Nouveau converti</SelectItem>
                             <SelectItem value="Disciple affermi" className="focus:bg-gray-100 focus:!text-gray-900">Disciple affermi</SelectItem>
                             <SelectItem value="Faiseur de disciples" className="focus:bg-gray-100 focus:!text-gray-900">Faiseur de disciples</SelectItem>
+                            {isSupervisor && <SelectItem value="Pilier" className="focus:bg-gray-100 focus:!text-gray-900">Pilier</SelectItem>}
                           </SelectContent>
                         </Select>
                       </div>
@@ -678,7 +727,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                             key={person.id} 
                             className="bg-transparent border border-white/30 rounded-xl p-3 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between group animate-in slide-in-from-bottom-2 gap-2 sm:gap-0"
                         >
-                            <span className="text-lg font-medium truncate w-full sm:w-auto sm:flex-1 sm:mr-2">{person.name}</span>
+                            <span className="text-base font-medium truncate w-full sm:w-auto sm:flex-1 sm:mr-2">{person.name}</span>
                             <div className="flex items-center justify-end w-full sm:w-auto gap-1 md:gap-2">
                                 <button onClick={() => toggleVisibility(person)} className="text-white/70 hover:text-white transition-colors p-1">
                                     {person.visible_to_others ? <Eye size={20} /> : <EyeOff size={20} />}
@@ -706,15 +755,15 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                   )}
                   {!loading && people.length === 0 && !isAdding && (
                       <div className="text-center py-10 opacity-60 col-span-2">
-                          <p className="text-white text-lg">Aucune personne dans ce cercle pour le moment.</p>
+                          <p className="text-white text-base">Aucune personne dans ce cercle pour le moment.</p>
                       </div>
                   )}
               </div>
           </div>
         </div>
         <div className="px-6 pb-4 flex justify-center">
-            <Button onClick={onClose} className="w-fit max-w-sm py-7 bg-white/20 text-white hover:bg-white/30 hover:scale-[1.01] transition-all text-lg font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 mx-auto">
-                <ChevronLeft size={24} />
+            <Button onClick={onClose} className="w-fit max-w-sm py-4 bg-white/20 text-white hover:bg-white/30 hover:scale-[1.01] transition-all text-base font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 mx-auto">
+                <ChevronLeft size={18} />
                 <span>Retour</span>
             </Button>
         </div>
@@ -729,8 +778,8 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                        <h3 className="text-2xl font-bold text-gray-900 mb-4">Rendre Public ?</h3>
                        <p className="text-gray-600 mb-6 leading-relaxed">Voulez-vous rendre ce nom public ? Cela permettra aux autres membres de votre groupe de voir ce nom.</p>
                        <div className="flex justify-end gap-3">
-                           <Button onClick={() => setPublicConfirmPerson(null)} className="h-12 w-12 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-900 p-0 flex items-center justify-center"><X size={24} /></Button>
-                           <Button onClick={() => updateVisibility(publicConfirmPerson.id, true)} className="h-12 w-12 rounded-full bg-purple-600 hover:bg-purple-700 text-white p-0 flex items-center justify-center"><Check size={24} /></Button>
+                           <Button onClick={() => setPublicConfirmPerson(null)} className="h-10 w-10 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-900 p-0 flex items-center justify-center"><X size={20} /></Button>
+                           <Button onClick={() => updateVisibility(publicConfirmPerson.id, true)} className="h-10 w-10 rounded-full bg-purple-600 hover:bg-purple-700 text-white p-0 flex items-center justify-center"><Check size={20} /></Button>
                        </div>
                    </div>
                </motion.div>
@@ -744,7 +793,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-xl border border-gray-200">
                    <div className="p-6 text-center">
-                       <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4 text-red-600"><Trash2 size={24} /></div>
+                       <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4 text-red-600"><Trash2 size={20} /></div>
                        <h3 className="text-xl font-bold text-gray-900 mb-2">Supprimer {deleteConfirmPerson.name} ?</h3>
                        <p className="text-gray-600 mb-6">Êtes-vous sûr de vouloir retirer cette personne de votre cercle ? Cette action est irréversible.</p>
                        <div className="flex gap-3">
@@ -763,16 +812,34 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
 
 const Circles = () => {
   const { user } = useAuth();
+  const { role } = useRole();
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState(null);
-  const [counts, setCounts] = useState({ unbelievers: 0, newBelievers: 0, established: 0, makers: 0 });
+  const isSupervisor = role === 'superviseur' || role === 'pasteur' || role === 'admin' || role === 'super_admin';
+  const [counts, setCounts] = useState({ 
+    newArrivals: 0, 
+    evangelized: 0, 
+    unbelievers: 0, 
+    newBelievers: 0, 
+    established: 0, 
+    makers: 0, 
+    pillars: 0 
+  });
 
   const fetchCounts = async () => {
     if (!user) return;
     try {
         const { data, error } = await supabase.from('cercle_personnes').select('circle_type').eq('user_id', user.id);
         if (error) throw error;
-        const newCounts = { unbelievers: 0, newBelievers: 0, established: 0, makers: 0 };
+        const newCounts = { 
+          newArrivals: 0, 
+          evangelized: 0, 
+          unbelievers: 0, 
+          newBelievers: 0, 
+          established: 0, 
+          makers: 0, 
+          pillars: 0 
+        };
         data.forEach(p => { if (newCounts[p.circle_type] !== undefined) newCounts[p.circle_type]++; });
         setCounts(newCounts);
     } catch (e) { console.error("Error fetching counts", e); }
@@ -780,47 +847,76 @@ const Circles = () => {
 
   useEffect(() => { fetchCounts(); }, [user]);
 
-  const renderCircle = (key, styles) => {
+  const renderCircle = (key, angle, radius) => {
     const category = CATEGORIES[key];
-    const count = counts[key];
+    const count = counts[key] || 0;
+    // Calculer la position en fonction de l'angle et du rayon
+    const x = Math.cos(angle * Math.PI / 180) * radius;
+    const y = Math.sin(angle * Math.PI / 180) * radius;
+    
     return (
         <motion.div 
             key={key}
-            whileHover={{ scale: 1.05, zIndex: 20 }}
+            whileHover={{ scale: 1.08, zIndex: 20 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setActiveCategory(category)}
-            className={`absolute ${styles} w-40 h-40 sm:w-48 sm:h-48 md:w-60 md:h-60 lg:w-72 lg:h-72 rounded-full ${category.color} flex flex-col items-center justify-center cursor-pointer shadow-2xl hover:ring-4 hover:ring-white/30 z-10 transition-all duration-300`}
+            className={`absolute w-32 h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 lg:w-44 lg:h-44 rounded-full ${category.color} flex flex-col items-center justify-center cursor-pointer shadow-lg hover:shadow-xl hover:ring-2 hover:ring-white/40 z-10 transition-all duration-300`}
+            style={{
+              left: `calc(50% + ${x}px)`,
+              top: `calc(50% + ${y}px)`,
+              transform: 'translate(-50%, -50%)'
+            }}
          >
-             <div className="flex flex-col items-center justify-center text-center">
-                <span className="text-[10px] sm:text-xs md:text-sm font-bold text-white/90 uppercase tracking-widest mb-1 whitespace-pre-line">{category.title}</span>
-                {count === 0 ? <Plus className="text-white/60" size={32} /> : <span className="text-4xl sm:text-5xl md:text-6xl font-bold text-white drop-shadow-md">{count}</span>}
+             <div className="flex flex-col items-center justify-center text-center px-2">
+                <span className="text-[8px] sm:text-[9px] md:text-[10px] lg:text-[11px] font-bold text-white/90 uppercase tracking-wider mb-1 whitespace-pre-line leading-tight">{category.title}</span>
+                {count === 0 ? <Plus className="text-white/60" size={20} /> : <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white drop-shadow-md">{count}</span>}
              </div>
          </motion.div>
     );
   };
 
   return (
-    <div className="h-full flex flex-col items-center justify-center w-full relative overflow-y-auto overflow-x-hidden min-h-[600px] py-10 px-4 sm:px-6">
+    <div className="h-full flex flex-col items-center justify-center w-full relative overflow-y-auto overflow-x-hidden min-h-[600px] py-8 px-4 sm:px-6 bg-gray-50">
         
         <div className="text-center mb-4 z-0 px-4 mt-4 md:mt-0">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">Cercles de Disciples</h2>
-            <p className="text-gray-600 max-w-md mx-auto">Identifiez et priez pour les personnes que Dieu a placées dans votre vie.</p>
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">Cercles de Disciples</h2>
+            <p className="text-sm md:text-base text-gray-600 max-w-md mx-auto">Identifiez et priez pour les personnes que Dieu a placées dans votre vie.</p>
         </div>
 
-        <div className="relative w-[280px] h-[280px] sm:w-[340px] sm:h-[340px] md:w-[440px] md:h-[440px] lg:w-[520px] lg:h-[520px] flex items-center justify-center my-8">
-             {renderCircle('unbelievers', 'top-0 left-0')}
-             {renderCircle('newBelievers', 'top-0 right-0')}
-             {renderCircle('established', 'bottom-0 left-0')}
-             {renderCircle('makers', 'bottom-0 right-0')}
+        <div className="relative w-full max-w-4xl flex items-center justify-center my-8">
+          <div className="relative w-[600px] h-[600px] sm:w-[700px] sm:h-[700px] md:w-[800px] md:h-[800px] lg:w-[900px] lg:h-[900px]">
+            {/* Disposition en cercle avec intersections légères */}
+            {/* 7 cercles disposés en cercle - angles équidistants avec rayon ajusté pour intersections */}
+            {isSupervisor ? (
+              <>
+                {renderCircle('newArrivals', -90, 200)} {/* Haut */}
+                {renderCircle('evangelized', -51.4, 210)} {/* Haut-droite */}
+                {renderCircle('unbelievers', -12.9, 210)} {/* Droite-haut */}
+                {renderCircle('newBelievers', 25.7, 210)} {/* Droite-bas */}
+                {renderCircle('makers', 64.3, 210)} {/* Bas-droite */}
+                {renderCircle('established', 102.9, 210)} {/* Bas-gauche */}
+                {renderCircle('pillars', 141.4, 210)} {/* Gauche-bas */}
+              </>
+            ) : (
+              <>
+                {renderCircle('newArrivals', -90, 200)} {/* Haut */}
+                {renderCircle('evangelized', -45, 210)} {/* Haut-droite */}
+                {renderCircle('unbelievers', 0, 200)} {/* Droite */}
+                {renderCircle('newBelievers', 45, 210)} {/* Bas-droite */}
+                {renderCircle('makers', 90, 200)} {/* Bas */}
+                {renderCircle('established', 135, 210)} {/* Bas-gauche */}
+              </>
+            )}
+          </div>
         </div>
         
-        <div className="w-full max-w-md px-4 mt-24 flex flex-col gap-4">
-            <Button className="flex-1 py-5 text-lg bg-purple-600 hover:bg-purple-700 text-white shadow-sm border border-purple-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-prayers')}>
-                <BellRing className="mr-2 h-5 w-5" />
+        <div className="w-full max-w-md px-4 mt-16 flex flex-col gap-3">
+            <Button className="flex-1 py-4 text-base bg-purple-600 hover:bg-purple-700 text-white shadow-sm border border-purple-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-prayers')}>
+                <BellRing className="mr-2 h-4 w-4" />
                 Planifier une Prière
             </Button>
-            <Button className="flex-1 py-5 text-lg bg-purple-600 hover:bg-purple-700 text-white shadow-sm border border-purple-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-appointments')}>
-                <MessageCircle className="mr-2 h-5 w-5" />
+            <Button className="flex-1 py-4 text-base bg-purple-600 hover:bg-purple-700 text-white shadow-sm border border-purple-700 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]" onClick={() => navigate('/my-appointments')}>
+                <MessageCircle className="mr-2 h-4 w-4" />
                 Planifier un Échange
             </Button>
         </div>
