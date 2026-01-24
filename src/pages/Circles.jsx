@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, X, Eye, EyeOff, ArrowRight, Trash2, Check, ChevronLeft, BellRing, MessageCircle, User, Calendar as CalendarIcon, Phone, MapPin } from 'lucide-react';
+import { Plus, X, Eye, EyeOff, ArrowRight, Trash2, Check, ChevronLeft, BellRing, MessageCircle, User, Calendar as CalendarIcon, Phone, MapPin, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
@@ -11,6 +11,8 @@ import { useRole } from '@/context/RoleContext';
 import { useNavigate } from 'react-router-dom';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,6 +98,8 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
   const [publicConfirmPerson, setPublicConfirmPerson] = useState(null);
   const [deleteConfirmPerson, setDeleteConfirmPerson] = useState(null);
 
+  const formationsPCNC = ['001', '101', '201', 'RTT', 'IEBI', 'PILLIERS'];
+  
   // Full form state
   const [fullFormData, setFullFormData] = useState({
     firstName: '',
@@ -108,7 +112,13 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
     startDate: new Date().toISOString().split('T')[0],
     parentDisciple: 'none',
     isBaptized: 'non', // 'oui' ou 'non'
-    baptismDate: '' // Date du baptême si oui
+    baptismDate: '', // Date du baptême si oui
+    nombreDisciples: 0,
+    formationsPCNC: [],
+    observations: '',
+    serveInDepartment: 'non', // 'oui' ou 'non'
+    departmentName: '',
+    departmentHeadName: ''
   });
 
   const [allPotentialParents, setAllPotentialParents] = useState([]);
@@ -245,7 +255,13 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
       startDate: new Date().toISOString().split('T')[0],
       parentDisciple: 'none',
       isBaptized: 'non',
-      baptismDate: ''
+      baptismDate: '',
+      nombreDisciples: 0,
+      formationsPCNC: [],
+      observations: '',
+      serveInDepartment: 'non',
+      departmentName: '',
+      departmentHeadName: ''
     });
   };
 
@@ -540,7 +556,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                         }}
                         className="w-full max-w-md py-5 bg-white text-slate-900 hover:bg-white/90 hover:scale-[1.01] transition-all text-base font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 px-6"
                     >
-                        <span>AJOUTER UN NOM</span>
+                        <span>Ajouter des {category.title.replace(/\n/g, ' ')}</span>
                         <Plus className="text-slate-900" size={20} />
                     </Button>
                   )}
@@ -559,6 +575,14 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                     className="bg-white rounded-xl shadow-xl mb-6 p-6 mx-auto max-w-3xl w-full"
                   >
                     <div className="flex items-center justify-between mb-4">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsAdding(false)}
+                        className="h-8 w-8 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                      >
+                        <ArrowLeft className="h-5 w-5" />
+                      </Button>
                       <h3 className="text-xl font-bold text-slate-900 text-center flex-1">Nouvelle Identité de Disciple</h3>
                       <Button 
                         variant="ghost" 
@@ -583,7 +607,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
                         <div className="space-y-2">
-                          <Label htmlFor="firstName" className="text-slate-700 font-medium text-center block">Prénom *</Label>
+                          <Label htmlFor="firstName" className="text-slate-700 font-bold text-center block">Prénom *</Label>
                           <Input 
                             id="firstName" 
                             className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
@@ -593,7 +617,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="lastName" className="text-slate-700 font-medium text-center block">Nom</Label>
+                          <Label htmlFor="lastName" className="text-slate-700 font-bold text-center block">Nom</Label>
                           <Input 
                             id="lastName" 
                             className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300"
@@ -603,30 +627,31 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                         </div>
                       </div>
 
-                      <div className="space-y-2 max-w-2xl mx-auto">
-                        <Label htmlFor="email" className="text-slate-700 font-medium text-center block">Email</Label>
-                        <Input 
-                          id="email" 
-                          type="email" 
-                          className="bg-white border-slate-300 text-slate-900 text-center w-full" 
-                          value={fullFormData.email}
-                          onChange={(e) => setFullFormData({...fullFormData, email: e.target.value})}
-                        />
-                      </div>
-
-                      <div className="space-y-2 max-w-2xl mx-auto">
-                        <Label htmlFor="phone" className="text-slate-700 font-medium text-center block">Téléphone</Label>
-                        <Input 
-                          id="phone" 
-                          className="bg-white border-slate-300 text-slate-900 text-center w-full" 
-                          value={fullFormData.phone}
-                          onChange={(e) => setFullFormData({...fullFormData, phone: e.target.value})}
-                        />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                        <div className="space-y-2">
+                          <Label htmlFor="email" className="text-slate-700 font-bold text-center block">Email</Label>
+                          <Input 
+                            id="email" 
+                            type="email" 
+                            className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
+                            value={fullFormData.email}
+                            onChange={(e) => setFullFormData({...fullFormData, email: e.target.value})}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="phone" className="text-slate-700 font-bold text-center block">Téléphone</Label>
+                          <Input 
+                            id="phone" 
+                            className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
+                            value={fullFormData.phone}
+                            onChange={(e) => setFullFormData({...fullFormData, phone: e.target.value})}
+                          />
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
                         <div className="space-y-2">
-                          <Label htmlFor="church" className="text-slate-700 font-medium text-center block">Église</Label>
+                          <Label htmlFor="church" className="text-slate-700 font-bold text-center block">Église</Label>
                           <Input 
                             id="church" 
                             className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
@@ -635,7 +660,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="country" className="text-slate-700 font-medium text-center block">Pays</Label>
+                          <Label htmlFor="country" className="text-slate-700 font-bold text-center block">Pays</Label>
                           <Input 
                             id="country" 
                             className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
@@ -645,88 +670,180 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                         </div>
                       </div>
 
-                      <div className="space-y-2 max-w-2xl mx-auto">
-                        <Label className="text-slate-700 font-medium text-center block">Niveau Spirituel</Label>
-                        <Select 
-                          value={fullFormData.spiritualLevel} 
-                          onValueChange={(val) => setFullFormData({...fullFormData, spiritualLevel: val})}
-                        >
-                          <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
-                            <SelectItem value="Nouveau arrivant" className="focus:bg-gray-100 focus:!text-gray-900">Nouveau arrivant</SelectItem>
-                            <SelectItem value="Personne évangélisée" className="focus:bg-gray-100 focus:!text-gray-900">Personne évangélisée</SelectItem>
-                            <SelectItem value="Non-croyant" className="focus:bg-gray-100 focus:!text-gray-900">Non-croyant</SelectItem>
-                            <SelectItem value="Nouveau converti" className="focus:bg-gray-100 focus:!text-gray-900">Nouveau converti</SelectItem>
-                            <SelectItem value="Disciple affermi" className="focus:bg-gray-100 focus:!text-gray-900">Disciple affermi</SelectItem>
-                            <SelectItem value="Mentor" className="focus:bg-gray-100 focus:!text-gray-900">Mentor</SelectItem>
-                            <SelectItem value="Berger" className="focus:bg-gray-100 focus:!text-gray-900">Berger</SelectItem>
-                            {isSupervisor && <SelectItem value="Pilier" className="focus:bg-gray-100 focus:!text-gray-900">Pilier</SelectItem>}
-                            <SelectItem value="Pasteur" className="focus:bg-gray-100 focus:!text-gray-900">Pasteur</SelectItem>
-                          </SelectContent>
-                        </Select>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                        <div className="space-y-2">
+                          <Label className="text-slate-700 font-bold text-center block">Niveau Spirituel</Label>
+                          <Select 
+                            value={fullFormData.spiritualLevel} 
+                            onValueChange={(val) => setFullFormData({...fullFormData, spiritualLevel: val})}
+                          >
+                            <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
+                              <SelectItem value="Nouveau arrivant" className="focus:bg-gray-100 focus:!text-gray-900">Nouveau arrivant</SelectItem>
+                              <SelectItem value="Personne évangélisée" className="focus:bg-gray-100 focus:!text-gray-900">Personne évangélisée</SelectItem>
+                              <SelectItem value="Non-croyant" className="focus:bg-gray-100 focus:!text-gray-900">Non-croyant</SelectItem>
+                              <SelectItem value="Nouveau converti" className="focus:bg-gray-100 focus:!text-gray-900">Nouveau converti</SelectItem>
+                              <SelectItem value="Disciple affermi" className="focus:bg-gray-100 focus:!text-gray-900">Disciple affermi</SelectItem>
+                              <SelectItem value="Mentor" className="focus:bg-gray-100 focus:!text-gray-900">Mentor</SelectItem>
+                              <SelectItem value="Berger" className="focus:bg-gray-100 focus:!text-gray-900">Berger</SelectItem>
+                              {isSupervisor && <SelectItem value="Pilier" className="focus:bg-gray-100 focus:!text-gray-900">Pilier</SelectItem>}
+                              <SelectItem value="Pasteur" className="focus:bg-gray-100 focus:!text-gray-900">Pasteur</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="startDate" className="text-slate-700 font-bold text-center block">Date de début</Label>
+                          <Input 
+                            id="startDate" 
+                            type="date" 
+                            className="bg-white border-slate-300 text-slate-900 block w-full text-center focus:ring-0 focus:border-slate-300"
+                            value={fullFormData.startDate}
+                            onChange={(e) => setFullFormData({...fullFormData, startDate: e.target.value})}
+                          />
+                        </div>
                       </div>
 
-                      <div className="space-y-2 max-w-2xl mx-auto">
-                        <Label htmlFor="startDate" className="text-slate-700 font-medium text-center block">Date de début</Label>
-                        <Input 
-                          id="startDate" 
-                          type="date" 
-                          className="bg-white border-slate-300 text-slate-900 block w-full text-center"
-                          value={fullFormData.startDate}
-                          onChange={(e) => setFullFormData({...fullFormData, startDate: e.target.value})}
-                        />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                        <div className="space-y-2">
+                          <Label className="text-slate-700 font-bold text-center block">Suivi par : (Obligatoire)</Label>
+                          <Select 
+                            value={fullFormData.parentDisciple}
+                            onValueChange={(val) => setFullFormData({...fullFormData, parentDisciple: val})}
+                          >
+                            <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
+                              <SelectValue placeholder="Sélectionner un responsable" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200] max-h-[300px] overflow-y-auto">
+                              <SelectItem value="none" className="focus:bg-gray-100 focus:!text-gray-900">Aucun (Racine)</SelectItem>
+                              {allPotentialParents.map(member => (
+                                <SelectItem key={member.id} value={member.id} className="focus:bg-gray-100 focus:!text-gray-900">
+                                  {member.name} {member.type === 'mentor' ? '(Mentor)' : '(Disciple)'}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-700 font-bold text-center block">Nombre de disciples</Label>
+                          <Input 
+                            type="number" 
+                            className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
+                            value={fullFormData.nombreDisciples}
+                            onChange={(e) => setFullFormData({...fullFormData, nombreDisciples: parseInt(e.target.value) || 0})}
+                            min="0"
+                          />
+                        </div>
                       </div>
 
-                      <div className="space-y-2 max-w-2xl mx-auto">
-                        <Label className="text-slate-700 font-medium text-center block">Suivi par : (Obligatoire)</Label>
-                        <Select 
-                          value={fullFormData.parentDisciple}
-                          onValueChange={(val) => setFullFormData({...fullFormData, parentDisciple: val})}
-                        >
-                          <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
-                            <SelectValue placeholder="Sélectionner un responsable" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200] max-h-[300px] overflow-y-auto">
-                            <SelectItem value="none" className="focus:bg-gray-100 focus:!text-gray-900">Aucun (Racine)</SelectItem>
-                            {allPotentialParents.map(member => (
-                              <SelectItem key={member.id} value={member.id} className="focus:bg-gray-100 focus:!text-gray-900">
-                                {member.name} {member.type === 'mentor' ? '(Mentor)' : '(Disciple)'}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
 
                       <div className="space-y-2 max-w-2xl mx-auto">
-                        <Label className="text-slate-700 font-medium text-center block">Baptisé par immersion ?</Label>
-                        <Select 
-                          value={fullFormData.isBaptized} 
-                          onValueChange={(val) => setFullFormData({...fullFormData, isBaptized: val, baptismDate: val === 'non' ? '' : fullFormData.baptismDate})}
-                        >
-                          <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
-                            <SelectItem value="non" className="focus:bg-gray-100 focus:!text-gray-900">Non</SelectItem>
-                            <SelectItem value="oui" className="focus:bg-gray-100 focus:!text-gray-900">Oui</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Label className="text-slate-700 font-bold text-center block">Formations PCNC validées</Label>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {formationsPCNC.map((formation) => (
+                            <div key={formation} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`formation-circle-${formation}`}
+                                checked={fullFormData.formationsPCNC.includes(formation)}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setFullFormData(p => ({...p, formationsPCNC: [...p.formationsPCNC, formation]}));
+                                  } else {
+                                    setFullFormData(p => ({...p, formationsPCNC: p.formationsPCNC.filter(f => f !== formation)}));
+                                  }
+                                }}
+                                className="border-slate-300"
+                              />
+                              <label
+                                htmlFor={`formation-circle-${formation}`}
+                                className="text-sm font-medium text-slate-900 cursor-pointer"
+                              >
+                                {formation}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {fullFormData.serveInDepartment === 'oui' && (
+                        <>
+                          <div className="space-y-2 max-w-2xl mx-auto">
+                            <Label className="text-slate-700 font-bold text-center block">Dans quel Département servez-vous ?</Label>
+                            <Input 
+                              className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
+                              value={fullFormData.departmentName}
+                              onChange={(e) => setFullFormData({...fullFormData, departmentName: e.target.value})}
+                              placeholder="Nom du département"
+                            />
+                          </div>
+                          <div className="space-y-2 max-w-2xl mx-auto">
+                            <Label className="text-slate-700 font-bold text-center block">Nom du Responsable de Département ?</Label>
+                            <Input 
+                              className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300" 
+                              value={fullFormData.departmentHeadName}
+                              onChange={(e) => setFullFormData({...fullFormData, departmentHeadName: e.target.value})}
+                              placeholder="Nom du responsable"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                        <div className="space-y-2">
+                          <Label className="text-slate-700 font-bold text-center block">Servez-vous dans un département ?</Label>
+                          <Select 
+                            value={fullFormData.serveInDepartment} 
+                            onValueChange={(val) => setFullFormData({...fullFormData, serveInDepartment: val, departmentName: val === 'non' ? '' : fullFormData.departmentName, departmentHeadName: val === 'non' ? '' : fullFormData.departmentHeadName})}
+                          >
+                            <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
+                              <SelectItem value="non" className="focus:bg-gray-100 focus:!text-gray-900">Non</SelectItem>
+                              <SelectItem value="oui" className="focus:bg-gray-100 focus:!text-gray-900">Oui</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-700 font-bold text-center block">Baptisé par immersion ?</Label>
+                          <Select 
+                            value={fullFormData.isBaptized} 
+                            onValueChange={(val) => setFullFormData({...fullFormData, isBaptized: val, baptismDate: val === 'non' ? '' : fullFormData.baptismDate})}
+                          >
+                            <SelectTrigger className="bg-white border-slate-300 text-slate-900 text-center w-full focus:ring-0 focus:border-slate-300">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border-slate-300 text-slate-900 z-[200]">
+                              <SelectItem value="non" className="focus:bg-gray-100 focus:!text-gray-900">Non</SelectItem>
+                              <SelectItem value="oui" className="focus:bg-gray-100 focus:!text-gray-900">Oui</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
 
                       {fullFormData.isBaptized === 'oui' && (
                         <div className="space-y-2 max-w-2xl mx-auto">
-                          <Label htmlFor="baptismDate" className="text-slate-700 font-medium text-center block">Date du baptême (JJ/MM/AAAA)</Label>
+                          <Label htmlFor="baptismDate" className="text-slate-700 font-bold text-center block">Date du baptême (JJ/MM/AAAA)</Label>
                           <Input 
                             id="baptismDate" 
                             type="date" 
-                            className="bg-white border-slate-300 text-slate-900 block w-full text-center"
+                            className="bg-white border-slate-300 text-slate-900 block w-full text-center focus:ring-0 focus:border-slate-300"
                             value={fullFormData.baptismDate}
                             onChange={(e) => setFullFormData({...fullFormData, baptismDate: e.target.value})}
                           />
                         </div>
                       )}
+
+                      <div className="space-y-2 max-w-2xl mx-auto">
+                        <Label className="text-slate-700 font-bold text-center block">Observations</Label>
+                        <Textarea 
+                          className="bg-white border-slate-300 text-slate-900 w-full focus:ring-0 focus:border-slate-300 min-h-[100px]" 
+                          value={fullFormData.observations}
+                          onChange={(e) => setFullFormData({...fullFormData, observations: e.target.value})}
+                          placeholder="Ajouter des observations..."
+                        />
+                      </div>
 
                       <div className="flex gap-3 pt-4 justify-center max-w-2xl mx-auto">
                         <Button 
@@ -983,6 +1100,18 @@ const Circles = () => {
   return (
     <>
     <div className="h-full flex flex-col items-center justify-center w-full relative overflow-y-auto overflow-x-hidden min-h-[600px] py-8 bg-gray-50">
+        {/* Flèche retour en haut à gauche */}
+        <div className="absolute top-4 left-4 z-50">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate('/home')}
+            className="h-10 w-10 text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        </div>
+        
         {/* Conteneur principal - tous les éléments centrés sur le même axe vertical avec largeur maximale */}
         <div className="w-full max-w-[1400px] mx-auto flex flex-col items-center justify-center px-4 sm:px-6">
             {/* Section Titres - en haut de la page, sur la gauche, texte centré, sur une seule ligne */}
