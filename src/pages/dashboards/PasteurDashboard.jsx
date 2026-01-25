@@ -195,7 +195,7 @@ const PasteurDashboard = () => {
         });
       }
 
-      // 2. Récupérer tous les superviseurs sous sa responsabilité
+      // 2. Récupérer TOUS les superviseurs sous sa responsabilité (même ceux sans famille)
       // Méthode principale : Directement via pasteur_id (comme dans la migration SQL)
       // Note: Ne pas inclure 'titre' dans la requête principale car la colonne peut ne pas exister
       const superviseursData = await getOrSetCache(
@@ -211,6 +211,7 @@ const PasteurDashboard = () => {
             console.error('Erreur lors de la récupération des superviseurs:', error);
             throw error;
           }
+          console.log(`📊 Superviseurs récupérés via pasteur_id ${user.id}:`, data?.length || 0, data?.map(s => `${s.first_name} ${s.last_name}`));
           return data || [];
         },
         2 * 60 * 1000 // 2 minutes
@@ -218,11 +219,13 @@ const PasteurDashboard = () => {
 
       const superviseursError = null; // Pas d'erreur si le cache fonctionne
 
-      // Ne pas essayer de récupérer 'titre' car la colonne n'existe pas
+      // Utiliser directement les superviseurs trouvés via pasteur_id
+      // Cela inclut TOUS les superviseurs, même ceux sans famille
       let superviseursFinal = superviseursData || [];
       
+      // Fallback: Si aucun superviseur trouvé via pasteur_id, essayer via familles
       if (!superviseursFinal || superviseursFinal.length === 0) {
-        console.log('Aucun superviseur trouvé via pasteur_id, tentative via familles...');
+        console.log('⚠️ Aucun superviseur trouvé via pasteur_id, tentative via familles...');
         
         // Récupérer toutes les familles avec leurs superviseurs
         const { data: famillesData, error: famillesError } = await supabase
@@ -246,16 +249,21 @@ const PasteurDashboard = () => {
               // Filtrer uniquement ceux qui ont le pasteur_id correspondant
               superviseursFinal = superviseursViaFamilles.filter(s => s.pasteur_id === user.id);
               
-              console.log('Superviseurs trouvés via familles et filtrés par pasteur_id:', superviseursFinal.length);
+              console.log('✅ Superviseurs trouvés via familles et filtrés par pasteur_id:', superviseursFinal.length);
             }
           }
         }
       }
+      
+      // IMPORTANT: Vérifier aussi les superviseurs qui n'ont peut-être pas de pasteur_id mais qui devraient être sous ce pasteur
+      // (Cette vérification est optionnelle et peut être activée si nécessaire)
 
-      console.log('Total superviseurs récupérés pour pasteur', user.id, ':', superviseursFinal?.length || 0);
+      console.log('✅ Total superviseurs récupérés pour pasteur', user.id, ':', superviseursFinal?.length || 0);
+      console.log('📋 Liste des superviseurs:', superviseursFinal?.map(s => `${s.first_name} ${s.last_name} (${s.id})`));
       setSuperviseurs(superviseursFinal || []);
 
       // 3. Pour chaque superviseur, récupérer sa famille et calculer les stats
+      // IMPORTANT: Inclure TOUS les superviseurs, même ceux sans famille
       const famillesAvecStats = await Promise.all(
         (superviseursFinal || []).map(async (superviseur) => {
           // Récupérer la famille du superviseur (prendre la première si plusieurs existent)
@@ -275,7 +283,8 @@ const PasteurDashboard = () => {
           const familleData = famillesData && famillesData.length > 0 ? famillesData[0] : null;
 
           if (!familleData) {
-            console.warn(`⚠️ Superviseur ${superviseur.first_name} ${superviseur.last_name} (${superviseur.id}) n'a pas de famille assignée`);
+            console.warn(`⚠️ Superviseur ${superviseur.first_name} ${superviseur.last_name} (${superviseur.id}) n'a pas de famille assignée - INCLUS QUAND MÊME`);
+            // IMPORTANT: Retourner le superviseur même sans famille pour qu'il soit affiché
             return {
               superviseur,
               famille: null,
@@ -318,13 +327,15 @@ const PasteurDashboard = () => {
       );
 
       // Filtrer les nulls (ne devrait pas y en avoir maintenant)
-      const famillesValides = famillesAvecStats.filter(f => f !== null);
+      // IMPORTANT: Inclure TOUS les superviseurs, même ceux sans famille
+      const famillesValides = famillesAvecStats.filter(f => f !== null && f !== undefined);
+      console.log(`✅ Total superviseurs avec stats: ${famillesValides.length} (incluant ceux sans famille)`);
       setFamilles(famillesValides);
 
       // Identifier les superviseurs sans famille
       const superviseursSansFamille = famillesValides.filter(f => f.famille === null);
       if (superviseursSansFamille.length > 0) {
-        console.warn('⚠️ Superviseurs sans famille:', superviseursSansFamille.map(s => `${s.superviseur.first_name} ${s.superviseur.last_name} (${s.superviseur.id})`));
+        console.warn(`⚠️ ${superviseursSansFamille.length} Superviseur(s) sans famille (seront affichés):`, superviseursSansFamille.map(s => `${s.superviseur.first_name} ${s.superviseur.last_name} (${s.superviseur.id})`));
       }
 
       // 4. Calculer les statistiques globales
@@ -946,9 +957,10 @@ const PasteurDashboard = () => {
           if (familleIds.length === 0) return [];
 
           // Récupérer tous les profils avec role='mentor' ou is_approved_as_disciple_maker=true qui appartiennent aux familles
+          // Inclure les colonnes synchronisées depuis piliers_mentors
           const { data: mentorsProfils, error: mentorsError } = await supabase
             .from('profils')
-            .select('id, first_name, last_name, famille_id')
+            .select('id, first_name, last_name, famille_id, eglise, nombre_disciples, avancement_pourcentage, nombre_disciples_presents, taux_participation_semaine')
             .in('famille_id', familleIds)
             .or('role.eq.mentor,is_approved_as_disciple_maker.eq.true');
 
@@ -956,66 +968,86 @@ const PasteurDashboard = () => {
 
           if (!mentorsProfils || mentorsProfils.length === 0) return [];
 
-          // Pour chaque mentor, calculer les stats
+          // Pour chaque mentor, utiliser les données de profils ou calculer si absentes
           const mentorsAvecStats = await Promise.all(
             mentorsProfils.map(async (mentor) => {
-              // 1. Récupérer le nom de la famille (église)
-              const famille = familles.find(f => f.famille?.id === mentor.famille_id);
-              const nomEglise = famille?.famille?.nom || 'N/A';
-
-              // 2. Compter le nombre de disciples (depuis cercle_personnes où user_id = mentor.id)
-              const { count: nombreDisciples, error: countError } = await supabase
-                .from('cercle_personnes')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', mentor.id);
-
-              if (countError) console.error(`Erreur comptage disciples pour mentor ${mentor.id}:`, countError);
-              const nombreDisciplesTotal = nombreDisciples || 0;
-
-              // 3. Calculer l'avancement % (nombreDisciples / 70 * 100)
-              const objectif = 70;
-              const avancementPourcentage = Math.min((nombreDisciplesTotal / objectif) * 100, 100);
-
-              // 4. Récupérer les IDs des disciples pour calculer les présences
-              const { data: disciplesData } = await supabase
-                .from('cercle_personnes')
-                .select('id')
-                .eq('user_id', mentor.id);
-
-              const discipleIds = disciplesData?.map(d => d.id) || [];
-
-              // 5. Compter les disciples présents à l'église (depuis attendance_tracking)
-              let disciplesPresents = 0;
-              if (discipleIds.length > 0) {
-                const { count: countPresents } = await supabase
-                  .from('attendance_tracking')
-                  .select('*', { count: 'exact', head: true })
-                  .in('disciple_id', discipleIds)
-                  .eq('attendance_type', 'sunday_worship')
-                  .eq('status', 'present');
-                disciplesPresents = countPresents || 0;
+              // 1. Utiliser eglise depuis profils, sinon récupérer depuis famille
+              let nomEglise = mentor.eglise || null;
+              if (!nomEglise) {
+                const famille = familles.find(f => f.famille?.id === mentor.famille_id);
+                nomEglise = famille?.famille?.nom || 'N/A';
               }
 
-              // 6. Calculer le taux de participation de la semaine en cours
-              const now = new Date();
-              const startOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 }); // Lundi
-              const endOfCurrentWeek = endOfWeek(now, { weekStartsOn: 1 }); // Dimanche
-              const startOfWeekStr = format(startOfCurrentWeek, 'yyyy-MM-dd');
-              const endOfWeekStr = format(endOfCurrentWeek, 'yyyy-MM-dd');
-
-              let tauxParticipationSemaine = 0;
-              if (discipleIds.length > 0 && nombreDisciplesTotal > 0) {
-                const { count: presentsSemaine } = await supabase
-                  .from('attendance_tracking')
+              // 2. Utiliser nombre_disciples depuis profils, sinon calculer depuis cercle_personnes
+              let nombreDisciplesTotal = mentor.nombre_disciples || 0;
+              if (!nombreDisciplesTotal || nombreDisciplesTotal === 0) {
+                const { count: nombreDisciples, error: countError } = await supabase
+                  .from('cercle_personnes')
                   .select('*', { count: 'exact', head: true })
-                  .in('disciple_id', discipleIds)
-                  .eq('attendance_type', 'sunday_worship')
-                  .eq('status', 'present')
-                  .gte('attendance_date', startOfWeekStr)
-                  .lte('attendance_date', endOfWeekStr);
-                
-                const presentsSemaineCount = presentsSemaine || 0;
-                tauxParticipationSemaine = Math.round((presentsSemaineCount / nombreDisciplesTotal) * 100);
+                  .eq('user_id', mentor.id);
+
+                if (countError) console.error(`Erreur comptage disciples pour mentor ${mentor.id}:`, countError);
+                nombreDisciplesTotal = nombreDisciples || 0;
+              }
+
+              // 3. Utiliser avancement_pourcentage depuis profils, sinon calculer
+              let avancementPourcentage = mentor.avancement_pourcentage || null;
+              if (avancementPourcentage === null || avancementPourcentage === undefined) {
+                const objectif = 70;
+                avancementPourcentage = Math.min((nombreDisciplesTotal / objectif) * 100, 100);
+              }
+
+              // 4. Utiliser nombre_disciples_presents depuis profils, sinon calculer
+              let disciplesPresents = mentor.nombre_disciples_presents || 0;
+              if (!disciplesPresents || disciplesPresents === 0) {
+                // Récupérer les IDs des disciples pour calculer les présences
+                const { data: disciplesData } = await supabase
+                  .from('cercle_personnes')
+                  .select('id')
+                  .eq('user_id', mentor.id);
+
+                const discipleIds = disciplesData?.map(d => d.id) || [];
+
+                if (discipleIds.length > 0) {
+                  const { count: countPresents } = await supabase
+                    .from('attendance_tracking')
+                    .select('*', { count: 'exact', head: true })
+                    .in('disciple_id', discipleIds)
+                    .eq('attendance_type', 'sunday_worship')
+                    .eq('status', 'present');
+                  disciplesPresents = countPresents || 0;
+                }
+              }
+
+              // 5. Utiliser taux_participation_semaine depuis profils, sinon calculer
+              let tauxParticipationSemaine = mentor.taux_participation_semaine || 0;
+              if (!tauxParticipationSemaine || tauxParticipationSemaine === 0) {
+                const { data: disciplesData } = await supabase
+                  .from('cercle_personnes')
+                  .select('id')
+                  .eq('user_id', mentor.id);
+
+                const discipleIds = disciplesData?.map(d => d.id) || [];
+
+                if (discipleIds.length > 0 && nombreDisciplesTotal > 0) {
+                  const now = new Date();
+                  const startOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 }); // Lundi
+                  const endOfCurrentWeek = endOfWeek(now, { weekStartsOn: 1 }); // Dimanche
+                  const startOfWeekStr = format(startOfCurrentWeek, 'yyyy-MM-dd');
+                  const endOfWeekStr = format(endOfCurrentWeek, 'yyyy-MM-dd');
+
+                  const { count: presentsSemaine } = await supabase
+                    .from('attendance_tracking')
+                    .select('*', { count: 'exact', head: true })
+                    .in('disciple_id', discipleIds)
+                    .eq('attendance_type', 'sunday_worship')
+                    .eq('status', 'present')
+                    .gte('attendance_date', startOfWeekStr)
+                    .lte('attendance_date', endOfWeekStr);
+                  
+                  const presentsSemaineCount = presentsSemaine || 0;
+                  tauxParticipationSemaine = Math.round((presentsSemaineCount / nombreDisciplesTotal) * 100);
+                }
               }
 
               return {
@@ -1026,7 +1058,7 @@ const PasteurDashboard = () => {
                 nombre_disciples: nombreDisciplesTotal,
                 avancement_pourcentage: Math.round(avancementPourcentage),
                 disciples_presents: disciplesPresents,
-                taux_participation_semaine: tauxParticipationSemaine
+                taux_participation_semaine: Math.round(tauxParticipationSemaine)
               };
             })
           );
@@ -1929,7 +1961,27 @@ const PasteurDashboard = () => {
                               <p className="text-sm text-gray-500">{item.famille.identifiant_famille}</p>
                             </div>
                           ) : (
-                            <span className="text-gray-400 italic">Aucune famille assignée</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-amber-600 italic font-medium">⚠️ Aucune famille assignée</span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsCreateDialogOpen(true);
+                                  setCreateForm({
+                                    nom: '',
+                                    identifiant_famille: '',
+                                    statut: 'actif',
+                                    objectif_disciples: 70,
+                                    superviseur_id: item.superviseur.id,
+                                  });
+                                }}
+                                className="h-6 text-xs"
+                              >
+                                Créer famille
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                         <TableCell className="text-center">
