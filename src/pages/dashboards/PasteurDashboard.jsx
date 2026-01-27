@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
-  Church, ChevronRight, Loader2, Search, Filter, Eye, BarChart3,
+  Church, ChevronRight, ChevronLeft, Loader2, Search, Filter, Eye, BarChart3,
   Mail, Phone, ArrowLeft, Building2, CheckCircle2, AlertCircle, Calendar,
-  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, Plus, X, Download, FileText
+  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, Plus, X, Download, FileText,
+  ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getWeek, getQuarter, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfMonth, endOfMonth, format } from 'date-fns';
@@ -47,6 +48,12 @@ const PasteurDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchTermMentors, setSearchTermMentors] = useState(''); // Recherche spécifique pour les mentors
   const [selectedFamille, setSelectedFamille] = useState(null);
+  const [currentPageMentors, setCurrentPageMentors] = useState(1);
+  const [itemsPerPageMentors] = useState(50); // Pagination pour les mentors
+  const [sortColumnMentors, setSortColumnMentors] = useState(null); // Colonne de tri
+  const [sortDirectionMentors, setSortDirectionMentors] = useState('asc'); // Direction du tri
+  const [filterEglise, setFilterEglise] = useState(''); // Filtre par église
+  const [filterAvancement, setFilterAvancement] = useState(''); // Filtre par avancement
   const [familleModalDetails, setFamilleModalDetails] = useState({ members: [], reports: [], loading: false });
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
@@ -102,6 +109,7 @@ const PasteurDashboard = () => {
   // Statistiques par pasteur
   const [pasteursStats, setPasteursStats] = useState([]);
   const [totalCumuleDisciples, setTotalCumuleDisciples] = useState(0);
+  const [totalCumuleFamilles, setTotalCumuleFamilles] = useState(0);
   const [loadingPasteursStats, setLoadingPasteursStats] = useState(false);
 
   useEffect(() => {
@@ -802,6 +810,9 @@ const PasteurDashboard = () => {
       console.log('🔍 Début récupération stats pasteurs...');
       const cacheKey = 'all_pasteurs_stats';
       
+      // Vider le cache pour forcer un recalcul (temporaire pour debug)
+      clearCache(cacheKey);
+      
       const statsData = await getOrSetCache(
         cacheKey,
         async () => {
@@ -850,7 +861,8 @@ const PasteurDashboard = () => {
                   prenom: pasteur.first_name || '',
                   nom: pasteur.last_name || '',
                   email: pasteur.email || '',
-                  total_disciples: 0
+                  total_disciples: 0,
+                  nb_familles: 0
                 };
               }
 
@@ -874,48 +886,130 @@ const PasteurDashboard = () => {
                   prenom: pasteur.first_name || '',
                   nom: pasteur.last_name || '',
                   email: pasteur.email || '',
-                  total_disciples: 0
+                  total_disciples: 0,
+                  nb_familles: 0
                 };
               }
 
-              // 3. Compter tous les membres de ces familles (disciples + superviseurs)
-              // Compter les disciples
-              const { count: countDisciples, error: countDisciplesError } = await supabase
+              // 3. Compter TOUS les membres de ces familles (disciples + superviseurs)
+              // D'après le diagnostic SQL, les disciples sont dans cercle_personnes avec user_id = superviseur_id
+              // Les superviseurs peuvent aussi avoir des entrées dans cercle_personnes, il faut les exclure
+              
+              // 3a. Compter les superviseurs (membres de leur famille) - 1 par famille
+              const countSuperviseurs = superviseurIds.length;
+
+              // 3b. Compter les disciples dans cercle_personnes liés aux superviseurs
+              // Stratégie: Essayer plusieurs méthodes et prendre le meilleur résultat
+              console.log(`  🔍 DEBUG: superviseurIds pour ${pasteur.first_name} ${pasteur.last_name}:`, superviseurIds);
+              console.log(`  🔍 DEBUG: Nombre de superviseurs: ${superviseurIds.length}`);
+              
+              let disciplesCercle = null;
+              let disciplesCercleError = null;
+              let methodUsed = 'none';
+              
+              // Si pas de superviseurs, pas de disciples à compter
+              if (superviseurIds.length === 0) {
+                console.log(`  ⚠️ Aucun superviseur, donc 0 disciples`);
+              } else {
+                // MÉTHODE 1: Requête directe sur cercle_personnes
+                const { data: dataCercle, error: errorCercle } = await supabase
+                  .from('cercle_personnes')
+                  .select('id, user_id')
+                  .in('user_id', superviseurIds);
+                
+                if (!errorCercle && dataCercle && dataCercle.length > 0) {
+                  disciplesCercle = dataCercle;
+                  methodUsed = 'direct_query';
+                  console.log(`  ✅ Méthode 1 (requête directe): ${dataCercle.length} disciples trouvés`);
+                } else if (errorCercle) {
+                  console.log(`  ⚠️ Méthode 1 échouée:`, errorCercle.message);
+                  disciplesCercleError = errorCercle;
+                } else {
+                  console.log(`  ⚠️ Méthode 1: 0 résultats`);
+                }
+                
+                // MÉTHODE 2: Fonction RPC (si méthode 1 a échoué ou retourné 0)
+                if ((!disciplesCercle || disciplesCercle.length === 0) && superviseurIds.length > 0) {
+                  console.log(`  🔍 Tentative avec fonction RPC get_disciples_by_superviseurs...`);
+                  try {
+                    const { data: rpcData, error: rpcError } = await supabase.rpc(
+                      'get_disciples_by_superviseurs',
+                      { superviseur_ids: superviseurIds }
+                    );
+                    
+                    if (!rpcError && rpcData && Array.isArray(rpcData) && rpcData.length > 0) {
+                      disciplesCercle = rpcData;
+                      methodUsed = 'rpc_function';
+                      console.log(`  ✅ Méthode 2 (RPC): ${rpcData.length} disciples trouvés`);
+                    } else if (rpcError) {
+                      console.log(`  ⚠️ Méthode 2 (RPC) échouée:`, rpcError.message);
+                    } else {
+                      console.log(`  ⚠️ Méthode 2 (RPC): 0 résultats`);
+                    }
+                  } catch (rpcErr) {
+                    console.log(`  ⚠️ Méthode 2 (RPC) non disponible:`, rpcErr.message);
+                  }
+                }
+              }
+              
+              console.log(`  📊 Méthode utilisée: ${methodUsed}, Disciples trouvés: ${disciplesCercle?.length || 0}`);
+
+              // 3c. Filtrer pour exclure les superviseurs (qui peuvent avoir des entrées dans cercle_personnes)
+              // Un disciple est une entrée dans cercle_personnes où user_id = superviseur_id
+              // Mais on ne doit pas compter les superviseurs eux-mêmes s'ils ont une entrée
+              let totalDisciples = 0;
+              if (disciplesCercle && disciplesCercle.length > 0) {
+                // Compter toutes les entrées dans cercle_personnes liées aux superviseurs
+                // Ce sont les disciples suivis par ces superviseurs
+                totalDisciples = disciplesCercle.length;
+                console.log(`  🔍 Disciples dans cercle_personnes (user_id IN superviseurs): ${totalDisciples}`);
+              } else {
+                console.log(`  🔍 Disciples dans cercle_personnes (user_id IN superviseurs): 0`);
+              }
+
+              // 3d. Compter aussi les disciples dans profils avec famille_id (au cas où certains y seraient)
+              const { data: disciplesProfils, error: disciplesProfilsError } = await supabase
                 .from('profils')
-                .select('*', { count: 'exact', head: true })
+                .select('id, famille_id')
                 .in('famille_id', familleIds)
                 .eq('role', 'disciple');
 
-              if (countDisciplesError) {
-                console.error(`❌ Erreur comptage disciples pour pasteur ${pasteur.id}:`, countDisciplesError);
+              if (disciplesProfilsError) {
+                console.error(`❌ Erreur récupération disciples profils pour pasteur ${pasteur.id}:`, disciplesProfilsError);
               } else {
-                console.log(`  👥 Disciples comptés: ${countDisciples || 0}`);
+                if (disciplesProfils && disciplesProfils.length > 0) {
+                  // Ajouter les disciples de profils qui ne sont pas déjà dans cercle_personnes
+                  const disciplesCercleIds = new Set(disciplesCercle?.map(d => d.id) || []);
+                  let nouveauxDisciplesProfils = 0;
+                  disciplesProfils.forEach(d => {
+                    if (!disciplesCercleIds.has(d.id)) {
+                      totalDisciples++;
+                      nouveauxDisciplesProfils++;
+                    }
+                  });
+                  if (nouveauxDisciplesProfils > 0) {
+                    console.log(`  🔍 Disciples dans profils (famille_id + role=disciple): ${disciplesProfils.length} (${nouveauxDisciplesProfils} nouveaux)`);
+                  }
+                }
               }
 
-              // Compter les superviseurs de ces familles (ils ont aussi un famille_id)
-              const { count: countSuperviseurs, error: countSuperviseursError } = await supabase
-                .from('profils')
-                .select('*', { count: 'exact', head: true })
-                .in('famille_id', familleIds)
-                .eq('role', 'superviseur')
-                .in('id', superviseurIds); // S'assurer que ce sont bien les superviseurs de ce pasteur
+              // 3e. Total membres = superviseurs + disciples (pour information)
+              const totalMembres = countSuperviseurs + totalDisciples;
 
-              if (countSuperviseursError) {
-                console.error(`❌ Erreur comptage superviseurs pour pasteur ${pasteur.id}:`, countSuperviseursError);
-              } else {
-                console.log(`  👤 Superviseurs comptés: ${countSuperviseurs || 0}`);
-              }
+              console.log(`  👥 Total membres comptés: ${totalMembres} membres (${countSuperviseurs} superviseurs + ${totalDisciples} disciples)`);
+              console.log(`  📊 Détail: ${disciplesCercle?.length || 0} disciples (cercle) + ${disciplesProfils?.length || 0} disciples (profils) = ${totalDisciples} disciples + ${countSuperviseurs} superviseurs`);
 
-              const totalMembres = (countDisciples || 0) + (countSuperviseurs || 0);
+              const nbFamilles = familleIds.length || 0;
               
-              console.log(`  ✅ Pasteur ${pasteur.first_name} ${pasteur.last_name}: ${countDisciples || 0} disciples + ${countSuperviseurs || 0} superviseurs = ${totalMembres} membres`);
+              console.log(`  ✅ Pasteur ${pasteur.first_name} ${pasteur.last_name}: ${totalDisciples} disciples, ${nbFamilles} familles`);
 
               return {
                 pasteur_id: pasteur.id,
                 prenom: pasteur.first_name || '',
                 nom: pasteur.last_name || '',
                 email: pasteur.email || '',
-                total_disciples: totalMembres
+                total_disciples: totalDisciples, // CORRECTION: Ne pas inclure les superviseurs dans total_disciples
+                nb_familles: nbFamilles
               };
             })
           );
@@ -928,14 +1022,20 @@ const PasteurDashboard = () => {
       console.log('✅ Stats pasteurs récupérées:', statsData?.length || 0, statsData);
       setPasteursStats(statsData || []);
       
-      // Calculer le total cumulé
+      // Calculer le total cumulé des disciples
       const totalCumule = (statsData || []).reduce((sum, p) => sum + (p.total_disciples || 0), 0);
       console.log('📈 Total cumulé disciples:', totalCumule);
       setTotalCumuleDisciples(totalCumule);
+      
+      // Calculer le total cumulé des familles
+      const totalFamilles = (statsData || []).reduce((sum, p) => sum + (p.nb_familles || 0), 0);
+      console.log('📈 Total cumulé familles:', totalFamilles);
+      setTotalCumuleFamilles(totalFamilles);
     } catch (error) {
       console.error('❌ Erreur lors de la récupération des stats des pasteurs:', error);
       setPasteursStats([]);
       setTotalCumuleDisciples(0);
+      setTotalCumuleFamilles(0);
     } finally {
       setLoadingPasteursStats(false);
       console.log('✅ Chargement stats pasteurs terminé');
@@ -968,104 +1068,130 @@ const PasteurDashboard = () => {
 
           if (!mentorsProfils || mentorsProfils.length === 0) return [];
 
-          // Pour chaque mentor, utiliser les données de profils ou calculer si absentes
-          const mentorsAvecStats = await Promise.all(
-            mentorsProfils.map(async (mentor) => {
-              // 1. Utiliser eglise depuis profils, sinon récupérer depuis famille
-              let nomEglise = mentor.eglise || null;
-              if (!nomEglise) {
-                const famille = familles.find(f => f.famille?.id === mentor.famille_id);
-                nomEglise = famille?.famille?.nom || 'N/A';
-              }
+          // OPTIMISATION: Récupérer toutes les données en une seule fois au lieu de boucles
+          const mentorIds = mentorsProfils.map(m => m.id);
+          
+          // 1. Récupérer tous les disciples de tous les mentors en une seule requête
+          const { data: allDisciplesData, error: disciplesError } = await supabase
+            .from('cercle_personnes')
+            .select('id, user_id')
+            .in('user_id', mentorIds);
 
-              // 2. Utiliser nombre_disciples depuis profils, sinon calculer depuis cercle_personnes
-              let nombreDisciplesTotal = mentor.nombre_disciples || 0;
-              if (!nombreDisciplesTotal || nombreDisciplesTotal === 0) {
-                const { count: nombreDisciples, error: countError } = await supabase
-                  .from('cercle_personnes')
-                  .select('*', { count: 'exact', head: true })
-                  .eq('user_id', mentor.id);
+          if (disciplesError) console.error('Erreur récupération disciples:', disciplesError);
 
-                if (countError) console.error(`Erreur comptage disciples pour mentor ${mentor.id}:`, countError);
-                nombreDisciplesTotal = nombreDisciples || 0;
-              }
+          // Grouper les disciples par mentor
+          const disciplesParMentor = {};
+          (allDisciplesData || []).forEach(d => {
+            if (!disciplesParMentor[d.user_id]) {
+              disciplesParMentor[d.user_id] = [];
+            }
+            disciplesParMentor[d.user_id].push(d.id);
+          });
 
-              // 3. Utiliser avancement_pourcentage depuis profils, sinon calculer
-              let avancementPourcentage = mentor.avancement_pourcentage || null;
-              if (avancementPourcentage === null || avancementPourcentage === undefined) {
-                const objectif = 70;
-                avancementPourcentage = Math.min((nombreDisciplesTotal / objectif) * 100, 100);
-              }
+          // 2. Récupérer toutes les présences en une seule requête
+          const allDiscipleIds = Object.values(disciplesParMentor).flat();
+          const { data: allPresencesData, error: presencesError } = await supabase
+            .from('attendance_tracking')
+            .select('disciple_id, attendance_date')
+            .in('disciple_id', allDiscipleIds.length > 0 ? allDiscipleIds : ['00000000-0000-0000-0000-000000000000'])
+            .eq('attendance_type', 'sunday_worship')
+            .eq('status', 'present');
 
-              // 4. Utiliser nombre_disciples_presents depuis profils, sinon calculer
-              let disciplesPresents = mentor.nombre_disciples_presents || 0;
-              if (!disciplesPresents || disciplesPresents === 0) {
-                // Récupérer les IDs des disciples pour calculer les présences
-                const { data: disciplesData } = await supabase
-                  .from('cercle_personnes')
-                  .select('id')
-                  .eq('user_id', mentor.id);
+          if (presencesError) console.error('Erreur récupération présences:', presencesError);
 
-                const discipleIds = disciplesData?.map(d => d.id) || [];
+          // Grouper les présences par disciple
+          const presencesParDisciple = {};
+          (allPresencesData || []).forEach(p => {
+            if (!presencesParDisciple[p.disciple_id]) {
+              presencesParDisciple[p.disciple_id] = [];
+            }
+            presencesParDisciple[p.disciple_id].push(p.attendance_date);
+          });
 
-                if (discipleIds.length > 0) {
-                  const { count: countPresents } = await supabase
-                    .from('attendance_tracking')
-                    .select('*', { count: 'exact', head: true })
-                    .in('disciple_id', discipleIds)
-                    .eq('attendance_type', 'sunday_worship')
-                    .eq('status', 'present');
-                  disciplesPresents = countPresents || 0;
+          // 3. Calculer les statistiques pour chaque mentor
+          const now = new Date();
+          const startOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 });
+          const endOfCurrentWeek = endOfWeek(now, { weekStartsOn: 1 });
+          const startOfWeekStr = format(startOfCurrentWeek, 'yyyy-MM-dd');
+          const endOfWeekStr = format(endOfCurrentWeek, 'yyyy-MM-dd');
+
+          const mentorsAvecStats = mentorsProfils.map((mentor) => {
+            // 1. Utiliser eglise depuis profils, sinon récupérer depuis famille
+            let nomEglise = mentor.eglise || null;
+            if (!nomEglise) {
+              const famille = familles.find(f => f.famille?.id === mentor.famille_id);
+              nomEglise = famille?.famille?.nom || 'N/A';
+            }
+
+            // 2. Utiliser nombre_disciples depuis profils, sinon utiliser le comptage groupé
+            let nombreDisciplesTotal = mentor.nombre_disciples || 0;
+            if (!nombreDisciplesTotal || nombreDisciplesTotal === 0) {
+              nombreDisciplesTotal = disciplesParMentor[mentor.id]?.length || 0;
+            }
+
+            // 3. Utiliser avancement_pourcentage depuis profils, sinon calculer
+            let avancementPourcentage = mentor.avancement_pourcentage;
+            if (avancementPourcentage === null || avancementPourcentage === undefined) {
+              const objectif = 70;
+              avancementPourcentage = Math.min((nombreDisciplesTotal / objectif) * 100, 100);
+            }
+
+            // 4. Utiliser nombre_disciples_presents depuis profils, sinon calculer depuis les données groupées
+            let disciplesPresents = mentor.nombre_disciples_presents || 0;
+            if (!disciplesPresents || disciplesPresents === 0) {
+              const discipleIds = disciplesParMentor[mentor.id] || [];
+              // Compter les disciples uniques qui ont au moins une présence
+              const disciplesAvecPresence = new Set();
+              discipleIds.forEach(discipleId => {
+                if (presencesParDisciple[discipleId] && presencesParDisciple[discipleId].length > 0) {
+                  disciplesAvecPresence.add(discipleId);
                 }
+              });
+              disciplesPresents = disciplesAvecPresence.size;
+            }
+
+            // 5. Utiliser taux_participation_semaine depuis profils, sinon calculer
+            let tauxParticipationSemaine = mentor.taux_participation_semaine || 0;
+            if (!tauxParticipationSemaine || tauxParticipationSemaine === 0) {
+              const discipleIds = disciplesParMentor[mentor.id] || [];
+              if (discipleIds.length > 0 && nombreDisciplesTotal > 0) {
+                // Compter les disciples présents cette semaine
+                const disciplesPresentsSemaine = new Set();
+                discipleIds.forEach(discipleId => {
+                  const presences = presencesParDisciple[discipleId] || [];
+                  const presencesSemaine = presences.filter(date => 
+                    date >= startOfWeekStr && date <= endOfWeekStr
+                  );
+                  if (presencesSemaine.length > 0) {
+                    disciplesPresentsSemaine.add(discipleId);
+                  }
+                });
+                const presentsSemaineCount = disciplesPresentsSemaine.size;
+                tauxParticipationSemaine = Math.round((presentsSemaineCount / nombreDisciplesTotal) * 100);
               }
+            }
 
-              // 5. Utiliser taux_participation_semaine depuis profils, sinon calculer
-              let tauxParticipationSemaine = mentor.taux_participation_semaine || 0;
-              if (!tauxParticipationSemaine || tauxParticipationSemaine === 0) {
-                const { data: disciplesData } = await supabase
-                  .from('cercle_personnes')
-                  .select('id')
-                  .eq('user_id', mentor.id);
+            // Validation des données avant retour
+            const nombreDisciplesValide = Math.max(0, Math.min(nombreDisciplesTotal, 10000)); // Limite raisonnable
+            const avancementValide = Math.max(0, Math.min(Math.round(avancementPourcentage), 100));
+            const disciplesPresentsValide = Math.max(0, Math.min(disciplesPresents, nombreDisciplesValide));
+            const tauxParticipationValide = Math.max(0, Math.min(Math.round(tauxParticipationSemaine), 100));
 
-                const discipleIds = disciplesData?.map(d => d.id) || [];
-
-                if (discipleIds.length > 0 && nombreDisciplesTotal > 0) {
-                  const now = new Date();
-                  const startOfCurrentWeek = startOfWeek(now, { weekStartsOn: 1 }); // Lundi
-                  const endOfCurrentWeek = endOfWeek(now, { weekStartsOn: 1 }); // Dimanche
-                  const startOfWeekStr = format(startOfCurrentWeek, 'yyyy-MM-dd');
-                  const endOfWeekStr = format(endOfCurrentWeek, 'yyyy-MM-dd');
-
-                  const { count: presentsSemaine } = await supabase
-                    .from('attendance_tracking')
-                    .select('*', { count: 'exact', head: true })
-                    .in('disciple_id', discipleIds)
-                    .eq('attendance_type', 'sunday_worship')
-                    .eq('status', 'present')
-                    .gte('attendance_date', startOfWeekStr)
-                    .lte('attendance_date', endOfWeekStr);
-                  
-                  const presentsSemaineCount = presentsSemaine || 0;
-                  tauxParticipationSemaine = Math.round((presentsSemaineCount / nombreDisciplesTotal) * 100);
-                }
-              }
-
-              return {
-                mentor_id: mentor.id,
-                nom: mentor.last_name || '',
-                prenom: mentor.first_name || '',
-                eglise: nomEglise,
-                nombre_disciples: nombreDisciplesTotal,
-                avancement_pourcentage: Math.round(avancementPourcentage),
-                disciples_presents: disciplesPresents,
-                taux_participation_semaine: Math.round(tauxParticipationSemaine)
-              };
-            })
-          );
+            return {
+              mentor_id: mentor.id,
+              nom: (mentor.last_name || '').trim() || 'N/A',
+              prenom: (mentor.first_name || '').trim() || 'N/A',
+              eglise: nomEglise || 'N/A',
+              nombre_disciples: nombreDisciplesValide,
+              avancement_pourcentage: avancementValide,
+              disciples_presents: disciplesPresentsValide,
+              taux_participation_semaine: tauxParticipationValide
+            };
+          });
 
           return mentorsAvecStats;
         },
-        2 * 60 * 1000 // Cache 2 minutes
+        5 * 60 * 1000 // Cache 5 minutes (augmenté pour optimiser les performances)
       );
 
       setMentorsConsolides(mentorsData || []);
@@ -1091,14 +1217,114 @@ const PasteurDashboard = () => {
     return nomSuperviseur.includes(search) || nomFamille.includes(search) || identifiantFamille.includes(search);
   });
 
-  // Filtrer les mentors consolidés selon la recherche (insensible à la casse et aux accents)
-  const filteredMentors = mentorsConsolides.filter(mentor => {
-    if (!searchTermMentors) return true;
-    const search = normalizeString(searchTermMentors);
-    const nomMentor = normalizeString(`${mentor.prenom} ${mentor.nom}`);
-    const nomEglise = normalizeString(mentor.eglise || '');
-    return nomMentor.includes(search) || nomEglise.includes(search);
-  });
+  // Filtrer et trier les mentors consolidés
+  const filteredMentors = mentorsConsolides
+    .filter(mentor => {
+      // Filtre de recherche textuelle
+      if (searchTermMentors) {
+        const search = normalizeString(searchTermMentors);
+        const nomMentor = normalizeString(`${mentor.prenom} ${mentor.nom}`);
+        const nomEglise = normalizeString(mentor.eglise || '');
+        if (!nomMentor.includes(search) && !nomEglise.includes(search)) {
+          return false;
+        }
+      }
+      
+      // Filtre par église
+      if (filterEglise) {
+        const egliseNormalized = normalizeString(mentor.eglise || '');
+        const filterNormalized = normalizeString(filterEglise);
+        if (!egliseNormalized.includes(filterNormalized)) {
+          return false;
+        }
+      }
+      
+      // Filtre par avancement
+      if (filterAvancement) {
+        if (filterAvancement === 'objectif_atteint' && mentor.avancement_pourcentage < 100) {
+          return false;
+        }
+        if (filterAvancement === 'en_progression' && (mentor.avancement_pourcentage >= 100 || mentor.avancement_pourcentage < 50)) {
+          return false;
+        }
+        if (filterAvancement === 'a_améliorer' && mentor.avancement_pourcentage >= 50) {
+          return false;
+        }
+      }
+      
+      return true;
+    })
+    .sort((a, b) => {
+      // Tri des résultats
+      if (!sortColumnMentors) return 0;
+      
+      let aValue, bValue;
+      switch (sortColumnMentors) {
+        case 'nom':
+          aValue = `${a.nom} ${a.prenom}`;
+          bValue = `${b.nom} ${b.prenom}`;
+          break;
+        case 'eglise':
+          aValue = a.eglise || '';
+          bValue = b.eglise || '';
+          break;
+        case 'nombre_disciples':
+          aValue = a.nombre_disciples || 0;
+          bValue = b.nombre_disciples || 0;
+          break;
+        case 'avancement':
+          aValue = a.avancement_pourcentage || 0;
+          bValue = b.avancement_pourcentage || 0;
+          break;
+        case 'disciples_presents':
+          aValue = a.disciples_presents || 0;
+          bValue = b.disciples_presents || 0;
+          break;
+        case 'taux_participation':
+          aValue = a.taux_participation_semaine || 0;
+          bValue = b.taux_participation_semaine || 0;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (typeof aValue === 'string') {
+        return sortDirectionMentors === 'asc' 
+          ? aValue.localeCompare(bValue, 'fr', { sensitivity: 'base' })
+          : bValue.localeCompare(aValue, 'fr', { sensitivity: 'base' });
+      } else {
+        return sortDirectionMentors === 'asc' ? aValue - bValue : bValue - aValue;
+      }
+    });
+
+  // Fonction pour gérer le tri
+  const handleSortMentors = (column) => {
+    if (sortColumnMentors === column) {
+      setSortDirectionMentors(sortDirectionMentors === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumnMentors(column);
+      setSortDirectionMentors('asc');
+    }
+    setCurrentPageMentors(1); // Réinitialiser à la première page lors du tri
+  };
+
+  // Pagination pour les mentors
+  const totalPagesMentors = Math.ceil(filteredMentors.length / itemsPerPageMentors);
+  const startIndexMentors = (currentPageMentors - 1) * itemsPerPageMentors;
+  const endIndexMentors = startIndexMentors + itemsPerPageMentors;
+  const paginatedMentors = filteredMentors.slice(startIndexMentors, endIndexMentors);
+
+  // Réinitialiser la page si nécessaire
+  useEffect(() => {
+    if (currentPageMentors > totalPagesMentors && totalPagesMentors > 0) {
+      setCurrentPageMentors(1);
+    }
+  }, [totalPagesMentors, currentPageMentors]);
+
+  // Réinitialiser la page quand la recherche ou les filtres changent
+  useEffect(() => {
+    setCurrentPageMentors(1);
+  }, [searchTermMentors, filterEglise, filterAvancement]);
 
   // Fonction pour exporter le tableau consolidé des mentors en Excel (CSV)
   const handleExportMentorsExcel = () => {
@@ -1317,18 +1543,23 @@ const PasteurDashboard = () => {
                     className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-sm hover:shadow-md transition-shadow"
                   >
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                      <CardTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
                         <Church className="h-4 w-4 text-purple-600" />
                         {pasteur.prenom} {pasteur.nom}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-3xl font-bold text-purple-600">
-                        {pasteur.total_disciples || 0}
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-700 font-bold">
+                          {pasteur.nb_familles || 0} Famille{pasteur.nb_familles !== 1 ? 's' : ''}
+                        </p>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-lg font-semibold text-gray-700">Total disciples :</span>
+                          <span className="text-2xl font-bold text-purple-600">
+                            {pasteur.total_disciples || 0}
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-600 mt-1">
-                        Total Disciples
-                      </p>
                     </CardContent>
                   </Card>
                 ))}
@@ -1336,18 +1567,23 @@ const PasteurDashboard = () => {
                 {/* Carte Total Cumulé */}
                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-300 shadow-md hover:shadow-lg transition-shadow">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                    <CardTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-blue-600" />
-                      Total Cumulé
+                      Total cumulé
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-blue-600">
-                      {totalCumuleDisciples}
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-700 font-bold">
+                        {totalCumuleFamilles} Famille{totalCumuleFamilles !== 1 ? 's' : ''}
+                      </p>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-lg font-semibold text-gray-700">Cumul Disciples :</span>
+                        <span className="text-2xl font-bold text-blue-600">
+                          {totalCumuleDisciples}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">
-                      Tous les Disciples
-                    </p>
                   </CardContent>
                 </Card>
               </div>
@@ -2075,26 +2311,66 @@ const PasteurDashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            {/* Barre de recherche pour les mentors */}
-            <div className="mb-4 flex items-center gap-2">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  type="text"
-                  placeholder="Rechercher un mentor (nom, prénom, église)..."
-                  value={searchTermMentors}
-                  onChange={(e) => setSearchTermMentors(e.target.value)}
-                  className="pl-10 bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                />
-                {searchTermMentors && (
-                  <button
-                    onClick={() => setSearchTermMentors('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500 hover:text-red-700 transition-colors"
-                    type="button"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+            {/* Barre de recherche et filtres pour les mentors */}
+            <div className="mb-4 space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[200px] max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    type="text"
+                    placeholder="Rechercher un mentor (nom, prénom, église)..."
+                    value={searchTermMentors}
+                    onChange={(e) => setSearchTermMentors(e.target.value)}
+                    className="pl-10 bg-white border-gray-300 focus:border-purple-500 focus:ring-purple-500"
+                  />
+                  {searchTermMentors && (
+                    <button
+                      onClick={() => setSearchTermMentors('')}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500 hover:text-red-700 transition-colors"
+                      type="button"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={filterEglise} onValueChange={setFilterEglise}>
+                    <SelectTrigger className="w-[180px] bg-white border-gray-300">
+                      <SelectValue placeholder="Filtrer par église" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Toutes les églises</SelectItem>
+                      {Array.from(new Set(mentorsConsolides.map(m => m.eglise).filter(Boolean))).sort().map(eglise => (
+                        <SelectItem key={eglise} value={eglise}>{eglise}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterAvancement} onValueChange={setFilterAvancement}>
+                    <SelectTrigger className="w-[180px] bg-white border-gray-300">
+                      <SelectValue placeholder="Filtrer par avancement" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Tous les avancements</SelectItem>
+                      <SelectItem value="objectif_atteint">Objectif atteint (100%)</SelectItem>
+                      <SelectItem value="en_progression">En progression (50-99%)</SelectItem>
+                      <SelectItem value="a_améliorer">À améliorer (&lt;50%)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {(filterEglise || filterAvancement) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setFilterEglise('');
+                        setFilterAvancement('');
+                      }}
+                      className="text-gray-600 hover:text-gray-900"
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Réinitialiser
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
             {loadingMentors ? (
@@ -2116,17 +2392,101 @@ const PasteurDashboard = () => {
                 <Table>
                   <TableHeader>
                     <TableRow className="group bg-purple-200 hover:bg-purple-300 transition-colors">
-                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Nom</TableHead>
-                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Prénom</TableHead>
-                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Église</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Nombre de Disciples</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Avancement (%)</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Disciples Présents</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Taux Participation Semaine (%)</TableHead>
+                      <TableHead 
+                        className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors cursor-pointer hover:bg-purple-300 select-none"
+                        onClick={() => handleSortMentors('nom')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Nom
+                          {sortColumnMentors === 'nom' ? (
+                            sortDirectionMentors === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead 
+                        className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors cursor-pointer hover:bg-purple-300 select-none"
+                        onClick={() => handleSortMentors('nom')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Prénom
+                          {sortColumnMentors === 'nom' ? (
+                            sortDirectionMentors === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead 
+                        className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors cursor-pointer hover:bg-purple-300 select-none"
+                        onClick={() => handleSortMentors('eglise')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Église
+                          {sortColumnMentors === 'eglise' ? (
+                            sortDirectionMentors === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead 
+                        className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors cursor-pointer hover:bg-purple-300 select-none"
+                        onClick={() => handleSortMentors('nombre_disciples')}
+                      >
+                        <div className="flex items-center justify-center gap-1">
+                          Nombre de Disciples
+                          {sortColumnMentors === 'nombre_disciples' ? (
+                            sortDirectionMentors === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead 
+                        className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors cursor-pointer hover:bg-purple-300 select-none"
+                        onClick={() => handleSortMentors('avancement')}
+                      >
+                        <div className="flex items-center justify-center gap-1">
+                          Avancement (%)
+                          {sortColumnMentors === 'avancement' ? (
+                            sortDirectionMentors === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead 
+                        className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors cursor-pointer hover:bg-purple-300 select-none"
+                        onClick={() => handleSortMentors('disciples_presents')}
+                      >
+                        <div className="flex items-center justify-center gap-1">
+                          Disciples Présents
+                          {sortColumnMentors === 'disciples_presents' ? (
+                            sortDirectionMentors === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead 
+                        className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors cursor-pointer hover:bg-purple-300 select-none"
+                        onClick={() => handleSortMentors('taux_participation')}
+                      >
+                        <div className="flex items-center justify-center gap-1">
+                          Taux Participation Semaine (%)
+                          {sortColumnMentors === 'taux_participation' ? (
+                            sortDirectionMentors === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredMentors.map((mentor) => (
+                    {paginatedMentors.map((mentor) => (
                       <TableRow key={mentor.mentor_id} className="hover:bg-gray-50 transition-colors">
                         <TableCell>
                           <span className="font-semibold text-gray-900">{mentor.nom}</span>
@@ -2135,48 +2495,139 @@ const PasteurDashboard = () => {
                           <span className="font-semibold text-gray-900">{mentor.prenom}</span>
                         </TableCell>
                         <TableCell>
-                          <span className="text-gray-700">{mentor.eglise}</span>
+                          <div className="flex items-center gap-2">
+                            <Church className="h-4 w-4 text-purple-500" />
+                            <span className="text-gray-700">{mentor.eglise || 'N/A'}</span>
+                          </div>
                         </TableCell>
                         <TableCell className="text-center">
-                          <span className="font-semibold text-gray-900">{mentor.nombre_disciples}</span>
+                          <div className="flex items-center justify-center gap-2">
+                            <Users className="h-4 w-4 text-blue-500" />
+                            <span className="font-semibold text-gray-900">{mentor.nombre_disciples || 0}</span>
+                          </div>
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-2">
                             <div className="w-24 bg-gray-200 rounded-full h-2">
                               <div
-                                className={`h-2 rounded-full ${
-                                  mentor.avancement_pourcentage >= 100
+                                className={`h-2 rounded-full transition-all ${
+                                  (mentor.avancement_pourcentage || 0) >= 100
                                     ? 'bg-green-500'
-                                    : mentor.avancement_pourcentage >= 50
+                                    : (mentor.avancement_pourcentage || 0) >= 50
                                     ? 'bg-purple-600'
                                     : 'bg-amber-500'
                                 }`}
-                                style={{ width: `${Math.min(mentor.avancement_pourcentage, 100)}%` }}
+                                style={{ width: `${Math.min(mentor.avancement_pourcentage || 0, 100)}%` }}
                               />
                             </div>
-                            <span className="text-sm font-medium text-gray-700 w-12 text-left">
-                              {mentor.avancement_pourcentage}%
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm font-medium text-gray-700 w-12 text-left">
+                                {mentor.avancement_pourcentage || 0}%
+                              </span>
+                              {(mentor.avancement_pourcentage || 0) >= 100 && (
+                                <Badge className="bg-green-500 text-white text-xs px-1.5 py-0.5">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Objectif
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
-                          <span className="font-semibold text-gray-900">{mentor.disciples_presents}</span>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="font-semibold text-gray-900">{mentor.disciples_presents || 0}</span>
+                            {(mentor.nombre_disciples || 0) > 0 && (
+                              <span className="text-xs text-gray-500">
+                                / {mentor.nombre_disciples || 0}
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-center">
-                          <span className={`font-semibold ${
-                            mentor.taux_participation_semaine >= 70
-                              ? 'text-green-600'
-                              : mentor.taux_participation_semaine >= 50
-                              ? 'text-amber-600'
-                              : 'text-red-600'
-                          }`}>
-                            {mentor.taux_participation_semaine}%
-                          </span>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className={`font-semibold ${
+                              (mentor.taux_participation_semaine || 0) >= 70
+                                ? 'text-green-600'
+                                : (mentor.taux_participation_semaine || 0) >= 50
+                                ? 'text-amber-600'
+                                : 'text-red-600'
+                            }`}>
+                              {mentor.taux_participation_semaine || 0}%
+                            </span>
+                            {(mentor.taux_participation_semaine || 0) >= 70 && (
+                              <Badge className="bg-green-500 text-white text-xs px-1.5 py-0.5">
+                                <TrendingUp className="h-3 w-3 mr-1" />
+                                Bon
+                              </Badge>
+                            )}
+                            {(mentor.taux_participation_semaine || 0) < 50 && (mentor.taux_participation_semaine || 0) > 0 && (
+                              <Badge className="bg-red-500 text-white text-xs px-1.5 py-0.5">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                Faible
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            )}
+            
+            {/* Pagination pour les mentors */}
+            {!loadingMentors && filteredMentors.length > itemsPerPageMentors && (
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+                <div className="text-sm text-gray-600">
+                  Affichage de {startIndexMentors + 1} à {Math.min(endIndexMentors, filteredMentors.length)} sur {filteredMentors.length} mentor{filteredMentors.length > 1 ? 's' : ''}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPageMentors(prev => Math.max(1, prev - 1))}
+                    disabled={currentPageMentors === 1}
+                    className="gap-1"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Précédent
+                  </Button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, totalPagesMentors) }, (_, i) => {
+                      let pageNum;
+                      if (totalPagesMentors <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPageMentors <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPageMentors >= totalPagesMentors - 2) {
+                        pageNum = totalPagesMentors - 4 + i;
+                      } else {
+                        pageNum = currentPageMentors - 2 + i;
+                      }
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPageMentors === pageNum ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPageMentors(pageNum)}
+                          className={currentPageMentors === pageNum ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPageMentors(prev => Math.min(totalPagesMentors, prev + 1))}
+                    disabled={currentPageMentors === totalPagesMentors}
+                    className="gap-1"
+                  >
+                    Suivant
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>
