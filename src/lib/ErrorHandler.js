@@ -11,7 +11,6 @@ export const ErrorTypes = {
   NOT_FOUND: 'NOT_FOUND',
   PERMISSION: 'PERMISSION',
   SERVER: 'SERVER',
-  BAD_REQUEST: 'BAD_REQUEST',
   UNKNOWN: 'UNKNOWN'
 };
 
@@ -46,11 +45,6 @@ const ErrorMessages = {
     title: 'Erreur serveur',
     description: 'Une erreur est survenue côté serveur. Notre équipe a été notifiée. Veuillez réessayer plus tard.',
     action: 'Réessayer'
-  },
-  [ErrorTypes.BAD_REQUEST]: {
-    title: 'Requête invalide',
-    description: 'La requête envoyée est invalide ou mal formée. Veuillez vérifier les données saisies et réessayer.',
-    action: 'Vérifier les données'
   },
   [ErrorTypes.UNKNOWN]: {
     title: 'Erreur inattendue',
@@ -94,12 +88,6 @@ const SupabaseErrorMessages = {
 export const analyzeError = (error) => {
   if (!error) return ErrorTypes.UNKNOWN;
 
-  // Vérifier si c'est une erreur structurée avec format API externe
-  // Format: { error: "ERROR_BAD_REQUEST", details: { title, detail, ... }, isRetryable, ... }
-  if (error.error === 'ERROR_BAD_REQUEST' || error.error?.includes('BAD_REQUEST')) {
-    return ErrorTypes.BAD_REQUEST;
-  }
-
   // Vérifier si c'est une erreur réseau
   if (error.message?.includes('Failed to fetch') || 
       error.message?.includes('NetworkError') ||
@@ -136,10 +124,6 @@ export const analyzeError = (error) => {
       return ErrorTypes.VALIDATION;
     }
     
-    if (lowerMessage.includes('bad request') || lowerMessage.includes('400')) {
-      return ErrorTypes.BAD_REQUEST;
-    }
-    
     if (lowerMessage.includes('server') || lowerMessage.includes('500') || lowerMessage.includes('502') || lowerMessage.includes('503')) {
       return ErrorTypes.SERVER;
     }
@@ -160,19 +144,6 @@ export const getErrorMessage = (error, customMessage = null) => {
     return {
       ...baseMessage,
       description: customMessage
-    };
-  }
-
-  // Gérer les erreurs structurées avec format API externe
-  // Format: { error: "ERROR_BAD_REQUEST", details: { title, detail, ... }, isRetryable, ... }
-  if (error?.error && error?.details) {
-    const details = error.details;
-    return {
-      title: details.title || baseMessage.title,
-      description: details.detail || details.description || details.title || baseMessage.description,
-      action: baseMessage.action,
-      isRetryable: error.isRetryable || false,
-      additionalInfo: error.additionalInfo || {}
     };
   }
 
@@ -229,21 +200,10 @@ export const logError = (error, context = {}) => {
     type: errorType,
     message: errorInfo.description,
     originalError: error?.message || error?.toString(),
-    code: error?.code || error?.error,
+    code: error?.code,
     context,
     timestamp: new Date().toISOString()
   };
-
-  // Ajouter les détails supplémentaires pour les erreurs structurées
-  if (error?.details) {
-    logData.details = error.details;
-  }
-  if (error?.isRetryable !== undefined) {
-    logData.isRetryable = error.isRetryable;
-  }
-  if (error?.additionalInfo) {
-    logData.additionalInfo = error.additionalInfo;
-  }
 
   // Log seulement les erreurs non-réseau en production
   if (errorType !== ErrorTypes.NETWORK) {

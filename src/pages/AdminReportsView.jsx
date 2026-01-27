@@ -22,12 +22,8 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
-import { useAuth } from '@/context/AuthContext';
-import { useRole } from '@/context/RoleContext';
 
 const AdminReportsView = () => {
-  const { user } = useAuth();
-  const { role } = useRole();
   const { toast } = useToast();
   const navigate = useNavigate();
   const { handleError } = useErrorHandler();
@@ -63,11 +59,6 @@ const AdminReportsView = () => {
       let query = supabase
         .from('reports')
         .select('*, profils(first_name, last_name, email)', { count: 'exact' });
-
-      // Si l'utilisateur est pasteur, filtrer uniquement les rapports qui lui sont destinés
-      if ((role === 'pasteur' || role === 'admin' || role === 'super_admin') && user) {
-        query = query.eq('pasteur_id', user.id);
-      }
 
       // Apply Filters
       if (statusFilter !== 'all') {

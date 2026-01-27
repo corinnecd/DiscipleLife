@@ -26,8 +26,6 @@ import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import jsPDF from 'jspdf';
-import { sendSuiviPostCriseEmail, getUserEmail } from '@/lib/EmailUtils';
-import { sendSuiviPostCrisePushNotification, initializeNotificationService } from '@/lib/NotificationService';
 
 const Transformation = () => {
   const { user } = useAuth();
@@ -231,35 +229,6 @@ const Transformation = () => {
       setSelectedParcours(null);
     }
   }, [isParcoursDialogOpen]);
-
-  // Initialiser le service de notifications push au chargement
-  useEffect(() => {
-    if (user) {
-      initializeNotificationService().catch(err => {
-        console.error('Erreur initialisation service notifications:', err);
-      });
-    }
-  }, [user]);
-
-  // Vérifier les alertes de suivi post-crise périodiquement (toutes les 5 minutes)
-  useEffect(() => {
-    if (!user || suivisPostCrise.length === 0) return;
-
-    // Vérifier immédiatement au chargement
-    const verifierAlertes = async () => {
-      await verifierEtEnvoyerAlertes(suivisPostCrise);
-    };
-
-    verifierAlertes();
-
-    // Vérifier toutes les 5 minutes
-    const interval = setInterval(() => {
-      verifierAlertes();
-    }, 5 * 60 * 1000); // 5 minutes
-
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, suivisPostCrise.length]); // Utiliser length pour éviter les re-renders excessifs
 
   const fetchAllData = async () => {
     try {
@@ -2497,235 +2466,11 @@ const Transformation = () => {
 
       if (error) throw error;
       setSuivisPostCrise(data || []);
-      
-      // Vérifier les alertes après avoir chargé les suivis (en arrière-plan, ne pas bloquer)
-      if (data && data.length > 0) {
-        verifierEtEnvoyerAlertes(data).catch(err => {
-          console.error('Erreur vérification alertes:', err);
-        });
-      }
     } catch (error) {
       console.error('Error fetching suivis post-crise:', error);
       setSuivisPostCrise([]);
     } finally {
       setSuivisPostCriseLoading(false);
-    }
-  };
-
-  // Fonction pour calculer la prochaine date de rappel selon la fréquence
-  const calculerProchaineDateRappel = (frequence, dateActuelle = new Date()) => {
-    const prochaineDate = new Date(dateActuelle);
-    
-    switch (frequence) {
-      case 'quotidien':
-        prochaineDate.setDate(prochaineDate.getDate() + 1);
-        break;
-      case 'hebdomadaire':
-        prochaineDate.setDate(prochaineDate.getDate() + 7);
-        break;
-      case 'bihebdomadaire':
-        prochaineDate.setDate(prochaineDate.getDate() + 14);
-        break;
-      case 'mensuel':
-        prochaineDate.setMonth(prochaineDate.getMonth() + 1);
-        break;
-      default:
-        prochaineDate.setDate(prochaineDate.getDate() + 7); // Par défaut hebdomadaire
-    }
-    
-    return prochaineDate.toISOString();
-  };
-
-  // Fonction pour obtenir le label de la fréquence
-  const getFrequenceLabel = (frequence) => {
-    const labels = {
-      'quotidien': 'quotidien',
-      'hebdomadaire': 'hebdomadaire',
-      'bihebdomadaire': 'bi-hebdomadaire',
-      'mensuel': 'mensuel'
-    };
-    return labels[frequence] || frequence;
-  };
-
-  // Fonction pour obtenir le label du type de crise
-  const getTypeCriseLabel = (type) => {
-    const labels = {
-      'deuil': 'Deuil',
-      'divorce': 'Divorce',
-      'maladie': 'Maladie',
-      'chomage': 'Chômage',
-      'trauma': 'Trauma',
-      'depression': 'Dépression',
-      'addiction': 'Addiction',
-      'conflit_familial': 'Conflit Familial',
-      'crise_spirituelle': 'Crise Spirituelle',
-      'autre': 'Autre'
-    };
-    return labels[type] || type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
-
-  // Fonction principale pour vérifier et envoyer les alertes
-  const verifierEtEnvoyerAlertes = async (suivis) => {
-    try {
-      const maintenant = new Date();
-      const aujourdhui = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate());
-      
-      // Filtrer les suivis avec rappels actifs
-      const suivisAvecRappels = suivis.filter(suivi => 
-        suivi.rappel_actif === true && 
-        suivi.statut !== 'resolu' && 
-        suivi.statut !== 'archive'
-      );
-
-      if (suivisAvecRappels.length === 0) {
-        return;
-      }
-
-      let alertesEnvoyees = 0;
-
-      for (const suivi of suivisAvecRappels) {
-        // Vérifier si un rappel doit être envoyé
-        let doitEnvoyerRappel = false;
-        let prochaineDateRappel = null;
-
-        if (suivi.prochain_rappel) {
-          // Si prochain_rappel existe, vérifier s'il est dans le passé ou aujourd'hui
-          const dateProchainRappel = new Date(suivi.prochain_rappel);
-          const dateProchainRappelOnly = new Date(dateProchainRappel.getFullYear(), dateProchainRappel.getMonth(), dateProchainRappel.getDate());
-          
-          if (dateProchainRappelOnly <= aujourdhui) {
-            doitEnvoyerRappel = true;
-            // Calculer la prochaine date selon la fréquence
-            prochaineDateRappel = calculerProchaineDateRappel(suivi.frequence_rappels || 'hebdomadaire', maintenant);
-          } else {
-            prochaineDateRappel = suivi.prochain_rappel;
-          }
-        } else {
-          // Si prochain_rappel n'existe pas, le calculer depuis date_debut ou maintenant
-          const dateReference = suivi.date_debut ? new Date(suivi.date_debut) : maintenant;
-          prochaineDateRappel = calculerProchaineDateRappel(suivi.frequence_rappels || 'hebdomadaire', dateReference);
-          
-          // Envoyer un rappel immédiat si le suivi a été créé il y a au moins une période
-          const joursDepuisCreation = Math.floor((maintenant - dateReference) / (1000 * 60 * 60 * 24));
-          const frequenceJours = {
-            'quotidien': 1,
-            'hebdomadaire': 7,
-            'bihebdomadaire': 14,
-            'mensuel': 30
-          };
-          
-          if (joursDepuisCreation >= (frequenceJours[suivi.frequence_rappels] || 7)) {
-            doitEnvoyerRappel = true;
-          }
-        }
-
-        // Créer la notification si nécessaire
-        if (doitEnvoyerRappel) {
-          const typeCriseLabel = getTypeCriseLabel(suivi.type_crise);
-          const frequenceLabel = getFrequenceLabel(suivi.frequence_rappels || 'hebdomadaire');
-          
-          const notificationTitle = `Rappel - Suivi Post-Crise: ${typeCriseLabel}`;
-          let notificationContent = `Il est temps de faire le point sur votre suivi "${typeCriseLabel}".`;
-          
-          if (suivi.prochaine_action && suivi.date_prochaine_action) {
-            const dateAction = new Date(suivi.date_prochaine_action);
-            notificationContent += `\n\nProchaine action prévue: ${suivi.prochaine_action} (${format(dateAction, 'dd MMMM yyyy', { locale: fr })}).`;
-          }
-          
-          notificationContent += `\n\nRappel ${frequenceLabel}.`;
-
-          // Créer la notification dans la table notifications
-          const { error: notifError } = await supabase
-            .from('notifications')
-            .insert([{
-              user_id: user.id,
-              type: 'reminder',
-              title: notificationTitle,
-              content: notificationContent,
-              read: false,
-              metadata: {
-                suivi_id: suivi.id,
-                type_crise: suivi.type_crise,
-                redirect_to: '/transformation?tab=suivi-post-crise'
-              }
-            }]);
-
-          if (notifError) {
-            console.error('Erreur création notification:', notifError);
-          } else {
-            alertesEnvoyees++;
-            
-            // Afficher un toast pour informer l'utilisateur
-            toast({
-              title: notificationTitle,
-              description: notificationContent,
-              className: "bg-purple-50 border-purple-200"
-            });
-          }
-
-          // Envoyer un email de notification (en arrière-plan, ne pas bloquer)
-          try {
-            const userEmail = await getUserEmail(user.id);
-            if (userEmail) {
-              const emailResult = await sendSuiviPostCriseEmail(suivi, userEmail, frequenceLabel);
-              if (emailResult.success) {
-                console.log(`✅ Email de rappel envoyé à ${userEmail} pour le suivi ${suivi.id}`);
-              } else {
-                console.warn(`⚠️ Impossible d'envoyer l'email: ${emailResult.error}`);
-              }
-            } else {
-              console.warn(`⚠️ Aucun email trouvé pour l'utilisateur ${user.id}`);
-            }
-          } catch (emailError) {
-            // Ne pas bloquer le processus si l'email échoue
-            console.error('Erreur envoi email (non bloquant):', emailError);
-          }
-
-          // Envoyer une notification push personnalisée (en arrière-plan, ne pas bloquer)
-          try {
-            await sendSuiviPostCrisePushNotification(suivi, frequenceLabel);
-            console.log(`✅ Notification push envoyée pour le suivi ${suivi.id}`);
-          } catch (pushError) {
-            // Ne pas bloquer le processus si la notification push échoue
-            console.error('Erreur envoi notification push (non bloquant):', pushError);
-          }
-
-          // Mettre à jour les dates de rappel dans suivi_post_crise
-          const { error: updateError } = await supabase
-            .from('suivi_post_crise')
-            .update({
-              dernier_rappel_envoye: maintenant.toISOString(),
-              prochain_rappel: prochaineDateRappel
-            })
-            .eq('id', suivi.id);
-
-          if (updateError) {
-            console.error('Erreur mise à jour rappel:', updateError);
-          }
-        } else if (!suivi.prochain_rappel) {
-          // Si prochain_rappel n'existe pas, le calculer et le sauvegarder
-          const dateReference = suivi.date_debut ? new Date(suivi.date_debut) : maintenant;
-          const nouvelleDateRappel = calculerProchaineDateRappel(suivi.frequence_rappels || 'hebdomadaire', dateReference);
-          
-          const { error: updateError } = await supabase
-            .from('suivi_post_crise')
-            .update({
-              prochain_rappel: nouvelleDateRappel
-            })
-            .eq('id', suivi.id);
-
-          if (updateError) {
-            console.error('Erreur initialisation rappel:', updateError);
-          }
-        }
-      }
-
-      if (alertesEnvoyees > 0) {
-        console.log(`✅ ${alertesEnvoyees} alerte(s) de suivi post-crise envoyée(s)`);
-      }
-    } catch (error) {
-      console.error('Erreur vérification alertes suivi post-crise:', error);
-      handleError(error, { context: 'verifierEtEnvoyerAlertes' }, "Impossible de vérifier les alertes de suivi post-crise.");
     }
   };
 
@@ -2755,18 +2500,6 @@ const Transformation = () => {
         besoins_specifiques: Array.isArray(suiviFormData.besoins_specifiques) ? suiviFormData.besoins_specifiques : [],
         ressources_utilisees: Array.isArray(suiviFormData.ressources_utilisees) ? suiviFormData.ressources_utilisees : []
       };
-
-      // Calculer prochain_rappel si rappel_actif est true
-      if (suiviData.rappel_actif && !suiviData.prochain_rappel) {
-        const dateReference = suiviData.date_debut ? new Date(suiviData.date_debut) : new Date();
-        suiviData.prochain_rappel = calculerProchaineDateRappel(
-          suiviData.frequence_rappels || 'hebdomadaire',
-          dateReference
-        );
-      } else if (!suiviData.rappel_actif) {
-        suiviData.prochain_rappel = null;
-        suiviData.dernier_rappel_envoye = null;
-      }
 
       if (editingSuiviId) {
         const { error } = await supabase

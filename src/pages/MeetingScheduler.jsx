@@ -147,6 +147,15 @@ const MeetingScheduler = () => {
   };
 
   const handleSave = async () => {
+    if (meetingType === 'individual' && !selectedDiscipleId) {
+      toast({ title: "Champ obligatoire", description: "Veuillez sélectionner avec qui est cette rencontre.", variant: "destructive" });
+      return;
+    }
+    if (meetingType === 'group' && !groupName.trim()) {
+      toast({ title: "Champ obligatoire", description: "Veuillez saisir le nom du groupe.", variant: "destructive" });
+      return;
+    }
+
     const targetName = meetingType === 'individual' 
         ? disciples.find(d => d.id === selectedDiscipleId)?.name || "un disciple"
         : groupName || "votre groupe";
@@ -187,7 +196,7 @@ const MeetingScheduler = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#022c22] text-white p-4 flex flex-col items-center pt-8">
+    <div className="min-h-screen bg-gray-100 text-gray-900 p-4 flex flex-col items-center pt-8">
       <div className="w-full max-w-md space-y-8 pb-10">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -195,11 +204,11 @@ const MeetingScheduler = () => {
             variant="ghost" 
             size="icon" 
             onClick={() => navigate(-1)}
-            className="text-emerald-400 hover:text-white hover:bg-white/10"
+            className="text-gray-700 hover:text-gray-900 hover:bg-gray-200"
           >
             <ArrowLeft size={24} />
           </Button>
-          <h1 className="text-xl font-semibold text-emerald-200">Planifier un Échange</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Planifier un Échange</h1>
           <div className="w-10" /> 
         </div>
 
@@ -207,30 +216,30 @@ const MeetingScheduler = () => {
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-[#064e3b] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl relative"
+          className="bg-white border border-gray-200 rounded-3xl overflow-hidden shadow-lg relative"
         >
           {/* Background decoration */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-100 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 
           <div className="p-6 space-y-6">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
                  <CalendarDays size={20} />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-white">Nouvelle Rencontre</h2>
-                <p className="text-xs text-emerald-200/60">Organisez vos moments de partage</p>
+                <h2 className="text-2xl font-bold text-gray-900">Nouvelle Rencontre</h2>
+                <p className="text-xs text-gray-500">Organisez vos moments de partage</p>
               </div>
             </div>
 
             <div className="space-y-5">
               {/* Type Selection */}
-              <div className="bg-[#065f46] rounded-xl p-1 flex gap-1">
+              <div className="bg-gray-100 rounded-xl p-1 flex gap-1">
                  <button
                     onClick={() => setMeetingType('individual')}
                     className={cn(
                         "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all",
-                        meetingType === 'individual' ? "bg-emerald-500 text-white shadow-lg shadow-emerald-900/50" : "text-emerald-200 hover:text-white"
+                        meetingType === 'individual' ? "bg-emerald-600 text-white shadow-md" : "text-gray-600 hover:text-gray-900"
                     )}
                  >
                     <User size={16} /> Individuel
@@ -239,7 +248,7 @@ const MeetingScheduler = () => {
                     onClick={() => setMeetingType('group')}
                     className={cn(
                         "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all",
-                        meetingType === 'group' ? "bg-emerald-500 text-white shadow-lg shadow-emerald-900/50" : "text-emerald-200 hover:text-white"
+                        meetingType === 'group' ? "bg-emerald-600 text-white shadow-md" : "text-gray-600 hover:text-gray-900"
                     )}
                  >
                     <Users size={16} /> Groupe
@@ -248,23 +257,23 @@ const MeetingScheduler = () => {
 
               {/* Dynamic Input based on Type */}
               <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-emerald-300/70 ml-1">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 ml-1">
                       {meetingType === 'individual' ? 'Avec qui ?' : 'Nom du groupe'}
                   </label>
                   
                   {meetingType === 'individual' ? (
                       <Select value={selectedDiscipleId} onValueChange={handleDiscipleSelect}>
-                        <SelectTrigger className="w-full h-12 bg-emerald-900/50 border-emerald-500/30 text-white rounded-xl focus:ring-emerald-500/50">
+                        <SelectTrigger className="w-full h-12 bg-gray-50 border-gray-300 text-gray-900 rounded-xl focus:ring-emerald-500/50">
                             <SelectValue placeholder="Sélectionner un disciple" />
                         </SelectTrigger>
-                        <SelectContent className="bg-[#064e3b] border-emerald-500/30 text-white">
+                        <SelectContent className="bg-white border-gray-200 text-gray-900">
                             {disciples.map((disciple) => (
-                                <SelectItem key={disciple.id} value={disciple.id} className="focus:bg-emerald-600 focus:text-white cursor-pointer py-3">
+                                <SelectItem key={disciple.id} value={disciple.id} className="focus:bg-emerald-50 focus:text-gray-900 cursor-pointer py-3">
                                     {disciple.name}
                                 </SelectItem>
                             ))}
-                            <div className="h-px bg-white/10 my-1" />
-                            <SelectItem value="add_new" className="text-emerald-300 font-medium focus:bg-emerald-600/20 focus:text-emerald-200 cursor-pointer py-3">
+                            <div className="h-px bg-gray-200 my-1" />
+                            <SelectItem value="add_new" className="text-emerald-600 font-medium focus:bg-emerald-50 cursor-pointer py-3">
                                 + Ajouter un nouveau
                             </SelectItem>
                         </SelectContent>
@@ -274,46 +283,46 @@ const MeetingScheduler = () => {
                         value={groupName}
                         onChange={(e) => setGroupName(e.target.value)}
                         placeholder="Ex: Groupe Étude Biblique..." 
-                        className="h-12 bg-emerald-900/50 border-emerald-500/30 text-white rounded-xl placeholder:text-emerald-400/50 focus-visible:ring-emerald-500/50"
+                        className="h-12 bg-gray-50 border-gray-300 text-gray-900 rounded-xl placeholder:text-gray-400 focus-visible:ring-emerald-500/50"
                       />
                   )}
               </div>
 
               {/* Subject Field */}
               <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-emerald-300/70 ml-1">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 ml-1">
                       Sujet de l'Échange
                   </label>
                   <Input 
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     placeholder="Ex: Suivi lecture, Encouragement, Question..." 
-                    className="h-12 bg-emerald-900/50 border-emerald-500/30 text-white rounded-xl placeholder:text-emerald-400/50 focus-visible:ring-emerald-500/50"
+                    className="h-12 bg-gray-50 border-gray-300 text-gray-900 rounded-xl placeholder:text-gray-400 focus-visible:ring-emerald-500/50"
                   />
               </div>
 
               {/* Comment Field */}
               <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-emerald-300/70 ml-1">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 ml-1">
                       Notes & Préparation
                   </label>
                   <Textarea 
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     placeholder="Points à aborder, questions à poser..." 
-                    className="min-h-[100px] bg-emerald-900/50 border-emerald-500/30 text-white rounded-xl placeholder:text-emerald-400/50 focus-visible:ring-emerald-500/50 resize-none"
+                    className="min-h-[100px] bg-gray-50 border-gray-300 text-gray-900 rounded-xl placeholder:text-gray-400 focus-visible:ring-emerald-500/50 resize-none"
                   />
               </div>
 
-              <div className="h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent w-full my-4" />
+              <div className="h-px bg-gray-200 w-full my-4" />
 
               {/* Toggle Row */}
               <div className="flex items-center justify-between py-2">
-                <span className="text-base font-medium text-emerald-100">Définir un rappel</span>
+                <span className="text-base font-medium text-gray-700">Définir un rappel</span>
                 <div 
                   className={cn(
                     "w-12 h-7 rounded-full p-1 cursor-pointer transition-colors duration-300 ease-in-out",
-                    isEnabled ? "bg-emerald-500" : "bg-emerald-900"
+                    isEnabled ? "bg-emerald-500" : "bg-gray-300"
                   )}
                   onClick={() => setIsEnabled(!isEnabled)}
                 >
@@ -333,11 +342,11 @@ const MeetingScheduler = () => {
                 onClick={isEnabled ? openDayDialog : undefined}
                 className={cn(
                   "flex items-center justify-between py-3 px-3 rounded-lg border border-transparent transition-all",
-                  isEnabled ? "hover:bg-emerald-500/10 hover:border-emerald-500/20 cursor-pointer" : "opacity-50"
+                  isEnabled ? "hover:bg-gray-50 hover:border-gray-200 cursor-pointer" : "opacity-50"
                 )}
               >
-                <span className="text-base text-emerald-100">Date / Récurrence</span>
-                <div className="flex items-center gap-2 text-emerald-300">
+                <span className="text-base text-gray-700">Date / Récurrence</span>
+                <div className="flex items-center gap-2 text-gray-600">
                   <span className="text-right truncate max-w-[150px] text-sm">{getDayLabel()}</span>
                   <ChevronRight size={18} />
                 </div>
@@ -348,12 +357,12 @@ const MeetingScheduler = () => {
                 onClick={isEnabled ? openTimeDialog : undefined}
                 className={cn(
                   "flex items-center justify-between py-3 px-3 rounded-lg border border-transparent transition-all",
-                  isEnabled ? "hover:bg-emerald-500/10 hover:border-emerald-500/20 cursor-pointer" : "opacity-50"
+                  isEnabled ? "hover:bg-gray-50 hover:border-gray-200 cursor-pointer" : "opacity-50"
                 )}
               >
-                <span className="text-base text-emerald-100">Heure</span>
-                <div className="flex items-center gap-2 text-emerald-300">
-                  <span className="text-xl font-mono font-bold tracking-wider text-white">
+                <span className="text-base text-gray-700">Heure</span>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <span className="text-xl font-mono font-bold tracking-wider text-gray-900">
                     {selectedHour}:{selectedMinute}
                   </span>
                   <ChevronRight size={18} />
@@ -363,7 +372,7 @@ const MeetingScheduler = () => {
             
             <div className="pt-2">
                  <Button 
-                    className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-6 rounded-xl shadow-lg shadow-emerald-500/25 border border-emerald-400/20"
+                    className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-6 rounded-xl shadow-md border border-emerald-500/30"
                     onClick={handleSave}
                     disabled={isSaving}
                 >
@@ -376,34 +385,34 @@ const MeetingScheduler = () => {
 
       {/* Days Selection Dialog */}
       <Dialog open={isDayDialogOpen} onOpenChange={setIsDayDialogOpen}>
-        <DialogContent className="bg-[#064e3b] border-emerald-500/30 text-white max-w-xs rounded-2xl">
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-xs rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-center pb-4 border-b border-white/10 text-emerald-200">Sélectionner les jours</DialogTitle>
+            <DialogTitle className="text-center pb-4 border-b border-gray-200 text-gray-900">Sélectionner les jours</DialogTitle>
           </DialogHeader>
           <div className="space-y-1 py-2">
             {DAYS.map((day) => (
               <div 
                 key={day.id}
                 onClick={() => toggleDay(day.id)}
-                className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-colors"
+                className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 <div className={cn(
                   "w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors",
                   tempSelectedDays.includes(day.id) 
                     ? "bg-emerald-500 border-emerald-500" 
-                    : "border-emerald-300/30"
+                    : "border-gray-300"
                 )}>
                   {tempSelectedDays.includes(day.id) && <Check size={12} className="text-white" />}
                 </div>
-                <span className="text-base text-emerald-100">{day.label}</span>
+                <span className="text-base text-gray-700">{day.label}</span>
               </div>
             ))}
           </div>
-          <DialogFooter className="flex-row justify-between gap-2 border-t border-white/10 pt-4">
+          <DialogFooter className="flex-row justify-between gap-2 border-t border-gray-200 pt-4">
             <Button 
               variant="ghost" 
               onClick={() => setIsDayDialogOpen(false)}
-              className="flex-1 text-emerald-300 hover:text-white hover:bg-white/5"
+              className="flex-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100"
             >
               Annuler
             </Button>
@@ -419,21 +428,21 @@ const MeetingScheduler = () => {
 
       {/* Time Selection Dialog */}
       <Dialog open={isTimeDialogOpen} onOpenChange={setIsTimeDialogOpen}>
-        <DialogContent className="bg-[#064e3b] border-emerald-500/30 text-white max-w-xs rounded-2xl">
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-xs rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-center pb-4 border-b border-white/10 text-emerald-200">Choisir l'heure</DialogTitle>
+            <DialogTitle className="text-center pb-4 border-b border-gray-200 text-gray-900">Choisir l'heure</DialogTitle>
           </DialogHeader>
           
           <div className="flex justify-center items-center gap-4 h-48 py-4">
             {/* Hours */}
-            <div className="h-full overflow-y-auto no-scrollbar snap-y snap-mandatory w-20 text-center border-r border-white/10">
+            <div className="h-full overflow-y-auto no-scrollbar snap-y snap-mandatory w-20 text-center border-r border-gray-200">
               {HOURS.map(hour => (
                 <div 
                   key={hour} 
                   onClick={() => setTempHour(hour)}
                   className={cn(
                     "py-2 snap-center cursor-pointer text-2xl font-bold transition-all",
-                    tempHour === hour ? "text-emerald-400 scale-125" : "text-emerald-300/40 hover:text-emerald-300/60"
+                    tempHour === hour ? "text-emerald-600 scale-125" : "text-gray-400 hover:text-gray-600"
                   )}
                 >
                   {hour}
@@ -449,7 +458,7 @@ const MeetingScheduler = () => {
                   onClick={() => setTempMinute(minute)}
                   className={cn(
                     "py-2 snap-center cursor-pointer text-2xl font-bold transition-all",
-                    tempMinute === minute ? "text-emerald-400 scale-125" : "text-emerald-300/40 hover:text-emerald-300/60"
+                    tempMinute === minute ? "text-emerald-600 scale-125" : "text-gray-400 hover:text-gray-600"
                   )}
                 >
                   {minute}
@@ -458,11 +467,11 @@ const MeetingScheduler = () => {
             </div>
           </div>
           
-          <DialogFooter className="flex-row justify-between gap-2 border-t border-white/10 pt-4">
+          <DialogFooter className="flex-row justify-between gap-2 border-t border-gray-200 pt-4">
             <Button 
               variant="ghost" 
               onClick={() => setIsTimeDialogOpen(false)}
-              className="flex-1 text-emerald-300 hover:text-white hover:bg-white/5"
+              className="flex-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100"
             >
               Annuler
             </Button>

@@ -259,7 +259,7 @@ const PrayerList = () => {
                 Planifier une prière
              </Button>
              <Button 
-                onClick={() => navigate('/interviews')} 
+                onClick={() => navigate('/scheduler')} 
                 className="bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300 gap-2 h-auto py-3 flex-col items-center justify-center text-xs sm:text-sm"
              >
                 <MessageSquare size={20} />
@@ -277,7 +277,7 @@ const PrayerList = () => {
                 onValueChange={setDiscipleName}
             >
                 <SelectTrigger className="w-full bg-white border-gray-300 text-gray-900 h-12 text-base focus:ring-purple-500">
-                    <SelectValue placeholder="Pour qui ? (Optionnel)" />
+                    <SelectValue placeholder="Pour qui ?" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
                     <SelectItem value="Moi" className="focus:bg-gray-100 focus:!text-gray-900 cursor-pointer py-2">Moi</SelectItem>

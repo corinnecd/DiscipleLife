@@ -246,25 +246,6 @@ const AttendanceTracking = () => {
     }
   };
 
-  const handleQuickRegister = (reminderType) => {
-    // Changer l'onglet actif
-    setActiveTab(reminderType);
-    
-    // Pré-remplir le formulaire
-    setDate(new Date());
-    setStatus('present');
-    setChurchName("");
-    setAbsenceReason("");
-    
-    // Faire défiler vers le formulaire après un court délai pour laisser le temps à l'UI de se mettre à jour
-    setTimeout(() => {
-      const formElement = document.getElementById('attendance-form');
-      if (formElement) {
-        formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 100);
-  };
-
   const getTabTitle = (tab) => {
     switch (tab) {
       case TYPES.SUNDAY_WORSHIP: return "Culte Dimanche Matin";
@@ -378,9 +359,9 @@ const AttendanceTracking = () => {
               <AlertCircle className="h-5 w-5 text-blue-600" />
               <p className="text-blue-900 font-medium">{reminder.message}</p>
               <Button 
-                onClick={() => handleQuickRegister(reminder.type)} 
+                onClick={() => setActiveTab(reminder.type)} 
                 size="sm" 
-                className="ml-auto bg-blue-600 hover:bg-blue-700 text-white border border-purple-400/20"
+                className="ml-auto bg-blue-600 hover:bg-blue-700 text-white"
               >
                 Enregistrer maintenant
               </Button>
@@ -590,7 +571,7 @@ const AttendanceTracking = () => {
             
             {/* Form Section */}
             <div className="lg:col-span-5 space-y-6">
-              <Card id="attendance-form" className="bg-white border-gray-200 shadow-sm overflow-hidden">
+              <Card className="bg-white border-gray-200 shadow-sm overflow-hidden">
                 <CardHeader>
                   <CardTitle className="text-xl text-gray-900">Formulaire de Présence</CardTitle>
                   <CardDescription className="text-gray-600">
@@ -671,10 +652,10 @@ const AttendanceTracking = () => {
                       <div className="space-y-2 animate-in slide-in-from-top-2 fade-in duration-300">
                         <Label className="text-gray-900 text-sm font-medium">Nom de l'église visitée</Label>
                         <Input 
-                          placeholder="Ex: Croissy, ICC la Défense, Église locale..." 
+                          placeholder="Ex: ICC, Hillsong, Église locale..." 
                           value={churchName}
                           onChange={(e) => setChurchName(e.target.value)}
-                          className="bg-white border-gray-300 text-gray-900 h-12 focus:ring-purple-500 placeholder:text-gray-400"
+                          className="bg-white border-gray-300 text-gray-900 h-12 focus:ring-purple-500"
                         />
                       </div>
                     )}

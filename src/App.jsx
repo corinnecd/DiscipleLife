@@ -51,10 +51,10 @@ import HelpFAQ from './pages/HelpFAQ';
 import FeedbackForm from './pages/FeedbackForm';
 import NotificationCenter from './pages/NotificationCenter';
 import MeetingScheduler from './pages/MeetingScheduler';
+import PrayerReminder from './pages/PrayerReminder';
 import MySummaries from './pages/MySummaries';
 import AttendanceTracking from './pages/AttendanceTracking';
 import FamillesDisciples from './pages/FamillesDisciples';
-import GenealogicalTree from './pages/GenealogicalTree';
 
 // New Feature Pages
 import AppointmentsList from './pages/AppointmentsList';
@@ -193,7 +193,6 @@ function AppRoutes() {
         <Route path="attendance" element={<AttendanceTracking />} /> 
         <Route path="statistics" element={<Statistics />} />
         <Route path="familles" element={<FamillesDisciples />} />
-        <Route path="genealogical-tree" element={<GenealogicalTree />} />
 
         {/* New Appointment System Routes */}
         <Route path="my-appointments" element={<AppointmentsList />} />
@@ -219,6 +218,7 @@ function AppRoutes() {
         
         <Route path="circles" element={<Circles />} />
         <Route path="prayer-requests" element={<PrayerList />} />
+        <Route path="prayer-reminder" element={<PrayerReminder />} />
         <Route path="send-report" element={<SendReport />} />
         <Route path="evangelization" element={<Evangelization />} />
         <Route path="engagement" element={<Engagement />} />

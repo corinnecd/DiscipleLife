@@ -37,6 +37,10 @@ COMMENT ON COLUMN familles_disciples.nombre_disciples_actuels IS 'Nombre actuel 
 -- RLS (Row Level Security)
 ALTER TABLE familles_disciples ENABLE ROW LEVEL SECURITY;
 
+-- Supprimer les politiques existantes si elles existent (pour rendre le script idempotent)
+DROP POLICY IF EXISTS "Users can view families" ON familles_disciples;
+DROP POLICY IF EXISTS "Admins can manage families" ON familles_disciples;
+
 -- Politique : Les utilisateurs peuvent voir les familles
 CREATE POLICY "Users can view families" ON familles_disciples
   FOR SELECT USING (true);

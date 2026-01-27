@@ -60,19 +60,12 @@ const SPIRITUAL_LEVELS = {
   'Non-croyant': { level: 1, next: 'Nouveau converti', dbValue: 'newbelievers' },
   'Nouveau converti': { level: 2, next: 'Disciple Affermi', dbValue: 'established' },
   'Disciple Affermi': { level: 3, next: 'Faiseur de Disciples', dbValue: 'makers' },
-  'Faiseur de Disciples': { level: 4, next: 'Berger', dbValue: 'makers' },
-  'Mentor': { level: 4, next: 'Berger', dbValue: 'makers' },
-  'Berger': { level: 5, next: 'Pilier', dbValue: 'bergers' },
-  'Pilier': { level: 6, next: 'Pasteur', dbValue: 'pillars' },
-  'Pasteur': { level: 7, next: null, dbValue: 'pasteurs' },
+  'Faiseur de Disciples': { level: 4, next: null, dbValue: 'makers' },
   // Format anglais (valeurs DB)
   'unbelievers': { level: 1, next: 'Nouveau converti', dbValue: 'newbelievers' },
   'newbelievers': { level: 2, next: 'Disciple Affermi', dbValue: 'established' },
   'established': { level: 3, next: 'Faiseur de Disciples', dbValue: 'makers' },
-  'makers': { level: 4, next: 'Berger', dbValue: 'makers' },
-  'bergers': { level: 5, next: 'Pilier', dbValue: 'bergers' },
-  'pillars': { level: 6, next: 'Pasteur', dbValue: 'pillars' },
-  'pasteurs': { level: 7, next: null, dbValue: 'pasteurs' }
+  'makers': { level: 4, next: null, dbValue: 'makers' }
 };
 
 const getCurrentLevel = (circleType) => {

@@ -456,7 +456,7 @@ const MentorRichDashboard = () => {
                     <Button 
                         variant="outline" 
                         className="w-full border-dashed border-white/20 hover:border-white/40 text-gray-400 hover:text-white"
-                        onClick={() => navigate('/interviews')}
+                        onClick={() => navigate('/scheduler')}
                     >
                         <Plus size={16} className="mr-2" /> Planifier un RDV
                     </Button>

@@ -163,15 +163,22 @@ const SuperviseurDashboard = () => {
   const statutsSpirituelsRef = React.useRef(null);
   const activiteRecenteRef = React.useRef(null);
   const statsComparativesRef = React.useRef(null);
+  const chartsLoadedRef = React.useRef(chartsLoaded);
 
-  // Chargement initial des données principales (une seule fois)
+  // Garder la ref à jour pour éviter de recréer les observers à chaque changement de chartsLoaded
+  useEffect(() => {
+    chartsLoadedRef.current = chartsLoaded;
+  }, [chartsLoaded]);
+
+  // Déclencher le chargement des stats comparatives quand la section est visible ET famille est prête (évite setInterval)
+  const [statsComparativesRequested, setStatsComparativesRequested] = useState(false);
+
   useEffect(() => {
     if (user) {
       fetchSuperviseurData();
       checkReportReminder();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]); // Ne charger qu'une fois au montage, pas à chaque changement de filtre KPI
+  }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
 
   // Hook pour détecter la visibilité d'un élément (IntersectionObserver) - Lazy loading des graphiques
   useEffect(() => {
@@ -239,43 +246,12 @@ const SuperviseurDashboard = () => {
       observers.push({ observer: observer3, element: activiteRecenteRef.current });
     }
 
-    // Observer pour "Statistiques Comparatives"
+    // Observer pour "Statistiques Comparatives" — plus de setInterval : on demande le chargement, un useEffect (statsComparativesRequested + famille) le fait
     if (statsComparativesRef.current) {
       const observer4 = new IntersectionObserver(
-        async ([entry]) => {
-          if (entry.isIntersecting && !chartsLoaded.statsComparatives) {
-            setChartsLoaded(prev => ({ ...prev, statsComparatives: true }));
-            try {
-              // Attendre que famille soit chargée avant de calculer
-              if (!famille || !famille.id) {
-                console.log('⏳ Attente chargement famille avant calcul stats comparatives...');
-                // Vérifier périodiquement si famille est chargée
-                let attempts = 0;
-                const maxAttempts = 25; // 5 secondes max
-                const checkInterval = setInterval(() => {
-                  attempts++;
-                  if (famille && famille.id) {
-                    clearInterval(checkInterval);
-                    fetchStatsComparatives().then(() => {
-                      console.log('✅ Statistiques comparatives récupérées (lazy loading)');
-                    });
-                  } else if (attempts >= maxAttempts) {
-                    clearInterval(checkInterval);
-                    console.warn('⚠️ Famille non chargée après 5 secondes, calcul annulé');
-                    setStatsComparatives({
-                      moyenneAutresFamilles: null,
-                      classement: null,
-                      totalFamilles: 0
-                    });
-                  }
-                }, 200);
-              } else {
-                await fetchStatsComparatives();
-                console.log('✅ Statistiques comparatives récupérées (lazy loading)');
-              }
-            } catch (error) {
-              console.error('❌ Erreur récupération stats comparatives:', error);
-            }
+        ([entry]) => {
+          if (entry.isIntersecting && !chartsLoadedRef.current.statsComparatives) {
+            setStatsComparativesRequested(true);
           }
         },
         { threshold: 0.1 }
@@ -290,7 +266,7 @@ const SuperviseurDashboard = () => {
         if (element) observer.unobserve(element);
       });
     };
-  }, [chartsLoaded, user]); // ✅ CORRIGÉ : Retirer famille des dépendances pour éviter la boucle infinie
+  }, [user]); // Refs et statsComparativesRequested : pas dans les deps pour limiter les recréations d'observers
 
   // Fonction pour mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
   // ⚠️ IMPORTANT : Ne pas appeler fetchSuperviseurData() ici pour éviter les boucles infinies
@@ -336,8 +312,11 @@ const SuperviseurDashboard = () => {
       const failureCount = results.filter(r => !r.success).length;
 
       if (successCount > 0) {
-        // Toast supprimé - mise à jour silencieuse
-        console.log(`✅ ${successCount} disciple(s) automatiquement promus Mentor/Pilier (mise à jour silencieuse)`);
+        toast({
+          title: 'Mise à jour réussie',
+          description: `${successCount} disciple(s) ont été automatiquement promus Mentor/Pilier car ils ont des disciples.`,
+          className: "bg-green-50 border-green-200"
+        });
 
         // ⚠️ IMPORTANT : Ne PAS appeler fetchSuperviseurData() ici pour éviter la boucle infinie
         // Les données seront mises à jour au prochain chargement naturel de la page
@@ -386,12 +365,6 @@ const SuperviseurDashboard = () => {
 
   // Fonction pour récupérer les données détaillées des disciples (10 colonnes)
   const fetchDisciplesDetaille = async () => {
-    // Ne pas exécuter si la famille n'est pas encore chargée
-    if (!famille || !famille.id || !user) {
-      console.log('⏳ En attente du chargement de la famille...');
-      return;
-    }
-
     try {
       setLoadingDisciplesDetaille(true);
       const cacheKeyBase = `superviseur_${user.id}_disciples_detaille`;
@@ -399,253 +372,101 @@ const SuperviseurDashboard = () => {
       const disciplesData = await getOrSetCache(
         cacheKeyBase,
         async () => {
-          // Double vérification
-          if (!famille || !famille.id) {
-            console.warn('⚠️ Pas de famille trouvée pour le superviseur');
-            return [];
-          }
+          if (!famille || !famille.id) return [];
 
-          // Récupérer tous les disciples de la famille depuis les deux sources
-          // 1. Depuis profils avec famille_id et role='disciple'
-          // 2. Depuis cercle_personnes liés au superviseur (disciples suivis)
-          const [profilsResult, cercleResult] = await Promise.all([
-            supabase
-              .from('profils')
-              .select('id, first_name, last_name, spiritual_status, created_at, famille_id')
-              .eq('famille_id', famille.id)
-              .eq('role', 'disciple'),
-            supabase
-              .from('cercle_personnes')
-              .select('id, first_name, last_name, created_at, user_id, circle_type')
-              .eq('user_id', user.id)
-          ]);
+          // Récupérer tous les disciples de la famille
+          const { data: disciplesProfils, error: disciplesError } = await supabase
+            .from('profils')
+            .select('id, first_name, last_name, spiritual_status, created_at, famille_id')
+            .eq('famille_id', famille.id)
+            .eq('role', 'disciple');
 
-          const { data: disciplesProfils, error: profilsError } = profilsResult;
-          const { data: disciplesCercle, error: cercleError } = cercleResult;
+          if (disciplesError) throw disciplesError;
+          if (!disciplesProfils || disciplesProfils.length === 0) return [];
 
-          // Logger les erreurs mais continuer si une source échoue
-          if (profilsError && profilsError.code !== 'PGRST116') {
-            console.error('❌ Erreur récupération disciples depuis profils:', profilsError);
-          }
-          if (cercleError && cercleError.code !== 'PGRST116') {
-            console.error('❌ Erreur récupération disciples depuis cercle_personnes:', cercleError);
-          }
+          // Pour chaque disciple, récupérer les données détaillées
+          const disciplesAvecDetails = await Promise.all(
+            disciplesProfils.map(async (disciple) => {
+              // 1. Trouver le mentor (pilier) du disciple depuis cercle_personnes
+              const { data: cercleData } = await supabase
+                .from('cercle_personnes')
+                .select('user_id, first_name, last_name')
+                .eq('id', disciple.id)
+                .maybeSingle();
 
-          // Combiner les deux sources
-          const tousLesDisciples = [];
-          
-          // Ajouter les disciples depuis profils
-          if (disciplesProfils && disciplesProfils.length > 0) {
-            disciplesProfils.forEach(d => {
-              tousLesDisciples.push({
-                id: d.id,
-                first_name: d.first_name || '',
-                last_name: d.last_name || '',
-                spiritual_status: d.spiritual_status || 'Non-croyant',
-                created_at: d.created_at,
-                famille_id: d.famille_id,
-                source: 'profils'
-              });
-            });
-          }
-          
-          // Ajouter les disciples depuis cercle_personnes (éviter les doublons)
-          if (disciplesCercle && disciplesCercle.length > 0) {
-            disciplesCercle.forEach(d => {
-              // Vérifier si ce disciple n'est pas déjà dans la liste
-              const existeDeja = tousLesDisciples.some(existing => existing.id === d.id);
-              if (!existeDeja) {
-                tousLesDisciples.push({
-                  id: d.id,
-                  first_name: d.first_name || '',
-                  last_name: d.last_name || '',
-                  spiritual_status: d.circle_type || 'Non-croyant',
-                  created_at: d.created_at,
-                  famille_id: famille.id,
-                  source: 'cercle_personnes',
-                  mentor_user_id: d.user_id // Stocker le user_id qui est le mentor
-                });
-              }
-            });
-          }
-          
-          if (tousLesDisciples.length === 0) {
-            console.log('ℹ️ Aucun disciple trouvé pour cette famille (ni dans profils ni dans cercle_personnes)');
-            return [];
-          }
+              const mentorPrenom = cercleData?.first_name || '';
+              const mentorNom = cercleData?.last_name || '';
+              const mentorId = cercleData?.user_id || null;
 
-          console.log(`✅ ${tousLesDisciples.length} disciple(s) trouvé(s) pour la famille ${famille.id}`);
-          
-          // Utiliser tousLesDisciples au lieu de disciplesProfils
-          const disciplesProfilsFinal = tousLesDisciples;
-
-          // OPTIMISATION: Récupérer toutes les données en batch au lieu de requêtes individuelles
-          const discipleIds = disciplesProfilsFinal.map(d => d.id);
-          const familleIds = [...new Set(disciplesProfilsFinal.map(d => d.famille_id).filter(Boolean))];
-          const mentorUserIds = disciplesProfilsFinal
-            .filter(d => d.source === 'cercle_personnes' && d.mentor_user_id)
-            .map(d => d.mentor_user_id);
-          
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          const troisMoisAgo = new Date();
-          troisMoisAgo.setMonth(troisMoisAgo.getMonth() - 3);
-          const today = new Date();
-          const lastSunday = new Date(today);
-          lastSunday.setDate(today.getDate() - today.getDay());
-          const lastSundayStr = format(lastSunday, 'yyyy-MM-dd');
-
-          // Récupérer toutes les données en batch
-          const [
-            mentorsByFamilleResult,
-            mentorsByUserIdResult,
-            presencesResult,
-            prayersResult,
-            appointmentsResult,
-            attendancesResult,
-            presencesCulteResult
-          ] = await Promise.allSettled([
-            // Mentors par famille (une seule requête pour toutes les familles)
-            familleIds.length > 0 ? supabase
-              .from('profils')
-              .select('id, first_name, last_name, famille_id')
-              .in('famille_id', familleIds)
-              .or('role.eq.mentor,is_approved_as_disciple_maker.eq.true') : Promise.resolve({ data: [] }),
-            // Mentors par user_id (pour cercle_personnes)
-            mentorUserIds.length > 0 ? supabase
-              .from('profils')
-              .select('id, first_name, last_name')
-              .in('id', mentorUserIds) : Promise.resolve({ data: [] }),
-            // Toutes les dernières présences
-            discipleIds.length > 0 ? supabase
-              .from('attendance_tracking')
-              .select('disciple_id, attendance_date')
-              .in('disciple_id', discipleIds)
-              .eq('status', 'present')
-              .order('attendance_date', { ascending: false }) : Promise.resolve({ data: [] }),
-            // Toutes les prières des 30 derniers jours
-            discipleIds.length > 0 ? supabase
-              .from('prayer_requests')
-              .select('user_id')
-              .in('user_id', discipleIds)
-              .gte('created_at', thirtyDaysAgo.toISOString()) : Promise.resolve({ data: [] }),
-            // Tous les rendez-vous des 30 derniers jours
-            discipleIds.length > 0 ? supabase
-              .from('appointments')
-              .select('disciple_id')
-              .in('disciple_id', discipleIds)
-              .gte('scheduled_date', thirtyDaysAgo.toISOString()) : Promise.resolve({ data: [] }),
-            // Toutes les présences des 30 derniers jours
-            discipleIds.length > 0 ? supabase
-              .from('attendance_tracking')
-              .select('disciple_id')
-              .in('disciple_id', discipleIds)
-              .eq('status', 'present')
-              .gte('attendance_date', thirtyDaysAgo.toISOString()) : Promise.resolve({ data: [] }),
-            // Présences au dernier culte
-            discipleIds.length > 0 ? supabase
-              .from('attendance_tracking')
-              .select('disciple_id')
-              .in('disciple_id', discipleIds)
-              .eq('attendance_type', 'sunday_worship')
-              .eq('status', 'present')
-              .eq('attendance_date', lastSundayStr) : Promise.resolve({ data: [] })
-          ]);
-
-          // Créer des maps pour accès rapide
-          const mentorsByFamille = {};
-          if (mentorsByFamilleResult.status === 'fulfilled' && mentorsByFamilleResult.value.data) {
-            mentorsByFamilleResult.value.data.forEach(m => {
-              if (!mentorsByFamille[m.famille_id]) {
-                mentorsByFamille[m.famille_id] = { prenom: m.first_name || '', nom: m.last_name || '', id: m.id };
-              }
-            });
-          }
-
-          const mentorsByUserId = {};
-          if (mentorsByUserIdResult.status === 'fulfilled' && mentorsByUserIdResult.value.data) {
-            mentorsByUserIdResult.value.data.forEach(m => {
-              mentorsByUserId[m.id] = { prenom: m.first_name || '', nom: m.last_name || '', id: m.id };
-            });
-          }
-
-          const presencesByDisciple = {};
-          if (presencesResult.status === 'fulfilled' && presencesResult.value.data) {
-            presencesResult.value.data.forEach(p => {
-              if (!presencesByDisciple[p.disciple_id] || 
-                  new Date(p.attendance_date) > new Date(presencesByDisciple[p.disciple_id])) {
-                presencesByDisciple[p.disciple_id] = p.attendance_date;
-              }
-            });
-          }
-
-          const prayersByDisciple = {};
-          if (prayersResult.status === 'fulfilled' && prayersResult.value.data) {
-            prayersResult.value.data.forEach(p => {
-              prayersByDisciple[p.user_id] = (prayersByDisciple[p.user_id] || 0) + 1;
-            });
-          }
-
-          const appointmentsByDisciple = {};
-          if (appointmentsResult.status === 'fulfilled' && appointmentsResult.value.data) {
-            appointmentsResult.value.data.forEach(a => {
-              appointmentsByDisciple[a.disciple_id] = (appointmentsByDisciple[a.disciple_id] || 0) + 1;
-            });
-          }
-
-          const attendancesByDisciple = {};
-          if (attendancesResult.status === 'fulfilled' && attendancesResult.value.data) {
-            attendancesResult.value.data.forEach(a => {
-              attendancesByDisciple[a.disciple_id] = (attendancesByDisciple[a.disciple_id] || 0) + 1;
-            });
-          }
-
-          const presencesCulteByDisciple = new Set();
-          if (presencesCulteResult.status === 'fulfilled' && presencesCulteResult.value.data) {
-            presencesCulteResult.value.data.forEach(p => {
-              presencesCulteByDisciple.add(p.disciple_id);
-            });
-          }
-
-          // Pour chaque disciple, construire les données détaillées depuis les maps
-          const disciplesAvecDetails = disciplesProfilsFinal.map((disciple) => {
-            try {
-              // 1. Trouver le mentor
-              let mentorInfo = { prenom: '', nom: '', id: null };
-              
-              if (disciple.source === 'cercle_personnes' && disciple.mentor_user_id) {
-                mentorInfo = mentorsByUserId[disciple.mentor_user_id] || mentorInfo;
-              } else if (disciple.famille_id) {
-                mentorInfo = mentorsByFamille[disciple.famille_id] || mentorInfo;
+              // Si pas de mentor dans cercle_personnes, chercher dans profils (mentor avec famille_id)
+              let mentorInfo = { prenom: mentorPrenom, nom: mentorNom, id: mentorId };
+              if (!mentorId) {
+                const { data: mentorProfil } = await supabase
+                  .from('profils')
+                  .select('id, first_name, last_name')
+                  .eq('famille_id', disciple.famille_id)
+                  .or('role.eq.mentor,is_approved_as_disciple_maker.eq.true')
+                  .maybeSingle();
+                if (mentorProfil) {
+                  mentorInfo = { prenom: mentorProfil.first_name || '', nom: mentorProfil.last_name || '', id: mentorProfil.id };
+                }
               }
 
-              // 2. Date d'ajout
-              const dateAjout = disciple.created_at 
-                ? format(new Date(disciple.created_at), 'dd/MM/yyyy', { locale: fr }) 
-                : 'N/A';
+              // 2. Date d'ajout (created_at du disciple)
+              const dateAjout = disciple.created_at ? format(new Date(disciple.created_at), 'dd/MM/yyyy', { locale: fr }) : 'N/A';
 
-              // 3. Date dernière présence
-              const dernierePresenceDate = presencesByDisciple[disciple.id];
-              const dateDernierePresence = dernierePresenceDate
-                ? format(new Date(dernierePresenceDate), 'dd/MM/yyyy', { locale: fr })
+              // 3. Date dernière présence (depuis attendance_tracking)
+              const { data: dernierePresenceData } = await supabase
+                .from('attendance_tracking')
+                .select('attendance_date')
+                .eq('disciple_id', disciple.id)
+                .eq('status', 'present')
+                .order('attendance_date', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              const dateDernierePresence = dernierePresenceData?.attendance_date 
+                ? format(new Date(dernierePresenceData.attendance_date), 'dd/MM/yyyy', { locale: fr })
                 : 'Jamais';
 
-              // 4. Niveau d'engagement
-              const prayersCount = prayersByDisciple[disciple.id] || 0;
-              const appointmentsCount = appointmentsByDisciple[disciple.id] || 0;
-              const attendanceCount = attendancesByDisciple[disciple.id] || 0;
-              const totalActivites = prayersCount + appointmentsCount + attendanceCount;
+              // 4. Niveau d'engagement (calculé à partir des activités récentes)
+              // Compter les activités des 30 derniers jours
+              const thirtyDaysAgo = new Date();
+              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+              
+              const [prayersCount, appointmentsCount, attendanceCount] = await Promise.all([
+                supabase.from('prayer_requests').select('*', { count: 'exact', head: true }).eq('user_id', disciple.id).gte('created_at', thirtyDaysAgo.toISOString()),
+                supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('disciple_id', disciple.id).gte('scheduled_date', thirtyDaysAgo.toISOString()),
+                supabase.from('attendance_tracking').select('*', { count: 'exact', head: true }).eq('disciple_id', disciple.id).eq('status', 'present').gte('attendance_date', thirtyDaysAgo.toISOString())
+              ]);
+
+              const totalActivites = (prayersCount.count || 0) + (appointmentsCount.count || 0) + (attendanceCount.count || 0);
               let niveauEngagement = 'Faible';
               if (totalActivites >= 10) niveauEngagement = 'Élevé';
               else if (totalActivites >= 5) niveauEngagement = 'Moyen';
 
-              // 5. Statut Actif/Inactif
-              const isActif = dernierePresenceDate 
-                ? new Date(dernierePresenceDate) >= troisMoisAgo
+              // 5. Statut Actif/Inactif (basé sur la dernière présence > 3 mois = inactif)
+              const troisMoisAgo = new Date();
+              troisMoisAgo.setMonth(troisMoisAgo.getMonth() - 3);
+              const isActif = dernierePresenceData?.attendance_date 
+                ? new Date(dernierePresenceData.attendance_date) >= troisMoisAgo
                 : false;
 
-              // 6. Présence au dernier culte
-              const presenceDernierCulteBool = presencesCulteByDisciple.has(disciple.id);
+              // 6. Présence au dernier culte (dimanche de la semaine dernière)
+              const today = new Date();
+              const lastSunday = new Date(today);
+              lastSunday.setDate(today.getDate() - today.getDay());
+              const lastSundayStr = format(lastSunday, 'yyyy-MM-dd');
+
+              const { data: presenceDernierCulte } = await supabase
+                .from('attendance_tracking')
+                .select('*', { count: 'exact', head: true })
+                .eq('disciple_id', disciple.id)
+                .eq('attendance_type', 'sunday_worship')
+                .eq('status', 'present')
+                .eq('attendance_date', lastSundayStr);
+
+              const presenceDernierCulteBool = (presenceDernierCulte?.count || 0) > 0;
 
               return {
                 mentor_prenom: mentorInfo.prenom,
@@ -660,26 +481,9 @@ const SuperviseurDashboard = () => {
                 presence_dernier_culte: presenceDernierCulteBool,
                 disciple_id: disciple.id
               };
-            } catch (discipleError) {
-              console.error(`❌ Erreur traitement disciple ${disciple.id}:`, discipleError);
-              // Retourner un objet minimal pour ce disciple en cas d'erreur
-              return {
-                mentor_prenom: '',
-                mentor_nom: '',
-                disciple_prenom: disciple.first_name || '',
-                disciple_nom: disciple.last_name || '',
-                statut_spirituel: disciple.spiritual_status || 'Non-croyant',
-                date_ajout: disciple.created_at ? format(new Date(disciple.created_at), 'dd/MM/yyyy', { locale: fr }) : 'N/A',
-                date_derniere_presence: 'Erreur',
-                niveau_engagement: 'N/A',
-                statut_actif: false,
-                presence_dernier_culte: false,
-                disciple_id: disciple.id
-              };
-            }
-          });
+            })
+          );
 
-          console.log(`✅ ${disciplesAvecDetails.length} disciple(s) traité(s) avec succès (optimisation batch)`);
           return disciplesAvecDetails;
         },
         2 * 60 * 1000 // Cache 2 minutes
@@ -687,38 +491,7 @@ const SuperviseurDashboard = () => {
 
       setDisciplesDetaille(disciplesData || []);
     } catch (error) {
-      console.error('❌ Erreur fetchDisciplesDetaille:', error);
-      console.error('❌ Détails de l\'erreur:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
-      });
-      
-      // Ne pas afficher l'erreur si c'est juste qu'il n'y a pas de famille ou de données
-      const errorMessage = error?.message || '';
-      const errorCode = error?.code || '';
-      const lowerMessage = errorMessage.toLowerCase();
-      
-      const isDataNotFound = 
-        errorCode === 'PGRST116' || 
-        lowerMessage.includes('no rows') ||
-        lowerMessage.includes('not found') ||
-        lowerMessage.includes('aucun') ||
-        lowerMessage.includes('pas de') ||
-        (!famille || !famille.id);
-      
-      // Ne pas afficher l'erreur si c'est juste l'absence de données
-      if (!isDataNotFound && errorMessage && !lowerMessage.includes('empty') && !lowerMessage.includes('vide')) {
-        // Afficher l'erreur seulement si c'est une vraie erreur technique
-        console.error('❌ Erreur technique détectée, affichage du message d\'erreur');
-        handleError(error, { context: 'fetchDisciplesDetaille', famille: famille?.id }, "Impossible de charger les données détaillées des disciples.");
-      } else {
-        console.log('ℹ️ Pas de données à charger (normal si pas de famille ou pas de disciples)');
-        // Ne pas afficher d'erreur, juste logger
-      }
-      
-      setDisciplesDetaille([]); // S'assurer que l'état est défini même en cas d'erreur
+      handleError(error, { context: 'fetchDisciplesDetaille' }, "Impossible de charger les données détaillées des disciples.");
     } finally {
       setLoadingDisciplesDetaille(false);
     }
@@ -833,27 +606,13 @@ const SuperviseurDashboard = () => {
     }
   };
 
-  // Charger les données détaillées en lazy loading (après le chargement initial)
+  // Charger les données détaillées après le chargement des données principales
   useEffect(() => {
-    // Attendre que la famille soit chargée ET que le chargement initial soit terminé
-    if (famille && famille.id && user && !loading) {
-      // Délai pour permettre au chargement initial de se terminer
-      const timer = setTimeout(() => {
-        console.log('✅ Famille chargée, chargement des données détaillées en arrière-plan...', { familleId: famille.id });
-        // Charger en arrière-plan sans bloquer l'interface
-        fetchDisciplesDetaille();
-        fetchMentorsConsolides();
-      }, 500); // Petit délai pour laisser l'interface se rendre d'abord
-      
-      return () => clearTimeout(timer);
-    } else if (user && !loading && (!famille || !famille.id)) {
-      console.warn('⚠️ Pas de famille trouvée pour ce superviseur');
-      // Ne pas afficher d'erreur, juste initialiser avec un tableau vide
-      setDisciplesDetaille([]);
-      setMentorsConsolides([]);
+    if (famille && famille.id && user) {
+      fetchDisciplesDetaille();
+      fetchMentorsConsolides();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [famille, user, loading]);
+  }, [famille, user]);
 
   const fetchSuperviseurData = async () => {
     try {
@@ -862,8 +621,7 @@ const SuperviseurDashboard = () => {
       // OPTIMISATION: Utiliser le cache pour les données fréquemment consultées (TTL: 2 minutes)
       const cacheKeyBase = `superviseur_${user.id}`;
       
-      // OPTIMISATION CRITIQUE: Charger d'abord les données minimales pour afficher l'interface
-      // Paralléliser les requêtes initiales (famille, superviseur) avec cache
+      // OPTIMISATION: Paralléliser les requêtes initiales (famille, superviseur) avec cache
       const [familleResult, superviseurResult] = await Promise.all([
         // 1. Récupérer la famille du superviseur avec cache
         getOrSetCache(
@@ -988,27 +746,19 @@ const SuperviseurDashboard = () => {
         console.warn('Aucune donnée superviseur trouvée');
       }
 
-      // OPTIMISATION CRITIQUE: Masquer le spinner IMMÉDIATEMENT après avoir chargé famille + stats
-      // L'interface s'affichera instantanément, toutes les autres données chargeront en arrière-plan
-      setLoading(false);
-      console.log('✅ Interface affichée instantanément (données critiques chargées)');
-
-      // Charger le pasteur en arrière-plan (non bloquant)
       if (superviseurData?.pasteur_id) {
-        supabase
+        const { data: pasteurData, error: pasteurError } = await supabase
           .from('profils')
           .select('id, first_name, last_name, identifiant_unique, avatar_url')
           .eq('id', superviseurData.pasteur_id)
-          .single()
-          .then(({ data: pasteurData, error: pasteurError }) => {
-            if (!pasteurError && pasteurData) {
-              setPasteur(pasteurData);
-              if (pasteurData?.avatar_url) {
-                setPasteurAvatarPreview(pasteurData.avatar_url);
-              }
-            }
-          })
-          .catch(err => console.error('Erreur chargement pasteur:', err));
+          .single();
+
+        if (!pasteurError && pasteurData) {
+          setPasteur(pasteurData);
+          if (pasteurData?.avatar_url) {
+            setPasteurAvatarPreview(pasteurData.avatar_url);
+          }
+        }
       }
 
       // 3. Récupérer les membres de la famille pour calculer le nombre réel
@@ -1083,10 +833,24 @@ const SuperviseurDashboard = () => {
       const nombreMembresProfils = (membresData || []).filter(m => m.id !== user.id).length;
       const nombreMembresCercle = (disciplesData || []).length;
       
-      // OPTIMISATION CRITIQUE: Mettre à jour les stats immédiatement pour afficher l'interface
+      // Log pour debug détaillé
+      console.log('📊 Calcul membres famille:', {
+        superviseurId: user.id,
+        familleId: familleData.id,
+        familleNom: familleData.nom,
+        membresProfilsCount: nombreMembresProfils,
+        membresCercleCount: nombreMembresCercle,
+        totalCalculated: nombreMembres,
+        tousLesMembres: tousLesMembres
+      });
+
+      // 3d. Calculer les statistiques
       const objectif = familleData.objectif_disciples || 70;
       const progression = nombreMembres > 0 ? Math.min((nombreMembres / objectif) * 100, 100) : 0;
       const reste = Math.max(objectif - nombreMembres, 0);
+
+      console.log('📈 Stats à définir:', { nombreMembres, objectif, progression, reste });
+      console.log('🔍 Vérification - nombreMembres est:', typeof nombreMembres, nombreMembres);
 
       // Forcer la mise à jour des stats avec les valeurs calculées
       const newStats = {
@@ -1096,73 +860,73 @@ const SuperviseurDashboard = () => {
         reste: Number(reste) || 70
       };
       
+      console.log('✅ Nouveaux stats à appliquer:', newStats);
       setStats(newStats);
+
+      // 4. Définir la liste des membres (tous les membres combinés)
       setMembres(tousLesMembres);
       
-      // Note: setLoading(false) a déjà été appelé plus tôt (ligne 993) pour afficher l'interface immédiatement
-      
-      // OPTIMISATION: Charger les données de formations/vidéos en arrière-plan (non bloquant)
       if (tousLesMembres.length > 0) {
+        
+        // Récupérer les statistiques de formations et vidéos des membres
         const membreIds = tousLesMembres.map(m => m.id);
         
-        // Charger en arrière-plan sans bloquer l'interface
-        (async () => {
-          try {
-            // Formations terminées - Utiliser user_parcours_progression pour obtenir user_id
-            const { data: progressionsData } = await supabase
-              .from('user_parcours_progression')
-              .select('id')
-              .in('user_id', membreIds);
+        if (membreIds.length > 0) {
+          // Formations terminées - Utiliser user_parcours_progression pour obtenir user_id
+          // Récupérer d'abord les progression_id pour ces membres
+          const { data: progressionsData } = await supabase
+            .from('user_parcours_progression')
+            .select('id')
+            .in('user_id', membreIds);
+          
+          const progressionIds = progressionsData?.map(p => p.id) || [];
+          
+          let formationsTermineesCount = 0;
+          let formationsEnCoursCount = 0;
+          
+          if (progressionIds.length > 0) {
+            const { count: formationsTerminees } = await supabase
+              .from('user_module_progression')
+              .select('id', { count: 'exact', head: true })
+              .in('progression_id', progressionIds)
+              .eq('est_complete', true);
             
-            const progressionIds = progressionsData?.map(p => p.id) || [];
+            const { count: formationsEnCours } = await supabase
+              .from('user_module_progression')
+              .select('id', { count: 'exact', head: true })
+              .in('progression_id', progressionIds)
+              .eq('est_complete', false);
             
-            let formationsTermineesCount = 0;
-            let formationsEnCoursCount = 0;
-            
-            if (progressionIds.length > 0) {
-              const [formationsTermineesResult, formationsEnCoursResult] = await Promise.all([
-                supabase
-                  .from('user_module_progression')
-                  .select('id', { count: 'exact', head: true })
-                  .in('progression_id', progressionIds)
-                  .eq('est_complete', true),
-                supabase
-                  .from('user_module_progression')
-                  .select('id', { count: 'exact', head: true })
-                  .in('progression_id', progressionIds)
-                  .eq('est_complete', false)
-              ]);
-              
-              formationsTermineesCount = formationsTermineesResult.count || 0;
-              formationsEnCoursCount = formationsEnCoursResult.count || 0;
-            }
-            
-            // Vidéos terminées
-            const { count: videosTermineesCount } = await supabase
-              .from('video_progress')
-              .select('*', { count: 'exact', head: true })
-              .in('disciple_id', membreIds)
-              .eq('is_completed', true);
-            
-            setKpiData(prev => ({
-              ...prev,
-              formationsTerminees: formationsTermineesCount || 0,
-              formationsEnCours: formationsEnCoursCount || 0,
-              videosTerminees: videosTermineesCount || 0
-            }));
-            
-            // Calculer la progression individuelle pour chaque membre
-            const progressionMap = {};
-            
-            // Récupérer toutes les progressions pour ces membres
-            const { data: allProgressionsData } = await supabase
-              .from('user_parcours_progression')
-              .select('id, user_id')
-              .in('user_id', membreIds);
-            
-            // Créer un map progression_id -> user_id
-            const progressionToUserMap = {};
-            allProgressionsData?.forEach(p => {
+            formationsTermineesCount = formationsTerminees || 0;
+            formationsEnCoursCount = formationsEnCours || 0;
+          }
+          
+          // Vidéos terminées (is_completed = true dans video_progress)
+          const { count: videosTermineesCount } = await supabase
+            .from('video_progress')
+            .select('*', { count: 'exact', head: true })
+            .in('disciple_id', membreIds)
+            .eq('is_completed', true);
+          
+          setKpiData(prev => ({
+            ...prev,
+            formationsTerminees: formationsTermineesCount || 0,
+            formationsEnCours: formationsEnCoursCount || 0,
+            videosTerminees: videosTermineesCount || 0
+          }));
+          
+          // Calculer la progression individuelle pour chaque membre
+          const progressionMap = {};
+          
+          // Récupérer toutes les progressions pour ces membres
+          const { data: allProgressionsData } = await supabase
+            .from('user_parcours_progression')
+            .select('id, user_id')
+            .in('user_id', membreIds);
+          
+          // Créer un map progression_id -> user_id
+          const progressionToUserMap = {};
+          allProgressionsData?.forEach(p => {
             progressionToUserMap[p.id] = p.user_id;
           });
           
@@ -1211,150 +975,156 @@ const SuperviseurDashboard = () => {
           });
           
           setMembresProgression(progressionMap);
-          } catch (err) {
-            console.error('Erreur chargement formations/vidéos:', err);
-          }
-        })();
+        }
         
-        // OPTIMISATION: Charger les données de disciples et "suivi par" en arrière-plan
-        (async () => {
-          try {
-            const memberIds = tousLesMembres.map(m => m.id);
-            
-            // Récupérer le nombre de disciples suivis par chaque membre
-            const [directDisciplesResult, subDisciplesResult] = await Promise.all([
-              supabase
-                .from('cercle_personnes')
-                .select('user_id')
-                .in('user_id', memberIds),
-              supabase
-                .from('cercle_personnes')
-                .select('parent_disciple_id')
-                .in('parent_disciple_id', memberIds)
-            ]);
+        // OPTIMISATION: Récupérer le nombre de disciples suivis par chaque membre en une seule requête
+        // Récupérer tous les disciples directs et sous-disciples en une seule fois
+        const memberIds = tousLesMembres.map(m => m.id);
+        const [directDisciplesResult, subDisciplesResult] = await Promise.all([
+          // Tous les disciples directs (où le membre est le mentor)
+          supabase
+            .from('cercle_personnes')
+            .select('user_id')
+            .in('user_id', memberIds),
+          // Tous les sous-disciples (où le membre est un disciple parent)
+          supabase
+            .from('cercle_personnes')
+            .select('parent_disciple_id')
+            .in('parent_disciple_id', memberIds)
+        ]);
 
-            // Compter les disciples par membre
-            const disciplesCountMap = {};
-            tousLesMembres.forEach(membre => {
-              disciplesCountMap[membre.id] = 0;
-            });
+        // Compter les disciples par membre
+        const disciplesCountMap = {};
+        tousLesMembres.forEach(membre => {
+          disciplesCountMap[membre.id] = 0;
+        });
 
-            directDisciplesResult.data?.forEach(d => {
-              if (d.user_id && disciplesCountMap[d.user_id] !== undefined) {
-                disciplesCountMap[d.user_id] = (disciplesCountMap[d.user_id] || 0) + 1;
-              }
-            });
-
-            subDisciplesResult.data?.forEach(d => {
-              if (d.parent_disciple_id && disciplesCountMap[d.parent_disciple_id] !== undefined) {
-                disciplesCountMap[d.parent_disciple_id] = (disciplesCountMap[d.parent_disciple_id] || 0) + 1;
-              }
-            });
-
-            setMembresDisciplesCount(disciplesCountMap);
-            
-            // Mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
-            updateDisciplesToMentors(disciplesCountMap, tousLesMembres).catch(error => {
-              console.error('Erreur lors de la mise à jour automatique des statuts:', error);
-            });
-
-            // Récupérer les informations "Suivi par"
-            const { data: allCercleData } = await supabase
-              .from('cercle_personnes')
-              .select('id, user_id, parent_disciple_id, first_name, last_name')
-              .in('id', memberIds);
-
-            const cercleMap = {};
-            allCercleData?.forEach(c => {
-              cercleMap[c.id] = c;
-            });
-
-            const uniqueUserIds = new Set();
-            const uniqueParentIds = new Set();
-            allCercleData?.forEach(c => {
-              if (c.user_id) uniqueUserIds.add(c.user_id);
-              if (c.parent_disciple_id) uniqueParentIds.add(c.parent_disciple_id);
-            });
-
-            const [profilsData, parentDisciplesData] = await Promise.all([
-              uniqueUserIds.size > 0 
-                ? supabase
-                    .from('profils')
-                    .select('id, first_name, last_name')
-                    .in('id', Array.from(uniqueUserIds))
-                : Promise.resolve({ data: [] }),
-              uniqueParentIds.size > 0
-                ? supabase
-                    .from('cercle_personnes')
-                    .select('id, first_name, last_name')
-                    .in('id', Array.from(uniqueParentIds))
-                : Promise.resolve({ data: [] })
-            ]);
-
-            const profilsMap = {};
-            profilsData.data?.forEach(p => {
-              profilsMap[p.id] = p;
-            });
-
-            const parentsMap = {};
-            parentDisciplesData.data?.forEach(p => {
-              parentsMap[p.id] = p;
-            });
-
-            const suiviParMap = {};
-            tousLesMembres.forEach(membre => {
-              const cercleData = cercleMap[membre.id];
-              
-              if (cercleData) {
-                if (cercleData.parent_disciple_id) {
-                  const parentData = parentsMap[cercleData.parent_disciple_id];
-                  if (parentData) {
-                    suiviParMap[membre.id] = {
-                      name: `${parentData.first_name || ''} ${parentData.last_name || ''}`.trim(),
-                      id: cercleData.parent_disciple_id
-                    };
-                    return;
-                  }
-                }
-                
-                if (cercleData.user_id) {
-                  const superviseurData = profilsMap[cercleData.user_id];
-                  if (superviseurData) {
-                    suiviParMap[membre.id] = {
-                      name: `${superviseurData.first_name || ''} ${superviseurData.last_name || ''}`.trim(),
-                      id: cercleData.user_id
-                    };
-                    return;
-                  }
-                }
-              }
-
-              if (membre.source === 'profils' && membre.role !== 'superviseur') {
-                suiviParMap[membre.id] = {
-                  name: `${superviseurNom.first_name || ''} ${superviseurNom.last_name || ''}`.trim(),
-                  id: user.id
-                };
-              }
-            });
-            
-            setMembresSuiviPar(suiviParMap);
-          } catch (err) {
-            console.error('Erreur chargement données membres:', err);
+        // Compter les disciples directs
+        directDisciplesResult.data?.forEach(d => {
+          if (d.user_id && disciplesCountMap[d.user_id] !== undefined) {
+            disciplesCountMap[d.user_id] = (disciplesCountMap[d.user_id] || 0) + 1;
           }
-        })();
+        });
+
+        // Compter les sous-disciples
+        subDisciplesResult.data?.forEach(d => {
+          if (d.parent_disciple_id && disciplesCountMap[d.parent_disciple_id] !== undefined) {
+            disciplesCountMap[d.parent_disciple_id] = (disciplesCountMap[d.parent_disciple_id] || 0) + 1;
+          }
+        });
+
+        console.log('📊 Nombre de disciples par membre (final):', disciplesCountMap);
+        setMembresDisciplesCount(disciplesCountMap);
+        
+        // Mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
+        // ⚠️ Cette fonction ne doit PAS appeler fetchSuperviseurData() pour éviter les boucles infinies
+        updateDisciplesToMentors(disciplesCountMap, tousLesMembres).catch(error => {
+          console.error('Erreur lors de la mise à jour automatique des statuts:', error);
+        });
       }
 
-      // 5. OPTIMISATION: Charger les rapports en arrière-plan (non bloquant)
-      // Les rapports sont utilisés pour les graphiques qui se chargent en lazy loading
-      (async () => {
-        try {
-          const { data: rapportsData, error: rapportsError } = await supabase
-            .from('reports')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: true });
+      // 4b. OPTIMISATION: Récupérer les informations "Suivi par" en requêtes groupées
+      const suiviParMap = {};
+      if (tousLesMembres.length > 0) {
+        const memberIds = tousLesMembres.map(m => m.id);
+        
+        // Récupérer tous les cercle_personnes en une seule requête
+        const { data: allCercleData } = await supabase
+          .from('cercle_personnes')
+          .select('id, user_id, parent_disciple_id, first_name, last_name')
+          .in('id', memberIds);
 
-          if (!rapportsError && rapportsData) {
+        // Créer un map des données cercle par membre ID
+        const cercleMap = {};
+        allCercleData?.forEach(c => {
+          cercleMap[c.id] = c;
+        });
+
+        // Récupérer tous les IDs uniques (user_id et parent_disciple_id)
+        const uniqueUserIds = new Set();
+        const uniqueParentIds = new Set();
+        allCercleData?.forEach(c => {
+          if (c.user_id) uniqueUserIds.add(c.user_id);
+          if (c.parent_disciple_id) uniqueParentIds.add(c.parent_disciple_id);
+        });
+
+        // Récupérer tous les profils et cercle_personnes parent en une seule requête
+        const [profilsData, parentDisciplesData] = await Promise.all([
+          uniqueUserIds.size > 0 
+            ? supabase
+                .from('profils')
+                .select('id, first_name, last_name')
+                .in('id', Array.from(uniqueUserIds))
+            : Promise.resolve({ data: [] }),
+          uniqueParentIds.size > 0
+            ? supabase
+                .from('cercle_personnes')
+                .select('id, first_name, last_name')
+                .in('id', Array.from(uniqueParentIds))
+            : Promise.resolve({ data: [] })
+        ]);
+
+        // Créer des maps pour les profils et parents
+        const profilsMap = {};
+        profilsData.data?.forEach(p => {
+          profilsMap[p.id] = p;
+        });
+
+        const parentsMap = {};
+        parentDisciplesData.data?.forEach(p => {
+          parentsMap[p.id] = p;
+        });
+
+        // Construire le map "Suivi par" pour chaque membre
+        tousLesMembres.forEach(membre => {
+          const cercleData = cercleMap[membre.id];
+          
+          if (cercleData) {
+            // Si le membre a un parent_disciple_id, c'est un sous-disciple
+            if (cercleData.parent_disciple_id) {
+              const parentData = parentsMap[cercleData.parent_disciple_id];
+              if (parentData) {
+                suiviParMap[membre.id] = {
+                  name: `${parentData.first_name || ''} ${parentData.last_name || ''}`.trim(),
+                  id: cercleData.parent_disciple_id
+                };
+                return;
+              }
+            }
+            
+            // Si le membre a un user_id, c'est le superviseur
+            if (cercleData.user_id) {
+              const superviseurData = profilsMap[cercleData.user_id];
+              if (superviseurData) {
+                suiviParMap[membre.id] = {
+                  name: `${superviseurData.first_name || ''} ${superviseurData.last_name || ''}`.trim(),
+                  id: cercleData.user_id
+                };
+                return;
+              }
+            }
+          }
+
+          // Si le membre est dans profils avec famille_id, il est suivi par le superviseur de la famille
+          if (membre.source === 'profils' && membre.role !== 'superviseur') {
+            suiviParMap[membre.id] = {
+              name: `${superviseurNom.first_name || ''} ${superviseurNom.last_name || ''}`.trim(),
+              id: user.id
+            };
+          }
+        });
+        
+        setMembresSuiviPar(suiviParMap);
+      }
+
+      // 5. Récupérer les rapports du superviseur pour les graphiques
+      const { data: rapportsData, error: rapportsError } = await supabase
+        .from('reports')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (!rapportsError && rapportsData) {
         // Filtrer les rapports selon la période sélectionnée
         const rapportsFiltres = rapportsData.filter(r => {
           const selectedYear = parseInt(kpiSelectedYearForPeriod);
@@ -1433,99 +1203,109 @@ const SuperviseurDashboard = () => {
           meditationBible
         }));
 
-        // OPTIMISATION: Générer les graphiques en arrière-plan après le chargement initial
-        // Ne pas bloquer l'affichage de l'interface
-        generateChartData(rapportsData || []).catch(err => {
-          console.error('❌ Erreur génération graphiques:', err);
-        });
+        // Générer les données pour les graphiques d'évolution (tous les rapports soumis)
+        await generateChartData(rapportsData || []);
         
-            // Stocker les rapports pour l'historique
-            setRapports(rapportsData || []);
-          }
-        } catch (err) {
-          console.error('Erreur chargement rapports:', err);
-        }
-      })();
-
-      // OPTIMISATION: Charger les autres superviseurs en arrière-plan (non bloquant)
-      if (superviseurData?.pasteur_id) {
-        (async () => {
-          try {
-            const { data: superviseursData, error: superviseursError } = await supabase
-              .from('profils')
-              .select('id, first_name, last_name, email, avatar_url')
-              .eq('pasteur_id', superviseurData.pasteur_id)
-              .eq('role', 'superviseur')
-              .neq('id', user.id)
-              .order('first_name', { ascending: true });
-
-            if (!superviseursError && superviseursData) {
-              setSuperviseursFamille(superviseursData || []);
-              
-              // Calculer les membres par superviseur en arrière-plan
-              const membresCountMap = {};
-              if (superviseursData.length > 0) {
-                const superviseurIds = superviseursData.map(s => s.id);
-                
-                const { data: allFamilles } = await supabase
-                  .from('familles_disciples')
-                  .select('id, superviseur_id')
-                  .in('superviseur_id', superviseurIds);
-
-                if (allFamilles) {
-                  const superviseurToFamilleMap = {};
-                  const familleIds = [];
-                  allFamilles.forEach(famille => {
-                    superviseurToFamilleMap[famille.superviseur_id] = famille.id;
-                    familleIds.push(famille.id);
-                  });
-
-                  const [profilsCountsResult, cercleCountsResult] = await Promise.all([
-                    familleIds.length > 0
-                      ? supabase.from('profils').select('famille_id').in('famille_id', familleIds)
-                      : Promise.resolve({ data: [] }),
-                    supabase.from('cercle_personnes').select('user_id').in('user_id', superviseurIds)
-                  ]);
-
-                  const membresParFamille = {};
-                  profilsCountsResult.data?.forEach(p => {
-                    if (p.famille_id) {
-                      membresParFamille[p.famille_id] = (membresParFamille[p.famille_id] || 0) + 1;
-                    }
-                  });
-
-                  const membresParSuperviseur = {};
-                  cercleCountsResult.data?.forEach(c => {
-                    if (c.user_id) {
-                      membresParSuperviseur[c.user_id] = (membresParSuperviseur[c.user_id] || 0) + 1;
-                    }
-                  });
-
-                  superviseursData.forEach(superviseur => {
-                    const familleId = superviseurToFamilleMap[superviseur.id];
-                    const membresProfils = familleId ? (membresParFamille[familleId] || 0) : 0;
-                    const membresCercle = membresParSuperviseur[superviseur.id] || 0;
-                    membresCountMap[superviseur.id] = membresProfils + membresCercle;
-                  });
-                }
-              }
-              
-              setNombreMembresParSuperviseur(membresCountMap);
-            }
-          } catch (err) {
-            console.error('Erreur chargement superviseurs:', err);
-          }
-        })();
+        // Stocker les rapports pour l'historique
+        setRapports(rapportsData || []);
+      }
+      
+      // 6. OPTIMISATION: Charger les données supplémentaires de manière paresseuse
+      // Ces données seront chargées uniquement quand les sections correspondantes sont visibles
+      console.log('📊 Données principales chargées. Les graphiques seront chargés de manière paresseuse.');
+      
+      // Seules les alertes sont chargées immédiatement car elles sont importantes
+      try {
+        await fetchAlertes();
+        console.log('✅ Alertes récupérées');
+      } catch (error) {
+        console.error('❌ Erreur récupération alertes:', error);
       }
 
-      // OPTIMISATION: Charger les alertes en arrière-plan (non bloquant)
-      fetchAlertes().catch(err => console.error('❌ Erreur récupération alertes:', err));
+      // 6. OPTIMISATION: Récupérer les autres superviseurs de la famille (même pasteur_id) avec calculs groupés
+      if (superviseurData?.pasteur_id) {
+        const { data: superviseursData, error: superviseursError } = await supabase
+          .from('profils')
+          .select('id, first_name, last_name, email, avatar_url')
+          .eq('pasteur_id', superviseurData.pasteur_id)
+          .eq('role', 'superviseur')
+          .neq('id', user.id) // Exclure le superviseur actuel
+          .order('first_name', { ascending: true });
+
+        if (!superviseursError && superviseursData) {
+          setSuperviseursFamille(superviseursData || []);
+          
+          // OPTIMISATION: Récupérer toutes les familles et compter les membres en requêtes groupées
+          const membresCountMap = {};
+          if (superviseursData.length > 0) {
+            const superviseurIds = superviseursData.map(s => s.id);
+            
+            // Récupérer toutes les familles des superviseurs en une seule requête
+            const { data: allFamilles, error: famillesError } = await supabase
+              .from('familles_disciples')
+              .select('id, superviseur_id')
+              .in('superviseur_id', superviseurIds);
+
+            if (!famillesError && allFamilles) {
+              // Créer un map superviseur_id -> famille_id
+              const superviseurToFamilleMap = {};
+              const familleIds = [];
+              allFamilles.forEach(famille => {
+                superviseurToFamilleMap[famille.superviseur_id] = famille.id;
+                familleIds.push(famille.id);
+              });
+
+              // Récupérer tous les comptages en requêtes groupées
+              const [profilsCountsResult, cercleCountsResult] = await Promise.all([
+                // Compter les membres depuis profils pour toutes les familles
+                familleIds.length > 0
+                  ? supabase
+                      .from('profils')
+                      .select('famille_id')
+                      .in('famille_id', familleIds)
+                  : Promise.resolve({ data: [] }),
+                // Compter les membres depuis cercle_personnes pour tous les superviseurs
+                supabase
+                  .from('cercle_personnes')
+                  .select('user_id')
+                  .in('user_id', superviseurIds)
+              ]);
+
+              // Compter les membres par famille depuis profils
+              const membresParFamille = {};
+              profilsCountsResult.data?.forEach(p => {
+                if (p.famille_id) {
+                  membresParFamille[p.famille_id] = (membresParFamille[p.famille_id] || 0) + 1;
+                }
+              });
+
+              // Compter les membres par superviseur depuis cercle_personnes
+              const membresParSuperviseur = {};
+              cercleCountsResult.data?.forEach(c => {
+                if (c.user_id) {
+                  membresParSuperviseur[c.user_id] = (membresParSuperviseur[c.user_id] || 0) + 1;
+                }
+              });
+
+              // Calculer le total pour chaque superviseur
+              superviseursData.forEach(superviseur => {
+                const familleId = superviseurToFamilleMap[superviseur.id];
+                const membresProfils = familleId ? (membresParFamille[familleId] || 0) : 0;
+                const membresCercle = membresParSuperviseur[superviseur.id] || 0;
+                membresCountMap[superviseur.id] = membresProfils + membresCercle;
+              });
+            }
+          }
+          
+          setNombreMembresParSuperviseur(membresCountMap);
+        }
+      }
 
     } catch (error) {
       console.error('Erreur lors du chargement des données superviseur:', error);
-      setLoading(false); // Masquer le loading même en cas d'erreur
+    } finally {
+      setLoading(false);
     }
-    // Note: setLoading(false) est déjà appelé plus tôt dans le code pour afficher l'interface rapidement
   };
 
   // Fonction pour exporter en PDF
@@ -1861,26 +1641,9 @@ const SuperviseurDashboard = () => {
     }
   };
   
-  // Fonction pour récupérer les statistiques comparatives
+  // Fonction pour récupérer les statistiques comparatives (appelée quand famille est déjà prête via le useEffect dédié)
   const fetchStatsComparatives = async () => {
-    // Attendre que famille soit chargée
-    if (!famille || !famille.id) {
-      console.log('⏳ Famille non chargée, attente...');
-      // Réessayer après un court délai si famille n'est pas encore chargée
-      setTimeout(() => {
-        if (famille && famille.id) {
-          fetchStatsComparatives();
-        } else {
-          // Si toujours pas chargée après 2 secondes, définir un état par défaut
-          setStatsComparatives({
-            moyenneAutresFamilles: null,
-            classement: null,
-            totalFamilles: 0
-          });
-        }
-      }, 500);
-      return;
-    }
+    if (!famille || !famille.id) return;
     
     try {
       console.log('📊 Début calcul stats comparatives pour famille:', famille.id);
@@ -1996,6 +1759,24 @@ const SuperviseurDashboard = () => {
       });
     }
   };
+
+  // Charger les stats comparatives quand la section est visible ET famille prête (plus de setInterval)
+  useEffect(() => {
+    if (!statsComparativesRequested || !famille?.id || !user) return;
+    if (chartsLoaded.statsComparatives) {
+      setStatsComparativesRequested(false);
+      return;
+    }
+    let cancelled = false;
+    fetchStatsComparatives()
+      .then(() => {
+        if (!cancelled) setChartsLoaded(prev => ({ ...prev, statsComparatives: true }));
+      })
+      .finally(() => {
+        if (!cancelled) setStatsComparativesRequested(false);
+      });
+    return () => { cancelled = true; };
+  }, [statsComparativesRequested, famille?.id, user]);
   
   // Fonction pour récupérer les alertes
   const fetchAlertes = async () => {
@@ -2629,9 +2410,7 @@ const SuperviseurDashboard = () => {
     }
   };
 
-  // OPTIMISATION: Afficher le spinner seulement si la famille n'est pas encore chargée
-  // Une fois la famille chargée, afficher l'interface même si d'autres données se chargent
-  if (loading && !famille) {
+  if (loading) {
     return (
       <div className="flex h-full w-full items-center justify-center min-h-[50vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -2639,7 +2418,7 @@ const SuperviseurDashboard = () => {
     );
   }
 
-  if (!famille && !loading) {
+  if (!famille) {
     return (
       <div className="p-6">
         <Card>
