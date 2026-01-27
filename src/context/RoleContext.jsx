@@ -11,15 +11,16 @@ export const RoleProvider = ({ children }) => {
   const [permissions, setPermissions] = useState({});
   const [loading, setLoading] = useState(true);
 
+  // user?.id (et pas user) pour éviter de relancer à chaque nouvel objet user venant du contexte Auth
   useEffect(() => {
-    if (user) {
-      fetchUserRoleAndPermissions();
-    } else {
+    if (!user?.id) {
       setRole(null);
       setPermissions({});
       setLoading(false);
+      return;
     }
-  }, [user]);
+    fetchUserRoleAndPermissions();
+  }, [user?.id]);
 
   const fetchUserRoleAndPermissions = async () => {
     try {

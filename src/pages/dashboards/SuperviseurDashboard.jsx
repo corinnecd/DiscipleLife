@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
@@ -34,6 +34,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { useSuperviseurData } from '@/hooks/useSuperviseurData';
 import { 
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Brush, ReferenceLine
 } from 'recharts';
@@ -43,9 +44,8 @@ const SuperviseurDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { handleError } = useErrorHandler();
+  const { famille, setFamille, superviseur, pasteur, setPasteur, loading: phase1Loading, refetch: refetchPhase1 } = useSuperviseurData(user?.id);
   const [loading, setLoading] = useState(true);
-  const [famille, setFamille] = useState(null);
-  const [pasteur, setPasteur] = useState(null);
   const [superviseurNom, setSuperviseurNom] = useState({ first_name: '', last_name: '', titre: '' });
   const [stats, setStats] = useState({
     nombreMembres: 0,
@@ -170,15 +170,42 @@ const SuperviseurDashboard = () => {
     chartsLoadedRef.current = chartsLoaded;
   }, [chartsLoaded]);
 
+  // Dériver superviseurNom et aperçus avatar depuis les données phase 1 (hook useSuperviseurData)
+  useEffect(() => {
+    if (superviseur) {
+      setSuperviseurNom({
+        first_name: superviseur.first_name || '',
+        last_name: superviseur.last_name || '',
+        titre: superviseur.titre || ''
+      });
+    }
+  }, [superviseur]);
+  useEffect(() => {
+    setFamilleAvatarPreview(famille?.avatar_url ?? null);
+  }, [famille?.avatar_url]);
+  useEffect(() => {
+    setPasteurAvatarPreview(pasteur?.avatar_url ?? null);
+  }, [pasteur?.avatar_url]);
+
   // Déclencher le chargement des stats comparatives quand la section est visible ET famille est prête (évite setInterval)
   const [statsComparativesRequested, setStatsComparativesRequested] = useState(false);
+  // Effet borné : un seul chargement par (famille.id) quand la zone est visible, pas de re-fetch en double
+  const statsComparativesLoadedForFamilleIdRef = useRef(null);
+  const fetchStatsComparativesInProgressRef = useRef(false);
 
+  // Garde anti double-fetch : évite d'enchaîner plusieurs appels si les deps changent pendant un fetch
+  const fetchSuperviseurInProgressRef = useRef(false);
+
+  // Phase 2 : membres, stats, KPI, etc. Ne tourne que lorsque la phase 1 (useSuperviseurData) est prête.
   useEffect(() => {
-    if (user) {
-      fetchSuperviseurData();
-      checkReportReminder();
-    }
-  }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+    if (!user?.id || phase1Loading) return;
+    if (fetchSuperviseurInProgressRef.current) return;
+    fetchSuperviseurInProgressRef.current = true;
+    setLoading(true);
+    fetchPhase2Data(famille, superviseur, pasteur)
+      .then(() => { checkReportReminder(); })
+      .finally(() => { setLoading(false); fetchSuperviseurInProgressRef.current = false; });
+  }, [user?.id, phase1Loading, famille, superviseur, pasteur, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
 
   // Hook pour détecter la visibilité d'un élément (IntersectionObserver) - Lazy loading des graphiques
   useEffect(() => {
@@ -266,10 +293,10 @@ const SuperviseurDashboard = () => {
         if (element) observer.unobserve(element);
       });
     };
-  }, [user]); // Refs et statsComparativesRequested : pas dans les deps pour limiter les recréations d'observers
+  }, [user?.id]); // Refs et statsComparativesRequested : pas dans les deps pour limiter les recréations d'observers
 
   // Fonction pour mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
-  // ⚠️ IMPORTANT : Ne pas appeler fetchSuperviseurData() ici pour éviter les boucles infinies
+  // ⚠️ IMPORTANT : Ne pas appeler fetchPhase2Data/refetchPhase1 ici pour éviter les boucles infinies
   const updateDisciplesToMentors = async (disciplesCountMap, tousLesMembres) => {
     try {
       // Identifier les membres qui ont des disciples (> 0) et qui ont actuellement le rôle "disciple"
@@ -318,7 +345,7 @@ const SuperviseurDashboard = () => {
           className: "bg-green-50 border-green-200"
         });
 
-        // ⚠️ IMPORTANT : Ne PAS appeler fetchSuperviseurData() ici pour éviter la boucle infinie
+        // ⚠️ IMPORTANT : Ne PAS appeler fetchPhase2Data/refetchPhase1 ici pour éviter la boucle infinie
         // Les données seront mises à jour au prochain chargement naturel de la page
         // Invalider seulement le cache pour que les prochaines requêtes soient fraîches
         clearCache(`superviseur_${user.id}_membres`);
@@ -606,160 +633,17 @@ const SuperviseurDashboard = () => {
     }
   };
 
-  // Charger les données détaillées après le chargement des données principales
+  // Charger les données détaillées après le chargement des données principales (user?.id pour stabilité, éviter boucles)
   useEffect(() => {
-    if (famille && famille.id && user) {
+    if (famille?.id && user?.id) {
       fetchDisciplesDetaille();
       fetchMentorsConsolides();
     }
-  }, [famille, user]);
+  }, [famille?.id, user?.id]);
 
-  const fetchSuperviseurData = async () => {
+  const fetchPhase2Data = async (familleData, superviseurData, pasteurData) => {
     try {
-      setLoading(true);
-
-      // OPTIMISATION: Utiliser le cache pour les données fréquemment consultées (TTL: 2 minutes)
-      const cacheKeyBase = `superviseur_${user.id}`;
-      
-      // OPTIMISATION: Paralléliser les requêtes initiales (famille, superviseur) avec cache
-      const [familleResult, superviseurResult] = await Promise.all([
-        // 1. Récupérer la famille du superviseur avec cache
-        getOrSetCache(
-          `${cacheKeyBase}_famille`,
-          async () => {
-            const result = await supabase
-              .from('familles_disciples')
-              .select('*')
-              .eq('superviseur_id', user.id)
-              .maybeSingle();
-            if (result.error) throw result.error;
-            return result.data;
-          },
-          2 * 60 * 1000 // 2 minutes
-        ).then(data => ({ data, error: null })).catch(error => ({ data: null, error })),
-        // 2. Récupérer les informations du superviseur avec cache
-        getOrSetCache(
-          `${cacheKeyBase}_superviseur`,
-          async () => {
-            const result = await supabase
-              .from('profils')
-              .select('first_name, last_name, pasteur_id')
-              .eq('id', user.id)
-              .single();
-            if (result.error) throw result.error;
-            return result.data;
-          },
-          2 * 60 * 1000 // 2 minutes
-        ).then(data => ({ data, error: null })).catch(error => ({ data: null, error }))
-      ]);
-
-      const { data: familleData, error: familleError } = familleResult;
-      const { data: superviseurData, error: superviseurError } = superviseurResult;
-
-      console.log('🔍 Debug - Récupération famille:', {
-        userId: user.id,
-        familleData,
-        familleError,
-        superviseurData,
-        superviseurError
-      });
-
-      if (familleError) {
-        handleError(familleError, { context: 'fetchSuperviseurData', step: 'familleData' }, "Impossible de récupérer les données de la famille.");
-        throw familleError;
-      }
-      if (superviseurError) {
-        handleError(superviseurError, { context: 'fetchSuperviseurData', step: 'superviseurData' }, "Impossible de récupérer les données du superviseur.");
-        throw superviseurError;
-      }
-
-      if (!familleData) {
-        console.warn('⚠️ Aucune famille trouvée pour ce superviseur. Vérification alternative...');
-        // Essayer de récupérer toutes les familles pour debug
-        const { data: allFamilles, error: allFamillesError } = await supabase
-          .from('familles_disciples')
-          .select('id, nom, superviseur_id, identifiant_famille');
-        
-        console.log('📋 User ID:', user.id);
-        console.log('📋 Toutes les familles dans la base:', allFamilles);
-        const familleTrouvee = allFamilles?.find(f => f.superviseur_id === user.id);
-        console.log('📋 Famille avec superviseur_id =', user.id, ':', familleTrouvee);
-        
-        // Si une famille existe mais n'a pas été trouvée, essayer de la récupérer explicitement
-        if (familleTrouvee && !familleData) {
-          console.log('⚠️ Famille trouvée dans la liste mais pas dans la requête initiale. Tentative de récupération...');
-          const { data: familleRecuperee, error: familleRecupereeError } = await supabase
-            .from('familles_disciples')
-            .select('*')
-            .eq('superviseur_id', user.id)
-            .maybeSingle();
-          
-          if (familleRecuperee && !familleRecupereeError) {
-            console.log('✅ Famille récupérée avec succès:', familleRecuperee);
-            setFamille(familleRecuperee);
-            if (familleRecuperee?.avatar_url) {
-              setFamilleAvatarPreview(familleRecuperee.avatar_url);
-            }
-            // Continuer le chargement avec cette famille
-          } else {
-            console.error('❌ Impossible de récupérer la famille même après recherche:', familleRecupereeError);
-            setLoading(false);
-            return;
-          }
-        } else {
-          setLoading(false);
-          return;
-        }
-      }
-
-      console.log('✅ Famille trouvée:', familleData);
-
-      setFamille(familleData);
-      if (familleData?.avatar_url) {
-        setFamilleAvatarPreview(familleData.avatar_url);
-      }
-
-      // Stocker le nom du superviseur (titre sera récupéré séparément si la colonne existe)
-      if (superviseurData) {
-        // Essayer de récupérer le titre séparément si la colonne existe
-        let titre = '';
-        try {
-          const { data: titreData } = await supabase
-            .from('profils')
-            .select('titre')
-            .eq('id', user.id)
-            .maybeSingle();
-          titre = titreData?.titre || '';
-        } catch (e) {
-          // La colonne titre n'existe pas encore, on continue sans
-          console.log('Colonne titre non disponible');
-        }
-
-        const nomSuperviseur = {
-          first_name: superviseurData.first_name || '',
-          last_name: superviseurData.last_name || '',
-          titre: titre || ''
-        };
-        console.log('Superviseur nom chargé:', nomSuperviseur);
-        setSuperviseurNom(nomSuperviseur);
-      } else {
-        console.warn('Aucune donnée superviseur trouvée');
-      }
-
-      if (superviseurData?.pasteur_id) {
-        const { data: pasteurData, error: pasteurError } = await supabase
-          .from('profils')
-          .select('id, first_name, last_name, identifiant_unique, avatar_url')
-          .eq('id', superviseurData.pasteur_id)
-          .single();
-
-        if (!pasteurError && pasteurData) {
-          setPasteur(pasteurData);
-          if (pasteurData?.avatar_url) {
-            setPasteurAvatarPreview(pasteurData.avatar_url);
-          }
-        }
-      }
+      if (!user?.id || !familleData) return;
 
       // 3. Récupérer les membres de la famille pour calculer le nombre réel
       // OPTIMISATION: Paralléliser les requêtes pour récupérer les membres
@@ -1017,7 +901,7 @@ const SuperviseurDashboard = () => {
         setMembresDisciplesCount(disciplesCountMap);
         
         // Mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
-        // ⚠️ Cette fonction ne doit PAS appeler fetchSuperviseurData() pour éviter les boucles infinies
+        // ⚠️ Cette fonction ne doit PAS appeler fetchPhase2Data/refetchPhase1 pour éviter les boucles infinies
         updateDisciplesToMentors(disciplesCountMap, tousLesMembres).catch(error => {
           console.error('Erreur lors de la mise à jour automatique des statuts:', error);
         });
@@ -1760,23 +1644,35 @@ const SuperviseurDashboard = () => {
     }
   };
 
-  // Charger les stats comparatives quand la section est visible ET famille prête (plus de setInterval)
+  // Charger les stats comparatives quand la section est visible ET famille prête (effet borné, plus de setInterval)
+  // user?.id (et pas user) pour éviter boucle si le contexte renvoie un nouvel objet à chaque rendu
+  // statsComparativesLoadedForFamilleIdRef : au plus un chargement par famille quand la zone est visible
   useEffect(() => {
-    if (!statsComparativesRequested || !famille?.id || !user) return;
-    if (chartsLoaded.statsComparatives) {
+    if (!statsComparativesRequested || !famille?.id || !user?.id) return;
+    if (fetchStatsComparativesInProgressRef.current) return; // pas de double fetch
+    if (statsComparativesLoadedForFamilleIdRef.current === famille.id) {
+      setStatsComparativesRequested(false);
+      return;
+    }
+    if (chartsLoaded.statsComparatives && statsComparativesLoadedForFamilleIdRef.current !== null) {
       setStatsComparativesRequested(false);
       return;
     }
     let cancelled = false;
+    fetchStatsComparativesInProgressRef.current = true;
     fetchStatsComparatives()
       .then(() => {
-        if (!cancelled) setChartsLoaded(prev => ({ ...prev, statsComparatives: true }));
+        if (!cancelled) {
+          statsComparativesLoadedForFamilleIdRef.current = famille.id;
+          setChartsLoaded(prev => ({ ...prev, statsComparatives: true }));
+        }
       })
       .finally(() => {
+        fetchStatsComparativesInProgressRef.current = false;
         if (!cancelled) setStatsComparativesRequested(false);
       });
     return () => { cancelled = true; };
-  }, [statsComparativesRequested, famille?.id, user]);
+  }, [statsComparativesRequested, famille?.id, user?.id]);
   
   // Fonction pour récupérer les alertes
   const fetchAlertes = async () => {
@@ -2394,6 +2290,7 @@ const SuperviseurDashboard = () => {
 
       setPasteurAvatarPreview(publicData.publicUrl);
       setPasteurAvatarFile(null);
+      refetchPhase1();
       toast({
         title: "Succès",
         description: "Photo du pasteur mise à jour avec succès."
@@ -2410,7 +2307,7 @@ const SuperviseurDashboard = () => {
     }
   };
 
-  if (loading) {
+  if (phase1Loading || loading) {
     return (
       <div className="flex h-full w-full items-center justify-center min-h-[50vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useAuth } from '@/context/AuthContext';
+import { useRole } from '@/context/RoleContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
@@ -31,11 +32,19 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { 
-  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+  AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
+
+/** Curseur de survol du Tooltip : barre fine et gris clair pour les BarChart verticalux */
+const TooltipCursorBar = (props) => {
+  const h = 14;
+  const y = (props.y ?? 0) + ((props.height ?? 40) - h) / 2;
+  return <rect x={props.x ?? 0} y={y} width={props.width ?? 0} height={h} fill="#f9fafb" fillOpacity={0.95} />;
+};
 
 const PasteurDashboard = () => {
   const { user } = useAuth();
+  const { role } = useRole();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -45,6 +54,8 @@ const PasteurDashboard = () => {
   const [mentorsConsolides, setMentorsConsolides] = useState([]); // Tableau consolidé des mentors
   const [loadingMentors, setLoadingMentors] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchTermMentors, setSearchTermMentors] = useState('');
+  const [filterEgliseMentors, setFilterEgliseMentors] = useState(''); // Filtre par église/famille pour le tableau mentors
   const [selectedFamille, setSelectedFamille] = useState(null);
   const [familleModalDetails, setFamilleModalDetails] = useState({ members: [], reports: [], loading: false });
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -98,19 +109,36 @@ const PasteurDashboard = () => {
     }
   });
 
-  useEffect(() => {
-    if (user) {
-      fetchPasteurData();
-      checkMissingReports();
-    }
-  }, [user, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+  // Garde anti double-fetch (évite boucle / chargement infini si user ou filtres changent pendant le fetch)
+  const fetchPasteurInProgressRef = useRef(false);
 
-  // Charger les mentors consolidés après le chargement des familles
+  // Chargement initial + rechargement quand les filtres KPI changent. user?.id pour éviter boucle si le contexte renvoie un nouvel objet à chaque rendu.
   useEffect(() => {
-    if (familles.length > 0 && user) {
+    if (!user?.id) {
+      setLoading(false); // Ne pas bloquer le spinner si user pas encore chargé (auth en cours)
+      return;
+    }
+    if (fetchPasteurInProgressRef.current) return;
+    fetchPasteurInProgressRef.current = true;
+    fetchPasteurData()
+      .then(() => { checkMissingReports(); })
+      .catch(() => {}) // fetchPasteurData gère setLoading(false) dans son finally
+      .finally(() => { fetchPasteurInProgressRef.current = false; });
+  }, [user?.id, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+
+  // Charger les mentors consolidés après le chargement des familles (user?.id pour stabilité)
+  useEffect(() => {
+    if (familles.length > 0 && user?.id) {
       fetchMentorsConsolides();
     }
-  }, [familles, user]);
+  }, [familles, user?.id]);
+
+  // Charger KPI Total Disciples par Pasteur (pasteur, admin, super_admin)
+  useEffect(() => {
+    if (role === 'pasteur' || role === 'admin' || role === 'super_admin') {
+      fetchKpiParPasteur();
+    }
+  }, [role]);
 
   // Charger les détails (membres, rapports) lorsque le modal famille s'ouvre
   useEffect(() => {
@@ -496,7 +524,7 @@ const PasteurDashboard = () => {
           };
 
           // Générer les données pour les graphiques d'évolution (tous les rapports soumis)
-          await generateChartData(rapportsData || []);
+          await generateChartData(rapportsData || [], objectifTotal || 1);
         }
       }
 
@@ -519,6 +547,79 @@ const PasteurDashboard = () => {
       console.error('Erreur lors du chargement des données pasteur:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // KPI Globaux - Total Disciples par Pasteur (pasteur, admin, super_admin)
+  const fetchKpiParPasteur = async () => {
+    if (role !== 'pasteur' && role !== 'admin' && role !== 'super_admin') return;
+    setKpiParPasteurLoading(true);
+    try {
+      const { data: pasteurs, error: errP } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, identifiant_unique')
+        .eq('role', 'pasteur')
+        .order('identifiant_unique');
+      if (errP) throw errP;
+      if (!pasteurs?.length) {
+        setKpiParPasteur([]);
+        setKpiParPasteurTotalCumule(0);
+        return;
+      }
+      const { data: superviseurs, error: errS } = await supabase
+        .from('profils')
+        .select('id, pasteur_id')
+        .eq('role', 'superviseur')
+        .not('pasteur_id', 'is', null);
+      if (errS) throw errS;
+      const superviseursByPasteur = {};
+      (superviseurs || []).forEach(s => {
+        if (!superviseursByPasteur[s.pasteur_id]) superviseursByPasteur[s.pasteur_id] = [];
+        superviseursByPasteur[s.pasteur_id].push(s.id);
+      });
+      const { data: famillesRows } = await supabase
+        .from('familles_disciples')
+        .select('id, superviseur_id');
+      const famillesBySuperviseur = {};
+      (famillesRows || []).forEach(f => {
+        famillesBySuperviseur[f.superviseur_id] = (famillesBySuperviseur[f.superviseur_id] || 0) + 1;
+      });
+      const familleIds = (famillesRows || []).map(f => f.id);
+      let countsByFamille = {};
+      if (familleIds.length > 0) {
+        const { data: counts } = await supabase
+          .from('profils')
+          .select('famille_id')
+          .eq('role', 'disciple')
+          .in('famille_id', familleIds);
+        countsByFamille = (counts || []).reduce((acc, r) => {
+          acc[r.famille_id] = (acc[r.famille_id] || 0) + 1;
+          return acc;
+        }, {});
+      }
+      const famillesIdToSuperviseur = (famillesRows || []).reduce((acc, f) => {
+        acc[f.id] = f.superviseur_id;
+        return acc;
+      }, {});
+      const result = pasteurs.map(p => {
+        const supIds = superviseursByPasteur[p.id] || [];
+        let total = 0;
+        const famillesPasteur = (famillesRows || []).filter(f => supIds.includes(f.superviseur_id));
+        famillesPasteur.forEach(f => { total += countsByFamille[f.id] || 0; });
+        const totalFamilles = famillesPasteur.length;
+        const nomAffichage = (`${p.first_name || ''} ${p.last_name || ''}`.trim() || p.identifiant_unique || 'Pasteur').toUpperCase();
+        return { id: p.id, nomAffichage, totalDisciples: total, totalFamilles };
+      });
+      setKpiParPasteur(result);
+      setKpiParPasteurTotalCumule(result.reduce((s, r) => s + r.totalDisciples, 0));
+      setKpiParPasteurTotalFamilles(result.reduce((s, r) => s + (r.totalFamilles || 0), 0));
+    } catch (e) {
+      console.error('Erreur fetchKpiParPasteur:', e);
+      setKpiParPasteur([]);
+      setKpiParPasteurTotalCumule(0);
+      setKpiParPasteurTotalFamilles(0);
+    } finally {
+      setKpiParPasteurLoading(false);
     }
   };
 
@@ -635,8 +736,14 @@ const PasteurDashboard = () => {
   const [missingReports, setMissingReports] = useState([]);
   const [showAllMissingReports, setShowAllMissingReports] = useState(false);
 
+  // KPI Globaux - Total Disciples par Pasteur (vue admin/super_admin)
+  const [kpiParPasteur, setKpiParPasteur] = useState([]); // { id, nomAffichage, totalDisciples, totalFamilles }[]
+  const [kpiParPasteurLoading, setKpiParPasteurLoading] = useState(false);
+  const [kpiParPasteurTotalCumule, setKpiParPasteurTotalCumule] = useState(0);
+  const [kpiParPasteurTotalFamilles, setKpiParPasteurTotalFamilles] = useState(0);
+
   // Fonction pour générer les données historiques des graphiques
-  const generateChartData = async (reportsData) => {
+  const generateChartData = async (reportsData, objectifTotal = 1) => {
     if (!reportsData || reportsData.length === 0) {
       setChartData([]);
       return;
@@ -666,7 +773,9 @@ const PasteurDashboard = () => {
           personnesEvangelisees: 0,
           comFratDisciples: 0,
           veillee: 0,
-          meditationBible: 0
+          meditationBible: 0,
+          disciplesDeclares: 0,
+          progressionEstimee: 0
         };
       }
 
@@ -683,6 +792,16 @@ const PasteurDashboard = () => {
       chartMap[monthKey].comFratDisciples += stats.com_frat_disciples || 0;
       chartMap[monthKey].veillee += stats.veillee || 0;
       chartMap[monthKey].meditationBible += stats.meditation_bible || 0;
+      // Disciples déclarés dans le rapport (snapshot peut utiliser "disciples" ou autre clé)
+      const disciples = stats.disciples ?? stats.total_disciples ?? 0;
+      chartMap[monthKey].disciplesDeclares += Number(disciples) || 0;
+    });
+
+    // Calculer progressionEstimee par mois (disciples déclarés / objectif total)
+    Object.keys(chartMap).forEach(k => {
+      chartMap[k].progressionEstimee = objectifTotal > 0
+        ? Math.min(100, Math.round((chartMap[k].disciplesDeclares / objectifTotal) * 100))
+        : 0;
     });
 
     // Convertir en tableau et trier par date
@@ -699,18 +818,19 @@ const PasteurDashboard = () => {
       const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
       const filename = `dashboard_pasteur_${timestamp}.pdf`;
       await exportElementToPDF('pasteur-dashboard-content', filename);
+      toast({ title: 'Export PDF réussi', description: 'Le tableau de bord a été exporté en PDF.' });
     } catch (error) {
       console.error('Erreur lors de l\'export PDF:', error);
+      toast({ variant: 'destructive', title: 'Erreur export PDF', description: 'Impossible d\'exporter le tableau de bord en PDF.' });
     } finally {
       setExporting(false);
     }
   };
 
-  // Fonction pour exporter en Excel (CSV)
+  // Fonction pour exporter en Excel (CSV) – tableau des familles
   const handleExportExcel = () => {
     try {
-      // Préparer les données pour l'export
-      const exportData = familles.map(item => ({
+      const exportData = filteredFamilles.map(item => ({
         'Superviseur': `${item.superviseur.first_name} ${item.superviseur.last_name}`,
         'Email': item.superviseur.email || '',
         'Famille': item.famille?.nom || 'Non assignée',
@@ -722,14 +842,51 @@ const PasteurDashboard = () => {
       }));
 
       if (exportData.length === 0) {
+        toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucune famille à exporter avec les filtres actuels.' });
         return;
       }
 
       const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
-      const filename = `dashboard_pasteur_${timestamp}`;
-      exportToExcel(exportData, filename);
+      exportToExcel(exportData, `dashboard_pasteur_familles_${timestamp}`, {
+        title: 'Tableau des familles – Dashboard Pasteur',
+        description: 'Familles sous la responsabilité du pasteur',
+        author: 'DiscipleLife',
+      });
+      toast({ title: 'Export réussi', description: `${exportData.length} famille(s) exportée(s).` });
     } catch (error) {
       console.error('Erreur lors de l\'export Excel:', error);
+      toast({ variant: 'destructive', title: 'Erreur export', description: 'Impossible d\'exporter les familles.' });
+    }
+  };
+
+  // Fonction pour exporter en Excel (CSV) – tableau consolidé des mentors
+  const handleExportExcelMentors = () => {
+    try {
+      const exportData = filteredMentorsConsolides.map(m => ({
+        'Nom': m.nom || '',
+        'Prénom': m.prenom || '',
+        'Église': m.eglise || '',
+        'Nombre de disciples': m.nombre_disciples,
+        'Avancement (%)': m.avancement_pourcentage,
+        'Disciples présents': m.disciples_presents,
+        'Taux participation semaine (%)': m.taux_participation_semaine,
+      }));
+
+      if (exportData.length === 0) {
+        toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucun mentor à exporter avec les filtres actuels.' });
+        return;
+      }
+
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      exportToExcel(exportData, `dashboard_pasteur_mentors_${timestamp}`, {
+        title: 'Tableau consolidé des mentors (piliers) – Dashboard Pasteur',
+        description: 'Vue d\'ensemble des mentors avec statistiques de progression',
+        author: 'DiscipleLife',
+      });
+      toast({ title: 'Export réussi', description: `${exportData.length} mentor(s) exporté(s).` });
+    } catch (error) {
+      console.error('Erreur lors de l\'export Excel mentors:', error);
+      toast({ variant: 'destructive', title: 'Erreur export', description: 'Impossible d\'exporter le tableau des mentors.' });
     }
   };
 
@@ -935,6 +1092,19 @@ const PasteurDashboard = () => {
     return nomSuperviseur.includes(search) || nomFamille.includes(search) || identifiantFamille.includes(search);
   });
 
+  // Filtrer les mentors consolidés par recherche (nom, prénom, église) et par église
+  const filteredMentorsConsolides = mentorsConsolides.filter(m => {
+    const matchSearch = !searchTermMentors || (() => {
+      const search = normalizeString(searchTermMentors);
+      const nom = normalizeString(m.nom || '');
+      const prenom = normalizeString(m.prenom || '');
+      const eglise = normalizeString(m.eglise || '');
+      return nom.includes(search) || prenom.includes(search) || eglise.includes(search);
+    })();
+    const matchEglise = !filterEgliseMentors || (m.eglise === filterEgliseMentors);
+    return matchSearch && matchEglise;
+  });
+
   if (loading) {
     return (
       <div className="flex h-full w-full items-center justify-center min-h-[50vh]">
@@ -1010,7 +1180,7 @@ const PasteurDashboard = () => {
           <div className="absolute bottom-0 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
         </div>
 
-        {/* Statistiques globales */}
+        {/* Statistiques globales (Superviseurs, Familles, Disciples, Progression) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-white border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
@@ -1081,6 +1251,60 @@ const PasteurDashboard = () => {
           </Card>
         </div>
 
+        {/* KPI Globaux - Total Disciples par Pasteur (visible pour pasteur, admin, super_admin) */}
+        {(role === 'pasteur' || role === 'admin' || role === 'super_admin') && (
+          <Card className="bg-gray-200 border-gray-300 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Users className="h-5 w-5 text-purple-600" />
+                KPI Globaux - Total Disciples par Pasteur
+              </CardTitle>
+              <CardDescription>
+                Vue d'ensemble du nombre total de disciples sous la tutelle de chaque pasteur ({kpiParPasteur.length} pasteur{kpiParPasteur.length !== 1 ? 's' : ''})
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {kpiParPasteurLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {kpiParPasteur.map((p) => (
+                    <div
+                      key={p.id}
+                      className="rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50 to-white p-4 shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <Church className="h-5 w-5 text-purple-600" />
+                        <span className="font-bold text-gray-900 text-sm uppercase tracking-wide">{p.nomAffichage}</span>
+                      </div>
+                      <div className="font-bold text-gray-900 text-sm mb-1">{p.totalFamilles ?? 0} Familles</div>
+                      <div className="mt-2">
+                        <span className="text-xs font-bold text-gray-900 uppercase">Total Disciples : </span>
+                        <span className="text-3xl font-bold text-purple-600">{p.totalDisciples}</span>
+                      </div>
+                    </div>
+                  ))}
+                  <div
+                    className="rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className="h-5 w-5 text-blue-600" />
+                      <span className="font-bold text-gray-900 text-sm">Cumul des Familles</span>
+                    </div>
+                    <div className="font-bold text-gray-900 text-sm mb-1">{kpiParPasteurTotalFamilles} Familles</div>
+                    <div className="mt-2">
+                      <span className="text-xs font-bold text-gray-900 uppercase">Cumul Disciples : </span>
+                      <span className="text-3xl font-bold text-blue-600">{kpiParPasteurTotalCumule}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Statistiques des rapports */}
         <Card className="bg-gradient-to-br from-blue-50 to-sky-50 border-blue-200 shadow-sm">
           <CardHeader>
@@ -1126,6 +1350,122 @@ const PasteurDashboard = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Graphiques de progression des familles du pasteur connecté */}
+        {(filteredFamilles.length > 0 || chartData.length > 0) && (
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Target className="h-5 w-5 text-purple-600" />
+                Progression Globale des Familles de {[pasteurNom.first_name, pasteurNom.last_name].filter(Boolean).join(' ') || pasteurNom.identifiant_unique || 'votre pasteur'}
+              </CardTitle>
+              <CardDescription>
+                Évolution dans le temps et progression par famille vers l'objectif 70
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
+                {filteredFamilles.length > 0 && (
+                  <>
+                    <div className="w-full min-w-0">
+                      <div className="h-[400px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={filteredFamilles.slice(0, 6).map((f) => ({
+                              name: (f.famille?.nom || 'Famille'),
+                              progression: Math.round(f.stats.progression)
+                            }))}
+                            layout="vertical"
+                            margin={{ top: 5, right: 20, left: 65, bottom: 5 }}
+                          >
+                            <XAxis type="number" domain={[0, 100]} unit="%" stroke="#888888" fontSize={11} />
+                            <YAxis
+                              type="category"
+                              dataKey="name"
+                              stroke="#888888"
+                              fontSize={11}
+                              width={55}
+                              tick={(props) => {
+                                const { x, y, payload } = props;
+                                const value = payload?.value ?? '';
+                                const item = filteredFamilles.find((f) => (f.famille?.nom || 'Famille') === value);
+                                const supName = item ? `${item.superviseur?.first_name || ''} ${item.superviseur?.last_name || ''}`.trim() : '';
+                                return (
+                                  <g transform={`translate(${x},${y})`}>
+                                    <text textAnchor="end" x={0} y={0} fontWeight="bold" fontSize={11} fill="#111827">{value}</text>
+                                    {supName && <text textAnchor="end" x={0} y={14} fontSize={10} fill="#6b7280">{supName}</text>}
+                                  </g>
+                                );
+                              }}
+                            />
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                            <Tooltip formatter={(v) => [`${v}%`, 'Progression']} cursor={<TooltipCursorBar />} />
+                            <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                    <div className="w-full min-w-0">
+                      <div className="h-[400px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={filteredFamilles.slice(6, 12).map((f) => ({
+                              name: (f.famille?.nom || 'Famille'),
+                              progression: Math.round(f.stats.progression)
+                            }))}
+                            layout="vertical"
+                            margin={{ top: 5, right: 20, left: 90, bottom: 5 }}
+                          >
+                            <XAxis type="number" domain={[0, 100]} unit="%" stroke="#888888" fontSize={11} />
+                            <YAxis
+                              type="category"
+                              dataKey="name"
+                              stroke="#888888"
+                              fontSize={11}
+                              width={80}
+                              tick={(props) => {
+                                const { x, y, payload } = props;
+                                const value = payload?.value ?? '';
+                                const item = filteredFamilles.find((f) => (f.famille?.nom || 'Famille') === value);
+                                const supName = item ? `${item.superviseur?.first_name || ''} ${item.superviseur?.last_name || ''}`.trim() : '';
+                                return (
+                                  <g transform={`translate(${x},${y})`}>
+                                    <text textAnchor="end" x={0} y={0} fontWeight="bold" fontSize={11} fill="#111827">{value}</text>
+                                    {supName && <text textAnchor="end" x={0} y={14} fontSize={10} fill="#6b7280">{supName}</text>}
+                                  </g>
+                                );
+                              }}
+                            />
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                            <Tooltip formatter={(v) => [`${v}%`, 'Progression']} cursor={<TooltipCursorBar />} />
+                            <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </>
+                )}
+                {chartData.length > 0 && chartData.some((d) => d.progressionEstimee != null) && filteredFamilles.length === 0 && (
+                  <div className="w-full min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Évolution de la progression (12 derniers mois)</h3>
+                    <p className="text-xs text-gray-500 mb-2">Estimation à partir des disciples déclarés dans les rapports</p>
+                    <div className="h-[400px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                          <XAxis dataKey="name" stroke="#888888" fontSize={11} tickLine={false} axisLine={false} />
+                          <YAxis domain={[0, 100]} unit="%" stroke="#888888" fontSize={11} tickLine={false} axisLine={false} />
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                          <Tooltip formatter={(v) => [`${v}%`, 'Progression estimée']} />
+                          <Line type="monotone" dataKey="progressionEstimee" name="Progression estimée (%)" stroke="#9333ea" strokeWidth={2} dot={{ r: 4 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* KPI avec sélection de période */}
         <Card className="bg-white border-gray-200 shadow-sm">
@@ -1639,7 +1979,7 @@ const PasteurDashboard = () => {
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-gray-900">Mes Superviseurs et Familles</CardTitle>
             <CardDescription>
-              Vue détaillée de tous les superviseurs sous votre responsabilité et leurs familles
+              Statistiques agrégées par famille et superviseur – vue détaillée avec progression vers l'objectif 70
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1657,7 +1997,7 @@ const PasteurDashboard = () => {
                     <TableRow className="group bg-purple-200 hover:bg-purple-300 transition-colors cursor-pointer">
                       <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Superviseur</TableHead>
                       <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Famille</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Membres</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Disciples</TableHead>
                       <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Objectif</TableHead>
                       <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Progression</TableHead>
                       <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Statut</TableHead>
@@ -1759,15 +2099,56 @@ const PasteurDashboard = () => {
         {/* Tableau consolidé des mentors (pilier) */}
         <Card className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-semibold text-gray-900">Tableau Consolidé des Mentors (Piliers)</CardTitle>
-                <CardDescription>
-                  Vue d'ensemble de tous les mentors (piliers) avec leurs statistiques de progression
-                </CardDescription>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-lg font-semibold text-gray-900">Tableau Consolidé des Mentors (Piliers)</CardTitle>
+                  <CardDescription>
+                    Vue d'ensemble de tous les mentors (piliers) avec leurs statistiques de progression
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  {loadingMentors && <Loader2 className="h-5 w-5 animate-spin text-purple-600" />}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportExcelMentors}
+                    disabled={loadingMentors || filteredMentorsConsolides.length === 0}
+                    className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Exporter tableau mentors (CSV)
+                  </Button>
+                </div>
               </div>
-              {loadingMentors && (
-                <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
+              {!loadingMentors && mentorsConsolides.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 min-w-[180px] max-w-xs">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Rechercher par nom, prénom ou église..."
+                      value={searchTermMentors}
+                      onChange={(e) => setSearchTermMentors(e.target.value)}
+                      className="pl-9 bg-gray-50 border-gray-200"
+                    />
+                  </div>
+                  <Select value={filterEgliseMentors} onValueChange={setFilterEgliseMentors}>
+                    <SelectTrigger className="w-[200px] bg-gray-50 border-gray-200 text-gray-900">
+                      <SelectValue placeholder="Toutes les églises" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200">
+                      <SelectItem value="" className="text-gray-900">Toutes les églises</SelectItem>
+                      {[...new Set(mentorsConsolides.map(m => m.eglise).filter(Boolean))].sort().map(eglise => (
+                        <SelectItem key={eglise} value={eglise} className="text-gray-900">{eglise}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {(searchTermMentors || filterEgliseMentors) && (
+                    <span className="text-sm text-gray-500">
+                      {filteredMentorsConsolides.length} / {mentorsConsolides.length} mentor(s)
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </CardHeader>
@@ -1781,6 +2162,14 @@ const PasteurDashboard = () => {
               <div className="text-center py-12">
                 <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500">Aucun mentor trouvé dans les familles sous votre responsabilité.</p>
+              </div>
+            ) : filteredMentorsConsolides.length === 0 ? (
+              <div className="text-center py-12">
+                <Filter className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">Aucun mentor ne correspond aux critères de recherche.</p>
+                <Button variant="outline" size="sm" className="mt-2" onClick={() => { setSearchTermMentors(''); setFilterEgliseMentors(''); }}>
+                  Réinitialiser les filtres
+                </Button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1797,7 +2186,7 @@ const PasteurDashboard = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {mentorsConsolides.map((mentor) => (
+                    {filteredMentorsConsolides.map((mentor) => (
                       <TableRow key={mentor.mentor_id} className="hover:bg-gray-50 transition-colors">
                         <TableCell>
                           <span className="font-semibold text-gray-900">{mentor.nom}</span>

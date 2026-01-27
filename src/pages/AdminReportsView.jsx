@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
+import { useAuth } from '@/context/AuthContext';
+import { useRole } from '@/context/RoleContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +26,8 @@ import { Helmet } from 'react-helmet';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 const AdminReportsView = () => {
+  const { user } = useAuth();
+  const { role } = useRole();
   const { toast } = useToast();
   const navigate = useNavigate();
   const { handleError } = useErrorHandler();
@@ -43,6 +47,8 @@ const AdminReportsView = () => {
   const [reportTypeFilter, setReportTypeFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState(''); // Filtre par mois (0-11) pour "Rapports reçus"
+  const [yearFilter, setYearFilter] = useState('');  // Filtre par année pour "Rapports reçus"
 
   // Modal
   const [selectedReport, setSelectedReport] = useState(null);
@@ -50,19 +56,43 @@ const AdminReportsView = () => {
 
   useEffect(() => {
     fetchReports();
-  }, [currentPage, statusFilter, reportTypeFilter, dateFilter]);
+  }, [currentPage, statusFilter, reportTypeFilter, dateFilter, monthFilter, yearFilter, role, user?.id]);
 
   const fetchReports = async () => {
     try {
       setLoading(true);
+
+      // Vue Pasteur : ne montrer que les rapports des superviseurs sous sa responsabilité
+      let superviseurIds = null;
+      if (role === 'pasteur' && user?.id) {
+        const { data: superviseurs, error: supError } = await supabase
+          .from('profils')
+          .select('id')
+          .eq('pasteur_id', user.id)
+          .eq('role', 'superviseur');
+        if (!supError && superviseurs?.length) {
+          superviseurIds = superviseurs.map(s => s.id);
+        } else {
+          setReports([]);
+          setTotalPages(1);
+          setLoading(false);
+          return;
+        }
+      }
       
       let query = supabase
         .from('reports')
         .select('*, profils(first_name, last_name, email)', { count: 'exact' });
 
+      if (superviseurIds && superviseurIds.length > 0) {
+        query = query.in('user_id', superviseurIds);
+      }
+
       // Apply Filters
       if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+        // Harmoniser : 'submitted' = envoyé (SendReport utilise submitted)
+        const statusVal = statusFilter === 'sent' ? 'submitted' : statusFilter;
+        query = query.eq('status', statusVal);
       }
       
       if (reportTypeFilter !== 'all') {
@@ -70,8 +100,14 @@ const AdminReportsView = () => {
       }
       
       if (dateFilter) {
-        // Simple date filtering (created_at starts with the date string YYYY-MM-DD)
         query = query.gte('created_at', `${dateFilter}T00:00:00`).lte('created_at', `${dateFilter}T23:59:59`);
+      }
+
+      if (monthFilter !== '') {
+        query = query.eq('month', parseInt(monthFilter, 10));
+      }
+      if (yearFilter !== '') {
+        query = query.eq('year', parseInt(yearFilter, 10));
       }
 
       if (searchQuery) {
@@ -159,18 +195,19 @@ const AdminReportsView = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'sent':
+      case 'submitted':
         return <Badge className="bg-green-100 text-green-800 hover:bg-green-200">Envoyé</Badge>;
       case 'draft':
         return <Badge variant="outline" className="text-slate-500">Brouillon</Badge>;
       default:
-        return <Badge variant="secondary">{status}</Badge>;
+        return <Badge variant="secondary">{status || '—'}</Badge>;
     }
   };
 
   return (
     <div className="container mx-auto p-6 space-y-6">
       <Helmet>
-        <title>Rapports Superviseurs | DiscipleLife</title>
+        <title>{role === 'pasteur' ? 'Rapports reçus' : 'Rapports Superviseurs'} | DiscipleLife</title>
       </Helmet>
 
       {/* Bouton retour */}
@@ -185,8 +222,14 @@ const AdminReportsView = () => {
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Rapports Superviseurs</h1>
-          <p className="text-slate-500">Gérer et analyser les rapports de vos Superviseurs</p>
+          <h1 className="text-3xl font-bold text-slate-900">
+            {role === 'pasteur' ? 'Rapports reçus' : 'Rapports Superviseurs'}
+          </h1>
+          <p className="text-slate-500">
+            {role === 'pasteur'
+              ? 'Rapports envoyés par vos superviseurs'
+              : 'Gérer et analyser les rapports de vos Superviseurs'}
+          </p>
         </div>
       </div>
 
@@ -241,6 +284,33 @@ const AdminReportsView = () => {
                onChange={(e) => setDateFilter(e.target.value)} 
                className="w-full md:w-[160px] bg-gray-100 border-gray-200 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-200"
              />
+          </div>
+          {/* Filtres Mois / Année (pratique pour la vue Pasteur « Rapports reçus ») */}
+          <div className="w-36">
+            <Select value={monthFilter} onValueChange={setMonthFilter}>
+              <SelectTrigger className="bg-gray-100 border-gray-200 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-200">
+                <SelectValue placeholder="Mois" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-gray-200">
+                <SelectItem value="" className="text-gray-900">Tous les mois</SelectItem>
+                {months.map((m, i) => (
+                  <SelectItem key={i} value={String(i)} className="text-gray-900">{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-28">
+            <Select value={yearFilter} onValueChange={setYearFilter}>
+              <SelectTrigger className="bg-gray-100 border-gray-200 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-200">
+                <SelectValue placeholder="Année" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-gray-200">
+                <SelectItem value="" className="text-gray-900">Toutes</SelectItem>
+                {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                  <SelectItem key={y} value={String(y)} className="text-gray-900">{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
