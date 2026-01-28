@@ -339,18 +339,17 @@ const PasteurDashboard = () => {
             };
           }
 
-          // Compter les disciples de la famille
+          // Compter les disciples de la famille (cercle_personnes : tous les disciples sont sous user_id = superviseur)
           const { count: nombreDisciples, error: countError } = await supabase
-            .from('profils')
+            .from('cercle_personnes')
             .select('*', { count: 'exact', head: true })
-            .eq('famille_id', familleData.id)
-            .eq('role', 'disciple');
+            .eq('user_id', superviseur.id);
 
           if (countError) {
             console.error(`Erreur comptage disciples pour famille ${familleData.id}:`, countError);
           }
 
-          const nombreMembres = nombreDisciples || familleData.nombre_disciples_actuels || 0;
+          const nombreMembres = nombreDisciples ?? familleData.nombre_disciples_actuels ?? 0;
           const objectif = familleData.objectif_disciples || 70;
           const progression = Math.min((nombreMembres / objectif) * 100, 100);
           const reste = Math.max(objectif - nombreMembres, 0);
@@ -383,17 +382,32 @@ const PasteurDashboard = () => {
       const totalSuperviseurs = superviseursFinal?.length || 0;
       console.log('Total superviseurs calculé:', totalSuperviseurs, 'sur', superviseursFinal?.length || 0);
       // Le nombre de familles devrait correspondre au nombre de superviseurs (chaque superviseur a une famille)
-      const totalFamilles = famillesValides.filter(f => f.famille !== null).length;
+      let totalFamilles = famillesValides.filter(f => f.famille !== null).length;
       console.log('Total familles trouvées:', totalFamilles, 'sur', totalSuperviseurs, 'superviseurs');
       
       // Si le nombre de familles ne correspond pas, afficher un avertissement
       if (totalFamilles < totalSuperviseurs) {
         console.warn(`⚠️ ATTENTION: ${totalSuperviseurs - totalFamilles} superviseur(s) n'ont pas de famille assignée`);
       }
-      const totalDisciples = famillesValides.reduce((sum, f) => sum + f.stats.nombreMembres, 0);
-      const objectifTotal = famillesValides.reduce((sum, f) => sum + f.stats.objectif, 0);
-      const progressionGlobale = objectifTotal > 0 ? (totalDisciples / objectifTotal) * 100 : 0;
-      const famillesObjectifAtteint = famillesValides.filter(f => f.stats.nombreMembres >= f.stats.objectif).length;
+      let totalDisciples = famillesValides.reduce((sum, f) => sum + f.stats.nombreMembres, 0);
+      let objectifTotal = famillesValides.reduce((sum, f) => sum + f.stats.objectif, 0);
+      let progressionGlobale = objectifTotal > 0 ? (totalDisciples / objectifTotal) * 100 : 0;
+      let famillesObjectifAtteint = famillesValides.filter(f => f.stats.nombreMembres >= f.stats.objectif).length;
+
+      // RPC KPI familles (contourne RLS sur cercle_personnes) pour disciples et progression corrects
+      const { data: kpiFamillesRows, error: kpiFamillesErr } = await supabase.rpc('get_kpi_familles_pour_pasteur', { p_pasteur_id: user.id });
+      if (!kpiFamillesErr && kpiFamillesRows && kpiFamillesRows.length > 0) {
+        const k = kpiFamillesRows[0];
+        const _td = Number(k.total_disciples);
+        const _tf = Number(k.total_familles);
+        const _ot = Number(k.objectif_total);
+        const _fo = Number(k.familles_objectif_atteint);
+        if (Number.isFinite(_td)) totalDisciples = _td;
+        if (Number.isFinite(_tf)) totalFamilles = _tf;
+        if (Number.isFinite(_ot)) objectifTotal = _ot;
+        if (Number.isFinite(_fo)) famillesObjectifAtteint = _fo;
+        progressionGlobale = objectifTotal > 0 ? Math.min(100, (totalDisciples / objectifTotal) * 100) : 0;
+      }
 
       // 5. Récupérer les statistiques des rapports
       const superviseurIds = superviseursFinal.map(s => s.id);
@@ -551,10 +565,25 @@ const PasteurDashboard = () => {
   };
 
   // KPI Globaux - Total Disciples par Pasteur (pasteur, admin, super_admin)
+  // Priorité : RPC get_kpi_disciples_par_pasteur (contourne RLS sur cercle_personnes) ; repli sur requêtes directes.
   const fetchKpiParPasteur = async () => {
     if (role !== 'pasteur' && role !== 'admin' && role !== 'super_admin') return;
     setKpiParPasteurLoading(true);
     try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_kpi_disciples_par_pasteur');
+      if (!rpcError && Array.isArray(rpcData) && rpcData.length >= 0) {
+        const result = (rpcData || []).map((row) => ({
+          id: row.pasteur_id,
+          nomAffichage: row.nom_affichage || '',
+          totalDisciples: Number(row.total_disciples) || 0,
+          totalFamilles: Number(row.total_familles) || 0,
+        }));
+        setKpiParPasteur(result);
+        setKpiParPasteurTotalCumule(result.reduce((s, r) => s + r.totalDisciples, 0));
+        setKpiParPasteurTotalFamilles(result.reduce((s, r) => s + (r.totalFamilles || 0), 0));
+        return;
+      }
+      // Repli : requêtes directes (peut donner 0 si RLS bloque cercle_personnes)
       const { data: pasteurs, error: errP } = await supabase
         .from('profils')
         .select('id, first_name, last_name, identifiant_unique')
@@ -564,6 +593,7 @@ const PasteurDashboard = () => {
       if (!pasteurs?.length) {
         setKpiParPasteur([]);
         setKpiParPasteurTotalCumule(0);
+        setKpiParPasteurTotalFamilles(0);
         return;
       }
       const { data: superviseurs, error: errS } = await supabase
@@ -580,27 +610,21 @@ const PasteurDashboard = () => {
       const { data: famillesRows } = await supabase
         .from('familles_disciples')
         .select('id, superviseur_id');
-      const famillesBySuperviseur = {};
-      (famillesRows || []).forEach(f => {
-        famillesBySuperviseur[f.superviseur_id] = (famillesBySuperviseur[f.superviseur_id] || 0) + 1;
-      });
-      const familleIds = (famillesRows || []).map(f => f.id);
+      const superviseurIdsForCount = [...new Set((famillesRows || []).map(f => f.superviseur_id).filter(Boolean))];
       let countsByFamille = {};
-      if (familleIds.length > 0) {
-        const { data: counts } = await supabase
-          .from('profils')
-          .select('famille_id')
-          .eq('role', 'disciple')
-          .in('famille_id', familleIds);
-        countsByFamille = (counts || []).reduce((acc, r) => {
-          acc[r.famille_id] = (acc[r.famille_id] || 0) + 1;
+      if (superviseurIdsForCount.length > 0) {
+        const { data: cercleRows } = await supabase
+          .from('cercle_personnes')
+          .select('user_id')
+          .in('user_id', superviseurIdsForCount);
+        const countsBySuperviseur = (cercleRows || []).reduce((acc, r) => {
+          acc[r.user_id] = (acc[r.user_id] || 0) + 1;
           return acc;
         }, {});
+        (famillesRows || []).forEach(f => {
+          countsByFamille[f.id] = countsBySuperviseur[f.superviseur_id] || 0;
+        });
       }
-      const famillesIdToSuperviseur = (famillesRows || []).reduce((acc, f) => {
-        acc[f.id] = f.superviseur_id;
-        return acc;
-      }, {});
       const result = pasteurs.map(p => {
         const supIds = superviseursByPasteur[p.id] || [];
         let total = 0;
@@ -1181,75 +1205,80 @@ const PasteurDashboard = () => {
           <div className="absolute bottom-0 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
         </div>
 
-        {/* Statistiques globales (Superviseurs, Familles, Disciples, Progression) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                <Users className="h-4 w-4 text-purple-600" />
-                Superviseurs
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-purple-600">
-                {globalStats.totalSuperviseurs}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                Sous votre responsabilité
-              </p>
-            </CardContent>
-          </Card>
+        {/* KPI des Familles de [nom pasteur] – même fond gris que KPI Globaux */}
+        <div className="rounded-xl bg-gray-200 border border-gray-300 p-4 md:p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            KPI des Familles de {[pasteurNom.first_name, pasteurNom.last_name].filter(Boolean).join(' ') || pasteurNom.identifiant_unique || 'votre pasteur'}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="bg-white border-gray-200 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-purple-600" />
+                  Superviseurs
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-purple-600">
+                  {globalStats.totalSuperviseurs}
+                </div>
+                <p className="text-xs text-gray-600 mt-1">
+                  Sous votre responsabilité
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-purple-600" />
-                Familles
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-purple-600">
-                {globalStats.totalFamilles}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                Familles actives
-              </p>
-            </CardContent>
-          </Card>
+            <Card className="bg-white border-gray-200 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-purple-600" />
+                  Familles
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-purple-600">
+                  {globalStats.totalFamilles}
+                </div>
+                <p className="text-xs text-gray-600 mt-1">
+                  Familles actives
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                <UserCheck className="h-4 w-4 text-purple-600" />
-                Disciples
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-purple-600">
-                {globalStats.totalDisciples}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                sur {globalStats.objectifTotal} objectif
-              </p>
-            </CardContent>
-          </Card>
+            <Card className="bg-white border-gray-200 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 text-purple-600" />
+                  Disciples
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-purple-600">
+                  {globalStats.totalDisciples}
+                </div>
+                <p className="text-xs text-gray-600 mt-1">
+                  sur {globalStats.objectifTotal} objectif
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                <Target className="h-4 w-4 text-purple-600" />
-                Progression
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-purple-600">
-                {Math.round(globalStats.progressionGlobale)}%
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {globalStats.famillesObjectifAtteint} familles ont atteint l'objectif
-              </p>
-            </CardContent>
-          </Card>
+            <Card className="bg-white border-gray-200 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                  <Target className="h-4 w-4 text-purple-600" />
+                  Progression
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-purple-600">
+                  {Math.round(globalStats.progressionGlobale)}%
+                </div>
+                <p className="text-xs text-gray-600 mt-1">
+                  {globalStats.famillesObjectifAtteint} familles ont atteint l'objectif
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* KPI Globaux - Total Disciples par Pasteur (visible pour pasteur, admin, super_admin) */}
@@ -1283,8 +1312,11 @@ const PasteurDashboard = () => {
                       <div className="font-bold text-gray-900 text-sm mb-1">{p.totalFamilles ?? 0} Familles</div>
                       <div className="mt-2">
                         <span className="text-xs font-bold text-gray-900 uppercase">Total Disciples : </span>
-                        <span className="text-3xl font-bold text-purple-600">{p.totalDisciples}</span>
+                        <span className="text-2xl font-bold text-purple-600">{p.totalDisciples}</span>
                       </div>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Sur {(p.totalFamilles ?? 0) * 70} Disciples attendus
+                      </p>
                     </div>
                   ))}
                   <div
@@ -1297,8 +1329,11 @@ const PasteurDashboard = () => {
                     <div className="font-bold text-gray-900 text-sm mb-1">{kpiParPasteurTotalFamilles} Familles</div>
                     <div className="mt-2">
                       <span className="text-xs font-bold text-gray-900 uppercase">Cumul Disciples : </span>
-                      <span className="text-3xl font-bold text-blue-600">{kpiParPasteurTotalCumule}</span>
+                      <span className="text-2xl font-bold text-blue-600">{kpiParPasteurTotalCumule}</span>
                     </div>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Sur {kpiParPasteurTotalFamilles * 70} Disciples attendus
+                    </p>
                   </div>
                 </div>
               )}

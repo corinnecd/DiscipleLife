@@ -2,9 +2,7 @@
 
 ## 1. Principe adopté
 
-**Source de vérité : la table `profils`.**
-
-Toute personne (disciple, mentor, superviseur, etc.) est représentée **en priorité dans `profils`**. Les autres tables (dont `cercle_personnes`) servent à la saisie ou au lien fonctionnel, mais le modèle cible pour la consolidation est **tout en profils**.
+**Consolidation bidirectionnelle :** à chaque entrée ou modification dans **`cercle_personnes`**, **`profils`** est mis à jour ; à chaque entrée ou modification dans **`profils`** (disciple avec mentor), **`cercle_personnes`** est mis à jour. Les deux tables restent alignées.
 
 ## 2. Données entrantes : d’où viennent-elles ?
 
@@ -48,8 +46,21 @@ La consolidation **cercle_personnes → profils** est assurée par :
    - à l’**UPDATE** : si `NEW.profil_id` est non NULL, met à jour la ligne `profils` correspondante ; sinon, fait la même logique que l’INSERT (création + `NEW.profil_id`).
 
 3. **Migration**  
-   Fichier : **`sql/migrations/075_modele_cible_sync_cercle_vers_profils.sql`**  
-   (ajout de la colonne `profil_id`, création de la fonction `sync_cercle_personnes_vers_profils` et du trigger `sync_cercle_vers_profils_trigger`).
+   Fichier : **`sql/migrations/075_modele_cible_sync_cercle_vers_profils.sql`** (+ **075_finaliser_backfill.sql** : version avec contrainte auth).  
+   Trigger : **`sync_cercle_vers_profils_trigger`** (BEFORE INSERT OR UPDATE sur `cercle_personnes`).  
+   **Contrainte :** un profil n’est créé que si l’email du cercle correspond à un utilisateur dans `auth.users` (car `profils.id` → `auth.users.id`).
+
+---
+
+## 5b. Règle de synchronisation profils → cercle_personnes
+
+- **Quand :** à chaque `INSERT` ou `UPDATE` sur `profils` où `role = 'disciple'` et `mentor_id IS NOT NULL`.
+- **Quoi :**
+  - À l’**INSERT** : **créer** une ligne dans `cercle_personnes` (`user_id` = `mentor_id`, `first_name`, `last_name`, `email`, `profil_id` = `profils.id`, `circle_type` = 'Disciple').
+  - À l’**UPDATE** : **mettre à jour** la ligne de `cercle_personnes` dont `profil_id` = `profils.id` (nom, prénom, email, `user_id` si le mentor change), uniquement si les valeurs ont changé (pour éviter les boucles avec le trigger cercle → profils).
+
+**Migration :** **`sql/migrations/077_sync_profils_vers_cercle_personnes.sql`**  
+Trigger : **`sync_profils_vers_cercle_trigger`** (AFTER INSERT OR UPDATE sur `profils`, WHEN role = 'disciple' AND mentor_id IS NOT NULL).
 
 ## 6. Vérification
 
@@ -60,9 +71,16 @@ Pour vérifier que le modèle cible est respecté :
 
 ## 7. Prérequis
 
-- La table **`cercle_personnes`** doit exister (créée dans Supabase ou par une migration propre au projet).
-- La table **`profils`** doit exister et contenir au minimum : id, email, first_name, last_name, role, famille_id, mentor_id (voir `035_add_famille_to_profils.sql` et seeds).
+- La table **`cercle_personnes`** doit exister (colonnes : user_id, first_name, last_name, email, circle_type, profil_id, created_at, etc.).
+- La table **`profils`** doit exister avec au minimum : id, email, first_name, last_name, role, famille_id, mentor_id (voir `035_add_famille_to_profils.sql` et seeds).
+- **profils.id** doit référencer **auth.users(id)** (contrainte Supabase) : les profils ne peuvent être créés que pour des utilisateurs Auth existants (cercle → profils ne crée un profil que si l’email correspond à un compte Auth).
+
+## 8. Ordre d’exécution des migrations
+
+1. **075** : colonne `profil_id` + trigger **cercle → profils**.
+2. **075_finaliser_backfill.sql** : version du trigger qui respecte la contrainte auth (profil créé seulement si email dans auth.users).
+3. **077** : trigger **profils → cercle_personnes** (consolidation dans l’autre sens).
 
 ---
 
-*Document fixant le modèle cible des données entrantes : tout en profils, avec synchronisation automatique depuis `cercle_personnes`.*
+*Document fixant la consolidation bidirectionnelle entre `cercle_personnes` et `profils`.*
