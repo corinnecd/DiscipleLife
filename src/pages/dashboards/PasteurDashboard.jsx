@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
-  Church, ChevronRight, Loader2, Search, Filter, Eye, BarChart3,
+  Church, ChevronRight, ChevronDown, ChevronUp, Loader2, Search, Filter, Eye, BarChart3,
   Mail, Phone, ArrowLeft, Building2, CheckCircle2, AlertCircle, Calendar,
   Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, Plus, X, Download, FileText
 } from 'lucide-react';
@@ -735,6 +735,7 @@ const PasteurDashboard = () => {
   const [exporting, setExporting] = useState(false);
   const [missingReports, setMissingReports] = useState([]);
   const [showAllMissingReports, setShowAllMissingReports] = useState(false);
+  const [showAllSuperviseursFamilles, setShowAllSuperviseursFamilles] = useState(false);
 
   // KPI Globaux - Total Disciples par Pasteur (vue admin/super_admin)
   const [kpiParPasteur, setKpiParPasteur] = useState([]); // { id, nomAffichage, totalDisciples, totalFamilles }[]
@@ -1305,59 +1306,13 @@ const PasteurDashboard = () => {
           </Card>
         )}
 
-        {/* Statistiques des rapports */}
-        <Card className="bg-gradient-to-br from-blue-50 to-sky-50 border-blue-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Mail className="h-5 w-5 text-purple-600" />
-              Rapports Reçus
-            </CardTitle>
-            <CardDescription>
-              Vue d'ensemble des rapports envoyés par vos superviseurs
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
-                <div className="text-2xl font-bold text-purple-700">{globalStats.totalRapports || 0}</div>
-                <div className="text-xs text-purple-600 mt-1 font-medium">Total Rapports</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-                <div className="text-2xl font-bold text-blue-700">{globalStats.rapportsHebdo || 0}</div>
-                <div className="text-xs text-blue-600 mt-1 font-medium">Hebdomadaires</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
-                <div className="text-2xl font-bold text-green-700">{globalStats.rapportsMensuels || 0}</div>
-                <div className="text-xs text-green-600 mt-1 font-medium">Mensuels</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
-                <div className="text-2xl font-bold text-amber-700">{globalStats.rapportsTrimestriels || 0}</div>
-                <div className="text-xs text-amber-600 mt-1 font-medium">Trimestriels</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200">
-                <div className="text-2xl font-bold text-red-700">{globalStats.rapportsAnnuels || 0}</div>
-                <div className="text-xs text-red-600 mt-1 font-medium">Annuels</div>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <Button
-                onClick={() => navigate('/admin/reports')}
-                className="w-full bg-blue-600 hover:bg-purple-600 text-white border-0 hover:border-0 transition-colors"
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                Voir tous les rapports
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Graphiques de progression des familles du pasteur connecté */}
         {(filteredFamilles.length > 0 || chartData.length > 0) && (
           <Card className="bg-white border-gray-200 shadow-sm">
             <CardHeader>
               <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <Target className="h-5 w-5 text-purple-600" />
-                Progression Globale des Familles de {[pasteurNom.first_name, pasteurNom.last_name].filter(Boolean).join(' ') || pasteurNom.identifiant_unique || 'votre pasteur'}
+                Progression Globale des Familles de <span className="text-purple-600 font-semibold">{[pasteurNom.first_name, pasteurNom.last_name].filter(Boolean).join(' ') || pasteurNom.identifiant_unique || 'votre pasteur'}</span>
               </CardTitle>
               <CardDescription>
                 Évolution dans le temps et progression par famille vers l'objectif 70
@@ -1861,6 +1816,52 @@ const PasteurDashboard = () => {
           </CardContent>
         </Card>
 
+        {/* Rapports Reçus (avant Liste des Familles) */}
+        <Card className="bg-gradient-to-br from-blue-50 to-sky-50 border-blue-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Mail className="h-5 w-5 text-purple-600" />
+              Rapports Reçus
+            </CardTitle>
+            <CardDescription>
+              Vue d'ensemble des rapports envoyés par vos superviseurs
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
+                <div className="text-2xl font-bold text-purple-700">{globalStats.totalRapports || 0}</div>
+                <div className="text-xs text-purple-600 mt-1 font-medium">Total Rapports</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                <div className="text-2xl font-bold text-blue-700">{globalStats.rapportsHebdo || 0}</div>
+                <div className="text-xs text-blue-600 mt-1 font-medium">Hebdomadaires</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
+                <div className="text-2xl font-bold text-green-700">{globalStats.rapportsMensuels || 0}</div>
+                <div className="text-xs text-green-600 mt-1 font-medium">Mensuels</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                <div className="text-2xl font-bold text-amber-700">{globalStats.rapportsTrimestriels || 0}</div>
+                <div className="text-xs text-amber-600 mt-1 font-medium">Trimestriels</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200">
+                <div className="text-2xl font-bold text-red-700">{globalStats.rapportsAnnuels || 0}</div>
+                <div className="text-xs text-red-600 mt-1 font-medium">Annuels</div>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <Button
+                onClick={() => navigate('/admin/reports')}
+                className="w-full bg-blue-600 hover:bg-purple-600 text-white border-0 hover:border-0 transition-colors"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Voir tous les rapports
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Liste des Familles */}
         <Card className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
@@ -1976,11 +1977,34 @@ const PasteurDashboard = () => {
 
         {/* Tableau des superviseurs et familles */}
         <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900">Mes Superviseurs et Familles</CardTitle>
-            <CardDescription>
-              Statistiques agrégées par famille et superviseur – vue détaillée avec progression vers l'objectif 70
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-lg font-semibold text-gray-900">Mes Superviseurs et Familles</CardTitle>
+              <CardDescription>
+                Statistiques agrégées par famille et superviseur – vue détaillée avec progression vers l'objectif 70
+              </CardDescription>
+            </div>
+            {filteredFamilles.length > 5 && (
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                onClick={() => setShowAllSuperviseursFamilles((v) => !v)}
+                className="shrink-0 bg-blue-600 text-white hover:bg-blue-700"
+              >
+                {showAllSuperviseursFamilles ? (
+                  <>
+                    <ChevronUp className="h-4 w-4 mr-1" />
+                    Voir moins
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4 mr-1" />
+                    Voir plus
+                  </>
+                )}
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             {filteredFamilles.length === 0 ? (
@@ -2005,7 +2029,7 @@ const PasteurDashboard = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredFamilles.map((item, index) => (
+                    {(showAllSuperviseursFamilles ? filteredFamilles : filteredFamilles.slice(0, 5)).map((item, index) => (
                       <TableRow key={item.superviseur.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell>
                           <div className="flex items-center gap-3">
@@ -2114,7 +2138,7 @@ const PasteurDashboard = () => {
                     size="sm"
                     onClick={handleExportExcelMentors}
                     disabled={loadingMentors || filteredMentorsConsolides.length === 0}
-                    className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                    className="shrink-0 border-0 !opacity-100 bg-[#2563eb] text-white hover:bg-[#1d4ed8] disabled:!opacity-100"
                   >
                     <FileText className="h-4 w-4 mr-2" />
                     Exporter tableau mentors (CSV)
@@ -2599,7 +2623,7 @@ const PasteurDashboard = () => {
                   onChange={(e) =>
                     setCreateForm((prev) => ({ ...prev, nom: e.target.value }))
                   }
-                  placeholder="Ex: LES DÉTERMINÉS"
+                  placeholder={familles.length > 0 ? `Ex: ${familles[0].famille?.nom || 'LES DÉTERMINÉS'}` : 'Ex: LES DÉTERMINÉS'}
                   className="bg-gray-50 border-gray-300 text-gray-900 placeholder:text-gray-400"
                 />
               </div>
@@ -2614,7 +2638,7 @@ const PasteurDashboard = () => {
                       identifiant_famille: e.target.value,
                     }))
                   }
-                  placeholder="Ex: FAM027"
+                  placeholder={familles.length > 0 ? `Ex: ${familles[familles.length - 1].famille?.identifiant_famille || createForm.identifiant_famille}` : `Ex: ${createForm.identifiant_famille || 'FAM001'}`}
                   className="bg-gray-50 border-gray-300 text-gray-900 placeholder:text-gray-400"
                 />
               </div>
