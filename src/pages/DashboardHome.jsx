@@ -21,7 +21,6 @@ import {
   UserCheck,
   Church
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 
 const DashboardHome = () => {
   const { user } = useAuth();
@@ -156,11 +155,7 @@ const DashboardHome = () => {
       {/* Welcome Hero */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-950 via-purple-950 to-purple-900 border border-gray-200 shadow-lg p-8 md:p-12">
         <div className="relative z-10 max-w-3xl">
-          <motion.h1 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-4xl font-bold text-white mb-4"
-          >
+          <h1 className="text-4xl font-bold text-white mb-4">
             {(() => {
               const isSuperviseur = role === 'superviseur';
               const prenom = superviseurInfo.first_name || firstName || '';
@@ -183,7 +178,7 @@ const DashboardHome = () => {
               }
               return <>Bienvenue{firstName && `, ${firstName}`}</>;
             })()}
-          </motion.h1>
+          </h1>
           <p className="text-xl text-white/90 mb-8 leading-relaxed">
             {role === 'superviseur' ? (
               'Gérez votre famille de disciples et suivez leur progression spirituelle.'

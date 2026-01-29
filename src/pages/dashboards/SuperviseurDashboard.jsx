@@ -35,9 +35,18 @@ import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { useSuperviseurData } from '@/hooks/useSuperviseurData';
+import performanceMonitor from '@/lib/PerformanceMonitor';
 import { 
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Brush, ReferenceLine
 } from 'recharts';
+import { WelcomeBanner } from './superviseur/WelcomeBanner';
+import { ChartsKpi } from './superviseur/ChartsKpi';
+import { StatsComparatives } from './superviseur/StatsComparatives';
+import { ActiviteRecente } from './superviseur/ActiviteRecente';
+import { AlertesSection } from './superviseur/AlertesSection';
+
+const PAGE_NAME = 'SuperviseurDashboard';
+const LOAD_TIME_ALERT_MS = 4000; // Seuil au-delà duquel on affiche une alerte performance
 
 const SuperviseurDashboard = () => {
   const { user } = useAuth();
@@ -97,6 +106,7 @@ const SuperviseurDashboard = () => {
     classement: null,
     totalFamilles: 0
   });
+  const [loadingStatsComparatives, setLoadingStatsComparatives] = useState(false);
   
   // État pour notifications/alertes
   const [alertes, setAlertes] = useState({
@@ -195,17 +205,34 @@ const SuperviseurDashboard = () => {
 
   // Garde anti double-fetch : évite d'enchaîner plusieurs appels si les deps changent pendant un fetch
   const fetchSuperviseurInProgressRef = useRef(false);
+  // Spinner pleine page uniquement au premier chargement ; pas à chaque refetch (ex. changement année KPI)
+  const hasInitiallyLoadedRef = useRef(false);
 
   // Phase 2 : membres, stats, KPI, etc. Ne tourne que lorsque la phase 1 (useSuperviseurData) est prête.
+  // Instrumentation PerformanceMonitor (étape 5) : startPageLoad / endPageLoad + alerte si temps > seuil
   useEffect(() => {
     if (!user?.id || phase1Loading) return;
     if (fetchSuperviseurInProgressRef.current) return;
     fetchSuperviseurInProgressRef.current = true;
+    performanceMonitor.startPageLoad(PAGE_NAME);
     setLoading(true);
     fetchPhase2Data(famille, superviseur, pasteur)
       .then(() => { checkReportReminder(); })
-      .finally(() => { setLoading(false); fetchSuperviseurInProgressRef.current = false; });
-  }, [user?.id, phase1Loading, famille, superviseur, pasteur, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+      .finally(() => {
+        setLoading(false);
+        fetchSuperviseurInProgressRef.current = false;
+        hasInitiallyLoadedRef.current = true;
+        performanceMonitor.endPageLoad(PAGE_NAME);
+        const pageStats = performanceMonitor.getPageStats(PAGE_NAME);
+        if (pageStats?.loadTime != null && pageStats.loadTime > LOAD_TIME_ALERT_MS) {
+          toast({
+            variant: 'destructive',
+            title: 'Performance',
+            description: `Le tableau de bord a mis ${Math.round(pageStats.loadTime / 1000)}s à charger. Consultez /admin/performance pour les métriques.`
+          });
+        }
+      });
+  }, [user?.id, phase1Loading, famille?.id, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
 
   // Hook pour détecter la visibilité d'un élément (IntersectionObserver) - Lazy loading des graphiques
   useEffect(() => {
@@ -347,9 +374,13 @@ const SuperviseurDashboard = () => {
 
         // ⚠️ IMPORTANT : Ne PAS appeler fetchPhase2Data/refetchPhase1 ici pour éviter la boucle infinie
         // Les données seront mises à jour au prochain chargement naturel de la page
-        // Invalider seulement le cache pour que les prochaines requêtes soient fraîches
+        // Invalider le cache pour que les prochaines requêtes soient fraîches
         clearCache(`superviseur_${user.id}_membres`);
         clearCache(`superviseur_${user.id}_famille`);
+        if (famille?.id) {
+          clearCache(`superviseur_${user.id}_phase2_membres_${famille.id}`);
+          clearCache(`superviseur_${user.id}_phase2_rpc_${famille.id}`);
+        }
       }
 
       if (failureCount > 0) {
@@ -645,57 +676,75 @@ const SuperviseurDashboard = () => {
     try {
       if (!user?.id || !familleData) return;
 
-      // 3. Récupérer les membres de la famille pour calculer le nombre réel
-      // OPTIMISATION: Paralléliser les requêtes pour récupérer les membres
-      const [membresResult, disciplesResult] = await Promise.all([
-        // 3a. Membres depuis profils avec famille_id (tous les rôles)
-        supabase
-          .from('profils')
-          .select('id, first_name, last_name, email, avatar_url, created_at, role')
-          .eq('famille_id', familleData.id)
-          .order('created_at', { ascending: false }),
-        // 3b. Membres depuis cercle_personnes liés au superviseur
-        supabase
-          .from('cercle_personnes')
-          .select('id, first_name, last_name, email, avatar_url, created_at, start_date, parent_disciple_id, user_id')
-          .eq('user_id', user.id)
-      ]);
-
-      const { data: membresData, error: membresError } = membresResult;
-      const { data: disciplesData, error: disciplesError } = disciplesResult;
-
-      // Vérifier les erreurs
-      if (membresError) {
-        console.error('Erreur récupération membres profils:', membresError);
-      }
-      if (disciplesError) {
-        console.error('Erreur récupération disciples cercle_personnes:', disciplesError);
+      // Étape 3 : un seul appel RPC agrégé (migration 094) au lieu de ~15+ appels
+      const cacheKeyRpc = `superviseur_${user.id}_phase2_rpc_${familleData.id}`;
+      let payload = null;
+      try {
+        payload = await getOrSetCache(
+          cacheKeyRpc,
+          async () => {
+            const { data, error } = await supabase.rpc('get_superviseur_dashboard_phase2', {
+              p_user_id: user.id,
+              p_famille_id: familleData.id
+            });
+            if (error) throw error;
+            return data;
+          },
+          2 * 60 * 1000 // 2 minutes
+        );
+      } catch (rpcErr) {
+        console.warn('RPC get_superviseur_dashboard_phase2 non disponible (exécuter migration 094), repli appels directs:', rpcErr?.message);
       }
 
-      // 3c. Combiner les membres des deux sources (comme dans FamillesDisciples.jsx)
-      const tousLesMembres = [];
-      
-      // Ajouter les membres depuis profils (tous les rôles, pas seulement 'disciple')
-      if (membresData) {
-        membresData.forEach(profil => {
-          // Ne pas ajouter le superviseur lui-même
-          if (profil.id === user.id) return;
-          
-          tousLesMembres.push({
-            ...profil,
-            statut_spirituel: 'actif', // Valeur par défaut
-            source: 'profils',
-            role: profil.role || 'disciple'
+      let tousLesMembres = [];
+      if (payload && typeof payload === 'object') {
+        tousLesMembres = (payload.membres || []).map(m => ({
+          ...m,
+          id: m.id,
+          role: m.role || 'disciple',
+          statut_spirituel: m.statut_spirituel || 'actif'
+        }));
+        setStats(payload.stats || { nombreMembres: 0, objectif: 70, progression: 0, reste: 70 });
+        setMembres(tousLesMembres);
+        setKpiData(prev => ({ ...prev, ...(payload.kpi_summary || {}) }));
+        setMembresProgression(payload.membres_progression || {});
+        setMembresDisciplesCount(payload.membres_disciples_count || {});
+        setMembresSuiviPar(payload.membres_suivi_par || {});
+        if (tousLesMembres.length > 0) {
+          updateDisciplesToMentors(payload.membres_disciples_count || {}, tousLesMembres).catch(err => {
+            console.error('Erreur lors de la mise à jour automatique des statuts:', err);
           });
-        });
-      }
-      
-      // Ajouter les membres depuis cercle_personnes
-      if (disciplesData) {
-        disciplesData.forEach(disciple => {
-          // Vérifier si ce disciple n'est pas déjà dans la liste (éviter les doublons)
-          const existeDeja = tousLesMembres.some(m => m.id === disciple.id);
-          if (!existeDeja) {
+        }
+      } else {
+        // Repli : appels directs (ancienne logique) si RPC absente ou échec
+        const cacheKeyMembres = `superviseur_${user.id}_phase2_membres_${familleData.id}`;
+        const cachedMembres = await getOrSetCache(
+          cacheKeyMembres,
+          async () => {
+            const [membresResult, disciplesResult] = await Promise.all([
+              supabase.from('profils').select('id, first_name, last_name, email, avatar_url, created_at, role').eq('famille_id', familleData.id).order('created_at', { ascending: false }),
+              supabase.from('cercle_personnes').select('id, first_name, last_name, email, avatar_url, created_at, start_date, parent_disciple_id, user_id').eq('user_id', user.id)
+            ]);
+            const { data: membresData, error: membresError } = membresResult;
+            const { data: disciplesData, error: disciplesError } = disciplesResult;
+            if (membresError) throw membresError;
+            if (disciplesError) throw disciplesError;
+            return { membresData: membresData || [], disciplesData: disciplesData || [] };
+          },
+          2 * 60 * 1000
+        );
+        if (!cachedMembres) return;
+        const { membresData, disciplesData } = cachedMembres;
+        tousLesMembres = [];
+        if (membresData) {
+          membresData.forEach(profil => {
+            if (profil.id === user.id) return;
+            tousLesMembres.push({ ...profil, statut_spirituel: 'actif', source: 'profils', role: profil.role || 'disciple' });
+          });
+        }
+        if (disciplesData) {
+          disciplesData.forEach(disciple => {
+            if (tousLesMembres.some(m => m.id === disciple.id)) return;
             tousLesMembres.push({
               id: disciple.id,
               first_name: disciple.first_name || '',
@@ -703,302 +752,90 @@ const SuperviseurDashboard = () => {
               email: disciple.email || null,
               avatar_url: disciple.avatar_url || null,
               created_at: disciple.start_date || disciple.created_at || null,
-              statut_spirituel: 'actif', // Valeur par défaut
+              statut_spirituel: 'actif',
               role: 'disciple',
               source: 'cercle_personnes',
               parent_disciple_id: disciple.parent_disciple_id || null
             });
-          }
-        });
-      }
-      
-      // Calculer le nombre total de membres
-      const nombreMembres = tousLesMembres.length;
-      const nombreMembresProfils = (membresData || []).filter(m => m.id !== user.id).length;
-      const nombreMembresCercle = (disciplesData || []).length;
-      
-      // Log pour debug détaillé
-      console.log('📊 Calcul membres famille:', {
-        superviseurId: user.id,
-        familleId: familleData.id,
-        familleNom: familleData.nom,
-        membresProfilsCount: nombreMembresProfils,
-        membresCercleCount: nombreMembresCercle,
-        totalCalculated: nombreMembres,
-        tousLesMembres: tousLesMembres
-      });
-
-      // 3d. Calculer les statistiques
-      const objectif = familleData.objectif_disciples || 70;
-      const progression = nombreMembres > 0 ? Math.min((nombreMembres / objectif) * 100, 100) : 0;
-      const reste = Math.max(objectif - nombreMembres, 0);
-
-      console.log('📈 Stats à définir:', { nombreMembres, objectif, progression, reste });
-      console.log('🔍 Vérification - nombreMembres est:', typeof nombreMembres, nombreMembres);
-
-      // Forcer la mise à jour des stats avec les valeurs calculées
-      const newStats = {
-        nombreMembres: Number(nombreMembres) || 0,
-        objectif: Number(objectif) || 70,
-        progression: Number(progression) || 0,
-        reste: Number(reste) || 70
-      };
-      
-      console.log('✅ Nouveaux stats à appliquer:', newStats);
-      setStats(newStats);
-
-      // 4. Définir la liste des membres (tous les membres combinés)
-      setMembres(tousLesMembres);
-      
-      if (tousLesMembres.length > 0) {
-        
-        // Récupérer les statistiques de formations et vidéos des membres
-        const membreIds = tousLesMembres.map(m => m.id);
-        
-        if (membreIds.length > 0) {
-          // Formations terminées - Utiliser user_parcours_progression pour obtenir user_id
-          // Récupérer d'abord les progression_id pour ces membres
-          const { data: progressionsData } = await supabase
-            .from('user_parcours_progression')
-            .select('id')
-            .in('user_id', membreIds);
-          
-          const progressionIds = progressionsData?.map(p => p.id) || [];
-          
-          let formationsTermineesCount = 0;
-          let formationsEnCoursCount = 0;
-          
-          if (progressionIds.length > 0) {
-            const { count: formationsTerminees } = await supabase
-              .from('user_module_progression')
-              .select('id', { count: 'exact', head: true })
-              .in('progression_id', progressionIds)
-              .eq('est_complete', true);
-            
-            const { count: formationsEnCours } = await supabase
-              .from('user_module_progression')
-              .select('id', { count: 'exact', head: true })
-              .in('progression_id', progressionIds)
-              .eq('est_complete', false);
-            
-            formationsTermineesCount = formationsTerminees || 0;
-            formationsEnCoursCount = formationsEnCours || 0;
-          }
-          
-          // Vidéos terminées (is_completed = true dans video_progress)
-          const { count: videosTermineesCount } = await supabase
-            .from('video_progress')
-            .select('*', { count: 'exact', head: true })
-            .in('disciple_id', membreIds)
-            .eq('is_completed', true);
-          
-          setKpiData(prev => ({
-            ...prev,
-            formationsTerminees: formationsTermineesCount || 0,
-            formationsEnCours: formationsEnCoursCount || 0,
-            videosTerminees: videosTermineesCount || 0
-          }));
-          
-          // Calculer la progression individuelle pour chaque membre
-          const progressionMap = {};
-          
-          // Récupérer toutes les progressions pour ces membres
-          const { data: allProgressionsData } = await supabase
-            .from('user_parcours_progression')
-            .select('id, user_id')
-            .in('user_id', membreIds);
-          
-          // Créer un map progression_id -> user_id
-          const progressionToUserMap = {};
-          allProgressionsData?.forEach(p => {
-            progressionToUserMap[p.id] = p.user_id;
           });
-          
-          const allProgressionIds = allProgressionsData?.map(p => p.id) || [];
-          
-          if (allProgressionIds.length > 0) {
-            // Récupérer toutes les formations terminées
-            const { data: formationsData } = await supabase
-              .from('user_module_progression')
-              .select('progression_id')
-              .in('progression_id', allProgressionIds)
-              .eq('est_complete', true);
-            
-            // Compter par user_id
-            formationsData?.forEach(f => {
-              const userId = progressionToUserMap[f.progression_id];
-              if (userId) {
-                if (!progressionMap[userId]) {
-                  progressionMap[userId] = { formations: 0, videos: 0, total: 0 };
-                }
-                progressionMap[userId].formations += 1;
-              }
-            });
-          }
-          
-          // OPTIMISATION: Compter toutes les vidéos en une seule requête groupée
-          const { data: videosData } = await supabase
-            .from('video_progress')
-            .select('disciple_id')
-            .in('disciple_id', membreIds)
-            .eq('is_completed', true);
-          
-          // Compter les vidéos par disciple_id
-          const videosCountMap = {};
-          videosData?.forEach(v => {
-            videosCountMap[v.disciple_id] = (videosCountMap[v.disciple_id] || 0) + 1;
-          });
-          
-          // Initialiser et calculer les totaux
-          membreIds.forEach(memberId => {
-            if (!progressionMap[memberId]) {
-              progressionMap[memberId] = { formations: 0, videos: 0, total: 0 };
-            }
-            progressionMap[memberId].videos = videosCountMap[memberId] || 0;
-            progressionMap[memberId].total = progressionMap[memberId].formations + progressionMap[memberId].videos;
-          });
-          
-          setMembresProgression(progressionMap);
         }
-        
-        // OPTIMISATION: Récupérer le nombre de disciples suivis par chaque membre en une seule requête
-        // Récupérer tous les disciples directs et sous-disciples en une seule fois
-        const memberIds = tousLesMembres.map(m => m.id);
-        const [directDisciplesResult, subDisciplesResult] = await Promise.all([
-          // Tous les disciples directs (où le membre est le mentor)
-          supabase
-            .from('cercle_personnes')
-            .select('user_id')
-            .in('user_id', memberIds),
-          // Tous les sous-disciples (où le membre est un disciple parent)
-          supabase
-            .from('cercle_personnes')
-            .select('parent_disciple_id')
-            .in('parent_disciple_id', memberIds)
-        ]);
-
-        // Compter les disciples par membre
-        const disciplesCountMap = {};
-        tousLesMembres.forEach(membre => {
-          disciplesCountMap[membre.id] = 0;
-        });
-
-        // Compter les disciples directs
-        directDisciplesResult.data?.forEach(d => {
-          if (d.user_id && disciplesCountMap[d.user_id] !== undefined) {
-            disciplesCountMap[d.user_id] = (disciplesCountMap[d.user_id] || 0) + 1;
+        const objectif = familleData.objectif_disciples || 70;
+        const nombreMembres = tousLesMembres.length;
+        const progression = nombreMembres > 0 ? Math.min((nombreMembres / objectif) * 100, 100) : 0;
+        const reste = Math.max(objectif - nombreMembres, 0);
+        setStats({ nombreMembres, objectif, progression, reste });
+        setMembres(tousLesMembres);
+        if (tousLesMembres.length > 0) {
+          const membreIds = tousLesMembres.map(m => m.id);
+          const [progressionsRes, allProgressionsRes, videosRes, directRes, subRes] = await Promise.all([
+            supabase.from('user_parcours_progression').select('id').in('user_id', membreIds),
+            supabase.from('user_parcours_progression').select('id, user_id').in('user_id', membreIds),
+            supabase.from('video_progress').select('disciple_id').in('disciple_id', membreIds).eq('is_completed', true),
+            supabase.from('cercle_personnes').select('user_id').in('user_id', membreIds),
+            supabase.from('cercle_personnes').select('parent_disciple_id').in('parent_disciple_id', membreIds)
+          ]);
+          const progressionIds = progressionsRes?.data?.map(p => p.id) || [];
+          let formationsTermineesCount = 0, formationsEnCoursCount = 0;
+          if (progressionIds.length > 0) {
+            const [termRes, encoursRes] = await Promise.all([
+              supabase.from('user_module_progression').select('id', { count: 'exact', head: true }).in('progression_id', progressionIds).eq('est_complete', true),
+              supabase.from('user_module_progression').select('id', { count: 'exact', head: true }).in('progression_id', progressionIds).eq('est_complete', false)
+            ]);
+            formationsTermineesCount = termRes.count || 0;
+            formationsEnCoursCount = encoursRes.count || 0;
           }
-        });
-
-        // Compter les sous-disciples
-        subDisciplesResult.data?.forEach(d => {
-          if (d.parent_disciple_id && disciplesCountMap[d.parent_disciple_id] !== undefined) {
-            disciplesCountMap[d.parent_disciple_id] = (disciplesCountMap[d.parent_disciple_id] || 0) + 1;
-          }
-        });
-
-        console.log('📊 Nombre de disciples par membre (final):', disciplesCountMap);
-        setMembresDisciplesCount(disciplesCountMap);
-        
-        // Mettre à jour automatiquement le statut des disciples ayant des disciples → Mentor/Pilier
-        // ⚠️ Cette fonction ne doit PAS appeler fetchPhase2Data/refetchPhase1 pour éviter les boucles infinies
-        updateDisciplesToMentors(disciplesCountMap, tousLesMembres).catch(error => {
-          console.error('Erreur lors de la mise à jour automatique des statuts:', error);
-        });
-      }
-
-      // 4b. OPTIMISATION: Récupérer les informations "Suivi par" en requêtes groupées
-      const suiviParMap = {};
-      if (tousLesMembres.length > 0) {
-        const memberIds = tousLesMembres.map(m => m.id);
-        
-        // Récupérer tous les cercle_personnes en une seule requête
-        const { data: allCercleData } = await supabase
-          .from('cercle_personnes')
-          .select('id, user_id, parent_disciple_id, first_name, last_name')
-          .in('id', memberIds);
-
-        // Créer un map des données cercle par membre ID
-        const cercleMap = {};
-        allCercleData?.forEach(c => {
-          cercleMap[c.id] = c;
-        });
-
-        // Récupérer tous les IDs uniques (user_id et parent_disciple_id)
-        const uniqueUserIds = new Set();
-        const uniqueParentIds = new Set();
-        allCercleData?.forEach(c => {
-          if (c.user_id) uniqueUserIds.add(c.user_id);
-          if (c.parent_disciple_id) uniqueParentIds.add(c.parent_disciple_id);
-        });
-
-        // Récupérer tous les profils et cercle_personnes parent en une seule requête
-        const [profilsData, parentDisciplesData] = await Promise.all([
-          uniqueUserIds.size > 0 
-            ? supabase
-                .from('profils')
-                .select('id, first_name, last_name')
-                .in('id', Array.from(uniqueUserIds))
-            : Promise.resolve({ data: [] }),
-          uniqueParentIds.size > 0
-            ? supabase
-                .from('cercle_personnes')
-                .select('id, first_name, last_name')
-                .in('id', Array.from(uniqueParentIds))
-            : Promise.resolve({ data: [] })
-        ]);
-
-        // Créer des maps pour les profils et parents
-        const profilsMap = {};
-        profilsData.data?.forEach(p => {
-          profilsMap[p.id] = p;
-        });
-
-        const parentsMap = {};
-        parentDisciplesData.data?.forEach(p => {
-          parentsMap[p.id] = p;
-        });
-
-        // Construire le map "Suivi par" pour chaque membre
-        tousLesMembres.forEach(membre => {
-          const cercleData = cercleMap[membre.id];
-          
-          if (cercleData) {
-            // Si le membre a un parent_disciple_id, c'est un sous-disciple
-            if (cercleData.parent_disciple_id) {
-              const parentData = parentsMap[cercleData.parent_disciple_id];
-              if (parentData) {
-                suiviParMap[membre.id] = {
-                  name: `${parentData.first_name || ''} ${parentData.last_name || ''}`.trim(),
-                  id: cercleData.parent_disciple_id
-                };
-                return;
-              }
+          const formationsDataRes = progressionIds.length > 0
+            ? await supabase.from('user_module_progression').select('progression_id').in('progression_id', progressionIds).eq('est_complete', true)
+            : { data: [] };
+          const videosTermineesCount = videosRes?.data?.length || 0;
+          setKpiData(prev => ({ ...prev, formationsTerminees: formationsTermineesCount, formationsEnCours: formationsEnCoursCount, videosTerminees: videosTermineesCount }));
+          const progressionToUserMap = {};
+          (allProgressionsRes?.data || []).forEach(p => { progressionToUserMap[p.id] = p.user_id; });
+          const progressionMap = {};
+          membreIds.forEach(mid => { progressionMap[mid] = { formations: 0, videos: 0, total: 0 }; });
+          (formationsDataRes?.data || []).forEach(f => {
+            const uid = progressionToUserMap[f.progression_id];
+            if (uid && progressionMap[uid]) progressionMap[uid].formations += 1;
+          });
+          (videosRes?.data || []).forEach(v => {
+            if (progressionMap[v.disciple_id]) progressionMap[v.disciple_id].videos += 1;
+          });
+          Object.keys(progressionMap).forEach(mid => { progressionMap[mid].total = progressionMap[mid].formations + progressionMap[mid].videos; });
+          setMembresProgression(progressionMap);
+          const directDisciplesResult = directRes;
+          const subDisciplesResult = subRes;
+          const disciplesCountMap = {};
+          tousLesMembres.forEach(m => { disciplesCountMap[m.id] = 0; });
+          directDisciplesResult.data?.forEach(d => { if (d.user_id && disciplesCountMap[d.user_id] !== undefined) disciplesCountMap[d.user_id] = (disciplesCountMap[d.user_id] || 0) + 1; });
+          subDisciplesResult.data?.forEach(d => { if (d.parent_disciple_id && disciplesCountMap[d.parent_disciple_id] !== undefined) disciplesCountMap[d.parent_disciple_id] = (disciplesCountMap[d.parent_disciple_id] || 0) + 1; });
+          setMembresDisciplesCount(disciplesCountMap);
+          updateDisciplesToMentors(disciplesCountMap, tousLesMembres).catch(() => {});
+          const allCercleData = (await supabase.from('cercle_personnes').select('id, user_id, parent_disciple_id, first_name, last_name').in('id', membreIds)).data || [];
+          const cercleMap = {};
+          allCercleData.forEach(c => { cercleMap[c.id] = c; });
+          const uniqueUserIds = [...new Set(allCercleData.filter(c => c.user_id).map(c => c.user_id))];
+          const uniqueParentIds = [...new Set(allCercleData.filter(c => c.parent_disciple_id).map(c => c.parent_disciple_id))];
+          const [profilsData, parentDisciplesData] = await Promise.all([
+            uniqueUserIds.length ? supabase.from('profils').select('id, first_name, last_name').in('id', uniqueUserIds) : { data: [] },
+            uniqueParentIds.length ? supabase.from('cercle_personnes').select('id, first_name, last_name').in('id', uniqueParentIds) : { data: [] }
+          ]);
+          const profilsMap = {}; (profilsData.data || []).forEach(p => { profilsMap[p.id] = p; });
+          const parentsMap = {}; (parentDisciplesData.data || []).forEach(p => { parentsMap[p.id] = p; });
+          const suiviParMap = {};
+          tousLesMembres.forEach(membre => {
+            const c = cercleMap[membre.id];
+            if (c?.parent_disciple_id && parentsMap[c.parent_disciple_id]) {
+              const p = parentsMap[c.parent_disciple_id];
+              suiviParMap[membre.id] = { name: `${p.first_name || ''} ${p.last_name || ''}`.trim(), id: c.parent_disciple_id };
+            } else if (c?.user_id && profilsMap[c.user_id]) {
+              const pr = profilsMap[c.user_id];
+              suiviParMap[membre.id] = { name: `${pr.first_name || ''} ${pr.last_name || ''}`.trim(), id: c.user_id };
+            } else if (membre.source === 'profils' && membre.role !== 'superviseur') {
+              suiviParMap[membre.id] = { name: `${superviseurNom.first_name || ''} ${superviseurNom.last_name || ''}`.trim(), id: user.id };
             }
-            
-            // Si le membre a un user_id, c'est le superviseur
-            if (cercleData.user_id) {
-              const superviseurData = profilsMap[cercleData.user_id];
-              if (superviseurData) {
-                suiviParMap[membre.id] = {
-                  name: `${superviseurData.first_name || ''} ${superviseurData.last_name || ''}`.trim(),
-                  id: cercleData.user_id
-                };
-                return;
-              }
-            }
-          }
-
-          // Si le membre est dans profils avec famille_id, il est suivi par le superviseur de la famille
-          if (membre.source === 'profils' && membre.role !== 'superviseur') {
-            suiviParMap[membre.id] = {
-              name: `${superviseurNom.first_name || ''} ${superviseurNom.last_name || ''}`.trim(),
-              id: user.id
-            };
-          }
-        });
-        
-        setMembresSuiviPar(suiviParMap);
+          });
+          setMembresSuiviPar(suiviParMap);
+        }
       }
 
       // 5. Récupérer les rapports du superviseur pour les graphiques
@@ -1199,8 +1036,10 @@ const SuperviseurDashboard = () => {
       const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
       const filename = `dashboard_superviseur_${timestamp}.pdf`;
       await exportElementToPDF('superviseur-dashboard-content', filename);
+      toast({ title: 'Export réussi', description: 'Le PDF a été téléchargé.', className: 'bg-green-50 border-green-200' });
     } catch (error) {
       console.error('Erreur lors de l\'export PDF:', error);
+      toast({ variant: 'destructive', title: 'Erreur', description: "Impossible d'exporter le PDF." });
     } finally {
       setExporting(false);
     }
@@ -1209,7 +1048,6 @@ const SuperviseurDashboard = () => {
   // Fonction pour exporter en Excel (CSV)
   const handleExportExcel = () => {
     try {
-      // Préparer les données pour l'export
       const exportData = membres.map(membre => ({
         'Nom': `${membre.first_name} ${membre.last_name}`,
         'Email': membre.email || '',
@@ -1218,14 +1056,17 @@ const SuperviseurDashboard = () => {
       }));
 
       if (exportData.length === 0) {
+        toast({ variant: 'destructive', title: 'Aucune donnée', description: 'Aucun membre à exporter.' });
         return;
       }
 
       const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
       const filename = `dashboard_superviseur_${timestamp}`;
       exportToExcel(exportData, filename);
+      toast({ title: 'Export réussi', description: 'Le fichier CSV a été téléchargé.', className: 'bg-green-50 border-green-200' });
     } catch (error) {
       console.error('Erreur lors de l\'export Excel:', error);
+      toast({ variant: 'destructive', title: 'Erreur', description: "Impossible d'exporter le CSV." });
     }
   };
 
@@ -1532,12 +1373,7 @@ const SuperviseurDashboard = () => {
     try {
       console.log('📊 Début calcul stats comparatives pour famille:', famille.id);
       
-      // Initialiser l'état de chargement
-      setStatsComparatives({
-        moyenneAutresFamilles: null,
-        classement: null,
-        totalFamilles: 0
-      });
+      // Ne pas réinitialiser les stats ici : loadingStatsComparatives gère l'affichage du spinner
       
       // Récupérer toutes les familles avec leurs statistiques
       const { data: toutesFamilles, error: famillesError } = await supabase
@@ -1647,6 +1483,7 @@ const SuperviseurDashboard = () => {
   // Charger les stats comparatives quand la section est visible ET famille prête (effet borné, plus de setInterval)
   // user?.id (et pas user) pour éviter boucle si le contexte renvoie un nouvel objet à chaque rendu
   // statsComparativesLoadedForFamilleIdRef : au plus un chargement par famille quand la zone est visible
+  // chartsLoadedRef pour éviter closure obsolète sans ajouter chartsLoaded aux deps (limiter re-runs)
   useEffect(() => {
     if (!statsComparativesRequested || !famille?.id || !user?.id) return;
     if (fetchStatsComparativesInProgressRef.current) return; // pas de double fetch
@@ -1654,12 +1491,13 @@ const SuperviseurDashboard = () => {
       setStatsComparativesRequested(false);
       return;
     }
-    if (chartsLoaded.statsComparatives && statsComparativesLoadedForFamilleIdRef.current !== null) {
+    if (chartsLoadedRef.current?.statsComparatives && statsComparativesLoadedForFamilleIdRef.current !== null) {
       setStatsComparativesRequested(false);
       return;
     }
     let cancelled = false;
     fetchStatsComparativesInProgressRef.current = true;
+    setLoadingStatsComparatives(true);
     fetchStatsComparatives()
       .then(() => {
         if (!cancelled) {
@@ -1669,6 +1507,7 @@ const SuperviseurDashboard = () => {
       })
       .finally(() => {
         fetchStatsComparativesInProgressRef.current = false;
+        setLoadingStatsComparatives(false);
         if (!cancelled) setStatsComparativesRequested(false);
       });
     return () => { cancelled = true; };
@@ -2307,7 +2146,8 @@ const SuperviseurDashboard = () => {
     }
   };
 
-  if (phase1Loading || loading) {
+  // Spinner pleine page uniquement au premier chargement (pas à chaque refetch KPI)
+  if (phase1Loading || (loading && !hasInitiallyLoadedRef.current)) {
     return (
       <div className="flex h-full w-full items-center justify-center min-h-[50vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -2384,85 +2224,13 @@ const SuperviseurDashboard = () => {
 
         {/* Bandeau de bienvenue */}
         {famille && (
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-950 via-purple-950 to-purple-900 border border-gray-200 shadow-lg p-8 md:p-12">
-            <div className="relative z-10">
-              <div className="flex items-start justify-between gap-6 mb-4">
-                <div className="flex-1 max-w-3xl">
-                  <motion.h1 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-2xl md:text-4xl font-bold text-white mb-4"
-                  >
-                    BIENVENUE dans la Famille de {superviseurNom.titre === 'Pasteur' ? 'Pasteur ' : ''}{superviseurNom.first_name} {superviseurNom.last_name}
-                  </motion.h1>
-                  <p className="text-base md:text-xl text-white/90 mb-4 leading-relaxed">
-                    Ici, vous êtes chez vous.
-                  </p>
-                  <p className="text-sm md:text-lg text-white/90 leading-relaxed">
-                    Un espace de partage, de soutien et de croissance spirituelle, où chacun est accompagné dans sa marche avec Dieu afin de devenir de véritables disciples de Christ.
-                  </p>
-                </div>
-                {/* Boutons d'export */}
-                <div className="flex gap-2">
-                <Button
-                  onClick={handleExportPDF}
-                  disabled={exporting}
-                  className="bg-white/20 hover:bg-white/30 text-white border border-white/30"
-                >
-                  {exporting ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4 mr-2" />
-                  )}
-                  {exporting ? 'Export...' : 'PDF'}
-                </Button>
-                <Button
-                  onClick={handleExportExcel}
-                  className="bg-white/20 hover:bg-white/30 text-white border border-white/30"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Excel
-                </Button>
-                </div>
-              </div>
-            </div>
-            {/* Nom de la famille sur une ligne séparée */}
-            <div className="mt-6 relative z-10">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="text-3xl md:text-4xl font-bold text-amber-400"
-              >
-                « {famille.nom} »
-              </motion.div>
-            </div>
-            {/* Icône/Personnage représentant la famille - Positionnée à droite et en bas */}
-            <div className="absolute bottom-8 right-8 flex-shrink-0">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30"
-              >
-                {famille.nom.toLowerCase().includes('déterminé') || famille.nom.toLowerCase().includes('determine') ? (
-                  <Target className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                ) : famille.nom.toLowerCase().includes('victoire') || famille.nom.toLowerCase().includes('victory') ? (
-                  <Trophy className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                ) : famille.nom.toLowerCase().includes('étoile') || famille.nom.toLowerCase().includes('star') ? (
-                  <Star className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                ) : famille.nom.toLowerCase().includes('feu') || famille.nom.toLowerCase().includes('fire') ? (
-                  <Zap className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                ) : (
-                  <Sparkles className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
-                )}
-              </motion.div>
-            </div>
-            
-            {/* Background Decorative Circles */}
-            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
-            <div className="absolute bottom-0 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
-          </div>
+          <WelcomeBanner
+            famille={famille}
+            superviseurNom={superviseurNom}
+            onExportPDF={handleExportPDF}
+            onExportExcel={handleExportExcel}
+            exporting={exporting}
+          />
         )}
         
         {/* En-tête avec nom de la famille et pasteur */}
@@ -3072,422 +2840,33 @@ const SuperviseurDashboard = () => {
         </Card>
 
         {/* Graphiques d'évolution des KPI */}
-        {chartData.length > 0 && (
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-purple-600" />
-                Évolution des KPI (12 derniers mois)
-              </CardTitle>
-              <CardDescription>
-                Tendances des indicateurs clés de performance sur les 12 derniers mois
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Graphique Présences aux Cultes */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Présences aux Cultes</h3>
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="colorCulteSamedi" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorCulteDimanche" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorAfterCulte" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                        <Tooltip />
-                        <Legend />
-                        <Area type="monotone" dataKey="culteSamediSoir" name="Culte Samedi Soir" stroke="#6366f1" fillOpacity={1} fill="url(#colorCulteSamedi)" />
-                        <Area type="monotone" dataKey="culteDimancheMatin" name="Culte Dimanche Matin" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCulteDimanche)" />
-                        <Area type="monotone" dataKey="afterCulteDimanche" name="After Culte" stroke="#14b8a6" fillOpacity={1} fill="url(#colorAfterCulte)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Graphique Temps de Prière et Partage */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Temps de Prière et Partage</h3>
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="tempsPriere" name="Temps de Prière" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
-                        <Line type="monotone" dataKey="tempsPartage" name="Temps de Partage" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Graphique Nouveaux Convertis et Arrivants */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Nouveaux Convertis et Arrivants</h3>
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="colorNouveauxConvertis" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorNouveauxArrivants" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                        <Tooltip />
-                        <Legend />
-                        <Area type="monotone" dataKey="nouveauxConvertis" name="Nouveaux Convertis" stroke="#ec4899" fillOpacity={1} fill="url(#colorNouveauxConvertis)" />
-                        <Area type="monotone" dataKey="nouveauxArrivants" name="Nouveaux Arrivants" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorNouveauxArrivants)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Graphique Évangélisation */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Évangélisation</h3>
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="sortiesEvangelisation" name="Sorties d'Évangélisation" stroke="#14b8a6" strokeWidth={2} dot={{ r: 4 }} />
-                        <Line type="monotone" dataKey="personnesEvangelisees" name="Personnes évangélisées" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <ChartsKpi chartData={chartData} />
 
         {/* Section Activité Récente */}
-        <Card ref={activiteRecenteRef} className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Activity className="h-5 w-5 text-purple-600" />
-              Activité Récente - Disciples Arrivés
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Inscriptions de la semaine */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Cette Semaine</h3>
-                  <Badge variant="default" className="bg-blue-100 text-blue-800">
-                    {activiteRecente.inscriptionsSemaine?.length || 0}
-                  </Badge>
-                </div>
-                {activiteRecente.inscriptionsSemaine && activiteRecente.inscriptionsSemaine.length > 0 ? (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {activiteRecente.inscriptionsSemaine.map((inscription) => (
-                      <div 
-                        key={inscription.id} 
-                        className="flex items-center gap-3 p-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"
-                        onClick={() => navigate(`/disciples/${inscription.id}`)}
-                      >
-                        <Avatar className="w-8 h-8">
-                          <AvatarImage src={inscription.avatar_url} />
-                          <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
-                            {inscription.first_name?.charAt(0)}{inscription.last_name?.charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {inscription.first_name} {inscription.last_name}
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            {format(new Date(inscription.created_at), 'dd MMM yyyy', { locale: fr })}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 py-4">Aucune inscription cette semaine</p>
-                )}
-              </div>
-              
-              {/* Inscriptions du mois */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Ce Mois</h3>
-                  <Badge variant="default" className="bg-green-100 text-green-800">
-                    {activiteRecente.inscriptionsMois?.length || 0}
-                  </Badge>
-                </div>
-                {activiteRecente.inscriptionsMois && activiteRecente.inscriptionsMois.length > 0 ? (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {activiteRecente.inscriptionsMois.map((inscription) => (
-                      <div 
-                        key={inscription.id} 
-                        className="flex items-center gap-3 p-2 bg-green-50 rounded-lg hover:bg-green-100 transition-colors cursor-pointer"
-                        onClick={() => navigate(`/disciples/${inscription.id}`)}
-                      >
-                        <Avatar className="w-8 h-8">
-                          <AvatarImage src={inscription.avatar_url} />
-                          <AvatarFallback className="bg-green-100 text-green-600 text-xs">
-                            {inscription.first_name?.charAt(0)}{inscription.last_name?.charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {inscription.first_name} {inscription.last_name}
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            {format(new Date(inscription.created_at), 'dd MMM yyyy', { locale: fr })}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 py-4">Aucune inscription ce mois</p>
-                )}
-              </div>
-              
-              {/* Inscriptions du trimestre */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Ce Trimestre</h3>
-                  <Badge variant="default" className="bg-purple-100 text-purple-800">
-                    {activiteRecente.inscriptionsTrimestre?.length || 0}
-                  </Badge>
-                </div>
-                {activiteRecente.inscriptionsTrimestre && activiteRecente.inscriptionsTrimestre.length > 0 ? (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {activiteRecente.inscriptionsTrimestre.map((inscription) => (
-                      <div 
-                        key={inscription.id} 
-                        className="flex items-center gap-3 p-2 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors cursor-pointer"
-                        onClick={() => navigate(`/disciples/${inscription.id}`)}
-                      >
-                        <Avatar className="w-8 h-8">
-                          <AvatarImage src={inscription.avatar_url} />
-                          <AvatarFallback className="bg-purple-100 text-purple-600 text-xs">
-                            {inscription.first_name?.charAt(0)}{inscription.last_name?.charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {inscription.first_name} {inscription.last_name}
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            {format(new Date(inscription.created_at), 'dd MMM yyyy', { locale: fr })}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 py-4">Aucune inscription ce trimestre</p>
-                )}
-              </div>
-            </div>
-            
-            {/* Derniers rapports soumis */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Derniers Rapports Soumis</h3>
-              {activiteRecente.derniersRapports && activiteRecente.derniersRapports.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
-                  {activiteRecente.derniersRapports.map((rapport) => (
-                    <div key={rapport.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <FileText className="w-5 h-5 text-purple-600" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-900 truncate">
-                          Rapport {rapport.report_type}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                          {format(new Date(rapport.created_at), 'dd MMM', { locale: fr })}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500 py-2">Aucun rapport récent</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <div ref={activiteRecenteRef}>
+          <ActiviteRecente
+            activiteRecente={activiteRecente}
+            onMemberClick={(id) => navigate(`/disciples/${id}`)}
+          />
+        </div>
 
         {/* Statistiques Comparatives */}
-        <Card ref={statsComparativesRef} className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Target className="h-5 w-5 text-purple-600" />
-              Statistiques Comparatives
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {chartsLoaded.statsComparatives && statsComparatives.moyenneAutresFamilles !== null ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {stats.nombreMembres}
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">Votre famille</div>
-                </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {statsComparatives.moyenneAutresFamilles}
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">Moyenne des autres familles</div>
-                </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    #{statsComparatives.classement}
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    Classement sur {statsComparatives.totalFamilles} famille{statsComparatives.totalFamilles > 1 ? 's' : ''}
-                  </div>
-                </div>
-              </div>
-            ) : chartsLoaded.statsComparatives ? (
-              <div className="text-center py-8 text-gray-500">
-                <Loader2 className="h-6 w-6 animate-spin text-purple-600 mx-auto mb-2" />
-                <p>Calcul en cours...</p>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-400">
-                <p>Faites défiler pour charger les statistiques</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div ref={statsComparativesRef}>
+          <StatsComparatives
+            statsComparatives={statsComparatives}
+            loadingStatsComparatives={loadingStatsComparatives}
+            stats={stats}
+          />
+        </div>
 
         {/* Notifications/Alertes */}
-        {(alertes.disciplesInactifs.length > 0 || alertes.membresSansProgression.length > 0) && (
-          <Card className="bg-white border-gray-200 shadow-sm border-orange-300">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-orange-600" />
-                Alertes et Notifications
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* Disciples inactifs */}
-                {alertes.disciplesInactifs.length > 0 && (
-                  <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
-                    <h3 className="text-sm font-semibold text-orange-900 mb-2">
-                      Disciples Inactifs ({alertes.disciplesInactifs.length})
-                    </h3>
-                    <p className="text-xs text-orange-700 mb-2">
-                      Disciples inactifs depuis plus de 30 jours
-                    </p>
-                    <div className="space-y-1">
-                      {(showAllInactifs ? alertes.disciplesInactifs : alertes.disciplesInactifs.slice(0, 3)).map((disciple) => (
-                        <div key={disciple.id} className="text-sm text-gray-900">
-                          • {disciple.first_name} {disciple.last_name}
-                        </div>
-                      ))}
-                      {alertes.disciplesInactifs.length > 3 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowAllInactifs(!showAllInactifs)}
-                          className="text-xs text-orange-700 hover:text-orange-900 hover:bg-orange-100 mt-2 h-7 px-2"
-                        >
-                          {showAllInactifs ? (
-                            <>
-                              <ChevronUp className="h-3 w-3 mr-1" />
-                              Voir moins
-                            </>
-                          ) : (
-                            <>
-                              <ChevronDown className="h-3 w-3 mr-1" />
-                              Voir plus ({alertes.disciplesInactifs.length - 3} autres)
-                            </>
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Membres sans progression */}
-                {alertes.membresSansProgression.length > 0 && (
-                  <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                    <h3 className="text-sm font-semibold text-red-900 mb-2">
-                      Membres sans Progression ({alertes.membresSansProgression.length})
-                    </h3>
-                    <p className="text-xs text-red-700 mb-2">
-                      Membres n'ayant aucune formation ni vidéo en cours ou terminée
-                    </p>
-                    <div className="space-y-1">
-                      {(showAllSansProgression ? alertes.membresSansProgression : alertes.membresSansProgression.slice(0, 3)).map((membre) => (
-                        <div key={membre.id} className="text-sm text-gray-900">
-                          • {membre.first_name} {membre.last_name}
-                        </div>
-                      ))}
-                      {alertes.membresSansProgression.length > 3 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowAllSansProgression(!showAllSansProgression)}
-                          className="text-xs text-red-700 hover:text-red-900 hover:bg-red-100 mt-2 h-7 px-2"
-                        >
-                          {showAllSansProgression ? (
-                            <>
-                              <ChevronUp className="h-3 w-3 mr-1" />
-                              Voir moins
-                            </>
-                          ) : (
-                            <>
-                              <ChevronDown className="h-3 w-3 mr-1" />
-                              Voir plus ({alertes.membresSansProgression.length - 3} autres)
-                            </>
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        
-        {/* Message si aucune alerte */}
-        {alertes.disciplesInactifs.length === 0 && alertes.membresSansProgression.length === 0 && (
-          <Card className="bg-white border-gray-200 shadow-sm border-green-200">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-                <p className="text-sm text-green-900">
-                  Aucune alerte : tous les membres sont actifs et suivent leurs formations !
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <AlertesSection
+          alertes={alertes}
+          showAllInactifs={showAllInactifs}
+          setShowAllInactifs={setShowAllInactifs}
+          showAllSansProgression={showAllSansProgression}
+          setShowAllSansProgression={setShowAllSansProgression}
+        />
 
         {/* Liste des membres de la famille */}
         <Card className="bg-white border-gray-200 shadow-sm">

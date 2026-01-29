@@ -102,6 +102,17 @@ class PerformanceMonitor {
   }
 
   /**
+   * Retourne les pages dont le temps de chargement dépasse le seuil (pour alertes)
+   * @param {number} thresholdMs - Seuil en ms (défaut 3000)
+   * @returns {Array<{ page: string, loadTime: number }>}
+   */
+  getPagesOverThreshold(thresholdMs = 3000) {
+    return Object.entries(this.metrics.pageLoads)
+      .filter(([, data]) => data.loadTime != null && data.loadTime > thresholdMs)
+      .map(([page, data]) => ({ page, loadTime: data.loadTime }));
+  }
+
+  /**
    * Obtient les statistiques de performance pour une page
    */
   getPageStats(pageName) {

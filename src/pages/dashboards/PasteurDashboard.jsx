@@ -21,7 +21,6 @@ import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
-import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
 import {
   Table,
@@ -121,6 +120,8 @@ const PasteurDashboard = () => {
 
   // Garde anti double-fetch (évite boucle / chargement infini si user ou filtres changent pendant le fetch)
   const fetchPasteurInProgressRef = useRef(false);
+  // Spinner pleine page uniquement au premier chargement (pas à chaque refetch KPI)
+  const hasInitiallyLoadedRef = useRef(false);
 
   // Chargement initial + rechargement quand les filtres KPI changent. user?.id pour éviter boucle si le contexte renvoie un nouvel objet à chaque rendu.
   useEffect(() => {
@@ -133,7 +134,10 @@ const PasteurDashboard = () => {
     fetchPasteurData()
       .then(() => { checkMissingReports(); })
       .catch(() => {}) // fetchPasteurData gère setLoading(false) dans son finally
-      .finally(() => { fetchPasteurInProgressRef.current = false; });
+      .finally(() => {
+        fetchPasteurInProgressRef.current = false;
+        hasInitiallyLoadedRef.current = true;
+      });
   }, [user?.id, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
 
   // Charger les mentors consolidés après le chargement des familles (user?.id pour stabilité)
@@ -1163,7 +1167,8 @@ const PasteurDashboard = () => {
     return matchSearch && matchEglise;
   });
 
-  if (loading) {
+  // Spinner pleine page uniquement au premier chargement (pas à chaque refetch KPI)
+  if (loading && !hasInitiallyLoadedRef.current) {
     return (
       <div className="flex h-full w-full items-center justify-center min-h-[50vh]">
         <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
@@ -1193,15 +1198,11 @@ const PasteurDashboard = () => {
           <div className="relative z-10">
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
               <div className="flex-1">
-                <motion.h1 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-4xl font-bold text-white mb-4"
-                >
+                <h1 className="text-4xl font-bold text-white mb-4">
                   Bienvenue, <span className="bg-gradient-to-r from-pink-400 to-pink-600 bg-clip-text text-transparent">
                     {pasteurNom.first_name || ''}{pasteurNom.first_name && pasteurNom.last_name ? ' ' : ''}{pasteurNom.last_name || ''}
                   </span>
-                </motion.h1>
+                </h1>
                 <p className="text-xl text-white/90 mb-4 leading-relaxed">
                   Vous êtes le Pasteur Référent des Superviseurs de votre grande famille.
                 </p>

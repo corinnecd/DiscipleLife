@@ -109,10 +109,22 @@ export const ExportUtils = {
     }
   },
 
-  exportElementToPDF: async (elementId, filename, options = {}) => {
-    const element = document.getElementById(elementId);
+  exportElementToPDF: async (elementIdOrElement, filename, options = {}) => {
+    const isId = typeof elementIdOrElement === 'string';
+    const element = isId
+      ? document.getElementById(elementIdOrElement)
+      : (elementIdOrElement?.nodeType === 1 ? elementIdOrElement : null);
     if (!element) {
-      throw new Error(`Element with id "${elementId}" not found`);
+      throw new Error(
+        isId ? `Element with id "${elementIdOrElement}" not found` : 'Invalid element for PDF export'
+      );
+    }
+    let elementId = isId ? elementIdOrElement : (element.id || null);
+    let tempIdSet = false;
+    if (!elementId) {
+      elementId = 'pdf-export-target-' + Date.now();
+      element.id = elementId;
+      tempIdSet = true;
     }
 
     const {
@@ -423,6 +435,8 @@ export const ExportUtils = {
     } catch (error) {
       console.error('Error exporting to PDF:', error);
       throw error;
+    } finally {
+      if (tempIdSet && element) element.removeAttribute('id');
     }
   }
 };

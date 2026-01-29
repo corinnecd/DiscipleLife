@@ -1,19 +1,28 @@
 # Rapport – Tout ce qu’il y a à implémenter
 
-**Date :** 25 janvier 2026  
-**Objet :** Inventaire exhaustif des fonctionnalités, corrections et chantiers restant à réaliser sur l’application Disciple Life.
+**Date :** 27 janvier 2026  
+**Objet :** Inventaire exhaustif des fonctionnalités, corrections et chantiers restant à réaliser sur l’application Disciple Life. **Ce document est le rapport de référence unique : toute la suite des fonctionnalités à implémenter se base sur ce dernier rapport.**
 
 ---
 
 ### Résumé exécutif
 
-Ce rapport recense **tout ce qu’il reste à implémenter** en **tenant compte du rapport Claude** (plan agile 14 sprints, 586 h) : **modèle cible des données** (sync `cercle_personnes` → `profils` via migration 075), **fonctionnalités métier** (Dashboard Pasteur, Superviseur, arbre généalogique, rapports, présence/Disciples 70, Objectif 3), **nouveaux modules** (notation, bilans, signalisation d’abus CSA, KPI accueil), **performance et UX** (Phase 4 Claude : monitoring, cache, lazy loading, accessibilité, alertes perf), et **technique** (refactor SuperviseurDashboard, boucle infinie, exports PDF/Excel, ErrorHandler restant, qualité de code). Les priorités, le plan des 14 sprints (rapport Claude), les éléments **performance et UX** (Phase 4) et l’ordre recommandé sont en sections **4, 5, 8 et 9**.
+Ce rapport recense **tout ce qu’il reste à implémenter** et **intègre désormais** :
+- **CRUD profils et formulaire unique** : profils = seule source de vérité, formulaire unique d’inscription/ajout de membre, cercles limités aux comptages par catégorie (voir § 2.3).
+- **Comparaison profils / formulaires d’inscription** : schéma `profils` (24 colonnes + migrations 092/093), champs du formulaire d’inscription alignés (rôle, date d’entrée, suivi par, statut spirituel, formations PCNC, nombre de disciples, téléphone, ville de résidence) — voir § 2.3.
+
+Sont également couverts : **modèle cible des données** (sync cercle → profils, migration 075), **fonctionnalités métier** (Dashboard Pasteur, Superviseur, arbre, rapports, présence/Disciples 70, Objectif 3), **nouveaux modules** (notation, bilans, signalisation d’abus CSA, KPI accueil), **performance et UX** (Phase 4 Claude), et **technique** (refactor SuperviseurDashboard, exports, ErrorHandler, qualité de code). Les priorités et l’ordre recommandé sont en sections **4, 5, 8 et 9**. **La suite des développements se basera sur ce rapport.**
 
 ---
 
 ## 1. Vue d’ensemble
 
-Ce document regroupe **tout ce qui reste à implémenter** et **intègre explicitement le rapport Claude** (« RAPPORT D’ANALYSE COMPLET - APPLICATION DISCIPLE LIFE », Analyse & Plan d’Action Agile, 14 sprints, 586 h), dont la synthèse est dans `RAPPORT_FEEDBACK_ANALYSE_CLAUDE_ET_COMPARAISON.md`. Sont couverts : données et modèle cible, fonctionnalités métier, **performance et UX (Phase 4 du plan Claude)**, qualité technique, notation/bilans/signalisation d’abus. Sources : rapport Claude (phases 1–5, sprints 1–14), `ETAT_FONCTIONNALITES_RESTANTES.md`, `ETAT_OBJECTIFS.md`, `MODELE_CIBLE_DONNEES.md`, `INTEGRATION_ERRORHANDLER_PERFORMANCE.md`, `RAPPORT_ANALYSE_DISCIPLES_70.md`, `INTEGRATION_ERRORHANDLER_COMPLETE.md`.
+Ce document regroupe **tout ce qui reste à implémenter** et constitue **le document de travail unique** pour planifier et prioriser les prochaines livraisons. **On se basera sur ce rapport pour la suite des fonctionnalités à implémenter.** Il intègre :
+- **Rapport CRUD profils / formulaire unique** (`RAPPORT_CRUD_PROFILS_FORMULAIRE_UNIQUE_SOURCE_VERITE.md`) : profils = source de vérité, formulaire unique (inscription + ajout de membre), cercles = comptages par catégorie uniquement.
+- **Comparaison profils / formulaires d’inscription** (`COMPARAISON_PROFILS_FORMULAIRES_INSCRIPTION.md`) : schéma `profils` (24 colonnes + date_entree_famille, phone, ville_residence), mapping formulaire → profils, statut spirituel = `spiritual_stage` (libellé FR).
+- **Rapport Claude** (plan agile 14 sprints, 586 h), synthèse dans `RAPPORT_FEEDBACK_ANALYSE_CLAUDE_ET_COMPARAISON.md`.
+
+Sont couverts : données et modèle cible (§ 2), **CRUD profils et formulaire unique** (§ 2.3), fonctionnalités métier (§ 3), performance et UX (§ 5), technique (§ 7), notation/bilans/signalisation d’abus. Sources : rapport Claude, `ETAT_FONCTIONNALITES_RESTANTES.md`, `ETAT_OBJECTIFS.md`, `MODELE_CIBLE_DONNEES.md`, `RAPPORT_CRUD_PROFILS_FORMULAIRE_UNIQUE_SOURCE_VERITE.md`, `COMPARAISON_PROFILS_FORMULAIRES_INSCRIPTION.md`.
 
 ---
 
@@ -40,6 +49,35 @@ Référence : **`MODELE_CIBLE_DONNEES.md`**.
 - Exécuter **`074_seed_donnees_test_completes_kpi_presence.sql`** si pas encore fait (pasteurs/superviseurs/familles existants, ne pas recréer).
 - Aligner les noms de colonnes de `attendance_tracking` et `prayer_requests` avec le script et les migrations (010, 071, etc.).
 - Créer les comptes profils pour les disciples de test puis, si prévu, le script de génération des présences (`075_generer_presences_apres_comptes.sql` ou équivalent).
+
+---
+
+### 2.3 CRUD profils et formulaire unique (source de vérité) — base pour la suite
+
+**Références intégrées :** `RAPPORT_CRUD_PROFILS_FORMULAIRE_UNIQUE_SOURCE_VERITE.md`, `COMPARAISON_PROFILS_FORMULAIRES_INSCRIPTION.md`.
+
+#### Objectif
+
+- **Profils** = seule source de vérité pour les données des membres (identité, rôle, famille, mentor, statut spirituel, formations PCNC, téléphone, ville, etc.).
+- **Un seul formulaire** pour l’inscription (page d’accueil) et l’ajout de membre (par mentor/superviseur/admin) ; tout écrit dans **profils** (et auth si compte).
+- **Cercles** (`cercle_personnes`) : ne plus être la source des fiches membres ; uniquement **comptages par catégorie** (Non-croyant, Nouveau converti, Disciple affermi, Faiseur de disciples) pour les KPI.
+
+#### Schéma `profils` et formulaire d’inscription (état actuel)
+
+- **Colonnes profils (schéma réel, 24 colonnes + à ajouter)** : id, first_name, last_name, email, avatar_url, **spiritual_stage** (libellé formulaire : **Statut spirituel** — colonne existante), created_at, updated_at, role, is_approved_as_disciple_maker, famille_id, identifiant_disciple, superviseur_id, mentor_id, identifiant_unique, pasteur_id, eglise, nombre_disciples, avancement_pourcentage, nombre_disciples_presents, taux_participation_semaine, observations, formations_pcnc_realisees, titre. **À ajouter si absentes :** date_entree_famille (migration 092), phone, ville_residence (migration 093).
+- **Formulaire d’inscription membre (SignupDisciple étendu)** couvre : prénom, nom, email, **rôle**, **famille**, **date d’entrée dans la famille**, **Suivi par** (mentor_id), **Statut spirituel** (spiritual_stage), **Formation(s) PCNC réalisées**, **Nombre de disciples**, **Numéro de téléphone**, **Ville de résidence**. Envoi en metadata au signUp + update profils après création.
+
+#### Plan d’implémentation (CRUD profils — à suivre pour la suite)
+
+| Phase | Contenu | Priorité pour la suite |
+|-------|---------|-------------------------|
+| **Phase 1** | Modèle de données : schéma profils complet (092, 093), politique d’écriture “une seule source”, trigger `handle_new_user` alimenté par metadata. | Prérequis |
+| **Phase 2** | Formulaire unique : composant réutilisable (inscription + ajout membre), une seule route `/signup` avec rôle dans le formulaire, dépréciation des 4 routes signup/pasteur|superviseur|mentor|disciple. | Haute |
+| **Phase 3** | Lecture depuis profils uniquement : listes “Mes disciples” / “Membres famille” depuis profils (plus depuis cercle_personnes), RPC et KPI basées sur profils uniquement, suppression logique hybride (ex. 091). | Haute |
+| **Phase 4** | Cercles : uniquement comptages par catégorie ; optionnel vue/agrégat alimentée depuis profils. | Moyenne |
+| **Phase 5** | CRUD cohérent : Create/Read/Update/Delete tous via profils ; pas de fiche membre dans cercle_personnes. | Haute |
+
+**Actions immédiates déjà réalisées :** formulaire SignupDisciple étendu (rôle, date d’entrée, suivi par, statut spirituel, formations PCNC, nombre de disciples, téléphone, ville de résidence) ; migrations 092 (date_entree_famille), 093 (phone, ville_residence) ; rapport de comparaison profils/formulaires à jour. **À faire ensuite :** exécuter 092/093 si besoin, puis Phase 2 (formulaire unique réutilisable + une route), puis Phase 3 (lecture tout depuis profils).
 
 ---
 
@@ -351,32 +389,37 @@ Pour **tenir compte de la performance dès le début**, démarrer dans cet ordre
    - Vérifier/aligner **074** et colonnes `attendance_tracking` / `prayer_requests`.  
    - Document : **`MODELE_CIBLE_DONNEES.md`**.
 
-2. **Stabilité Dashboard Superviseur**  
+2. **CRUD profils et formulaire unique (§ 2.3)**  
+   - Exécuter migrations **092** (date_entree_famille), **093** (phone, ville_residence) si pas encore fait.  
+   - Phase 2 : formulaire unique réutilisable (inscription + ajout membre), une route `/signup`.  
+   - Phases 3 à 5 : lecture depuis profils uniquement, cercles = comptages, CRUD cohérent via profils.
+
+3. **Stabilité Dashboard Superviseur**  
    - Corriger la boucle infinie et les effets.  
    - Découper le composant et extraire la logique données.  
    - Réparer les exports PDF/Excel.
 
-3. **Métier prioritaire**  
+4. **Métier prioritaire**  
    - Dashboard Pasteur (création/complétion + tableau consolidé).  
    - Améliorations Dashboard Superviseur (tableaux détaillé et consolidé).  
    - Rapports (flux superviseur→pasteur, vue pasteur).  
 
-4. **Objectif 3**  
+5. **Objectif 3**  
    - Compléter parcours, journal, évaluations, suivi post-crise selon l’état actuel du code.
 
-5. **Arbre généalogique**  
+6. **Arbre généalogique**  
    - Recherche, ascendants, vue complète, panneau détails (phases décrites dans `ETAT_FONCTIONNALITES_RESTANTES.md`).
 
-6. **Présence / Disciples 70**  
+7. **Présence / Disciples 70**  
    - Activités manquantes, KPI superviseur/mentor, nouveaux convertis, absents récurrents.
 
-7. **Sprints 11–14 (plan Claude)**  
+8. **Sprints 11–14 (plan Claude)**  
    - KPI page d’accueil, notation semestrielle, bilans périodiques, signalisation d’abus (CSA), selon specs du rapport Claude.
 
-8. **Qualité en continu**  
+9. **Qualité en continu**  
    - ErrorHandler sur les pages restantes, réduction des `console.log`, couche service, tests ciblés.
 
-9. **Performance et UX (Phase 4 Claude – Sprints 9–10)**  
+10. **Performance et UX (Phase 4 Claude – Sprints 9–10)**  
    - Alertes de performance, graphiques de tendances, export CSV métriques ; extension cache ; lazy loading / code splitting ; audit accessibilité (A11y). Voir § 5.
 
 ---
@@ -385,8 +428,11 @@ Pour **tenir compte de la performance dès le début**, démarrer dans cet ordre
 
 | Document | Contenu utile |
 |----------|----------------|
-| **Rapport Claude** (synthèse : `RAPPORT_FEEDBACK_ANALYSE_CLAUDE_ET_COMPARAISON.md`) | Plan agile 14 sprints (586 h), 5 phases, bugs/perf SuperviseurDashboard, notation/bilans/signalements, données de test. **Source principale** pour performance, UX, A11y (Phase 4). |
-| `INTEGRATION_ERRORHANDLER_PERFORMANCE.md` | PerformanceMonitor, dashboard `/admin/performance`, CacheUtils, améliorations monitoring (alertes, graphiques tendances, export CSV). |
+| **RAPPORT_TOUT_A_IMPLEMENTER.md** (ce document) | **Base de référence pour la suite des fonctionnalités.** Inventaire complet + CRUD profils / formulaire unique intégré (§ 2.3). |
+| **RAPPORT_CRUD_PROFILS_FORMULAIRE_UNIQUE_SOURCE_VERITE.md** | Plan CRUD profils : profils = source de vérité, formulaire unique (inscription + ajout membre), cercles = comptages uniquement, phases 1–5 d’implémentation. |
+| **COMPARAISON_PROFILS_FORMULAIRES_INSCRIPTION.md** | Schéma `profils` (24 colonnes + 092/093), mapping formulaire d’inscription → colonnes profils, statut spirituel = spiritual_stage, champs étendus (téléphone, ville de résidence). |
+| **Rapport Claude** (synthèse : `RAPPORT_FEEDBACK_ANALYSE_CLAUDE_ET_COMPARAISON.md`) | Plan agile 14 sprints (586 h), 5 phases, bugs/perf SuperviseurDashboard, notation/bilans/signalements. **Source principale** pour performance, UX, A11y (Phase 4). |
+| `INTEGRATION_ERRORHANDLER_PERFORMANCE.md` | PerformanceMonitor, dashboard `/admin/performance`, CacheUtils, améliorations monitoring. |
 | `MODELE_CIBLE_DONNEES.md` | Règle « tout en profils », sync cercle_personnes → profils. |
 | `ETAT_FONCTIONNALITES_RESTANTES.md` | Détail objectifs OKR, dashboards, arbre généalogique, tableaux, phases d’implémentation. |
 | `ETAT_OBJECTIFS.md` | État des 3 objectifs et des pages. |
@@ -394,7 +440,8 @@ Pour **tenir compte de la performance dès le début**, démarrer dans cet ordre
 | `RAPPORT_DONNEES_TEST_KPI_ET_PRESENCE.md` | Procédure seed 074, vérifications, prérequis. |
 | `INTEGRATION_ERRORHANDLER_COMPLETE.md` | Pattern d’intégration ErrorHandler, pages déjà traitées. |
 | `sql/migrations/075_modele_cible_sync_cercle_vers_profils.sql` | Migration modèle cible (profil_id + trigger). |
+| `sql/migrations/092_add_date_entree_famille_profils.sql`, `093_add_phone_ville_residence_profils.sql` | Colonnes profils pour formulaire d’inscription (date d’entrée famille, téléphone, ville de résidence). |
 
 ---
 
-*Rapport mis à jour le 25 janvier 2026. À actualiser au fil des livraisons.*
+*Rapport mis à jour le 27 janvier 2026. Intègre le rapport CRUD profils / formulaire unique et la comparaison profils–formulaires d’inscription. **Document de référence unique : la suite des fonctionnalités à implémenter se base sur ce dernier rapport.** À actualiser au fil des livraisons.*

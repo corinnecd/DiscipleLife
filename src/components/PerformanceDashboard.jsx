@@ -146,6 +146,34 @@ const PerformanceDashboard = () => {
         </motion.div>
       </div>
 
+      {/* Alertes : pages au-dessus du seuil */}
+      {(() => {
+        const overThreshold = performanceMonitor.getPagesOverThreshold(4000);
+        return overThreshold.length > 0 ? (
+          <Card className="border-amber-200 bg-amber-50/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-amber-800">
+                <AlertCircle className="h-5 w-5" />
+                Pages à optimiser (chargement &gt; 4 s)
+              </CardTitle>
+              <CardDescription>Ces pages dépassent le seuil recommandé.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {overThreshold.map(({ page, loadTime }) => (
+                  <div key={page} className="flex items-center justify-between p-3 border border-amber-200 rounded-lg bg-white">
+                    <span className="font-medium text-gray-900">{page}</span>
+                    <Badge variant="outline" className="text-amber-700 border-amber-300">
+                      {(loadTime / 1000).toFixed(1)} s
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null;
+      })()}
+
       {/* Temps de Chargement par Page */}
       <Card>
         <CardHeader>
