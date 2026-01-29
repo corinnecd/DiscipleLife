@@ -118,7 +118,7 @@ const DesktopTreeView = ({ data }) => {
         </Button>
       </div>
 
-      <div className="absolute inset-0 overflow-auto cursor-grab active:cursor-grabbing p-20 flex justify-center min-w-full">
+      <div ref={containerRef} className="absolute inset-0 overflow-auto cursor-grab active:cursor-grabbing p-20 flex justify-center min-w-full">
          <motion.div 
             style={{ scale, transformOrigin: 'top center' }}
             drag

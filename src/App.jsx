@@ -55,6 +55,7 @@ import PrayerReminder from './pages/PrayerReminder';
 import MySummaries from './pages/MySummaries';
 import AttendanceTracking from './pages/AttendanceTracking';
 import FamillesDisciples from './pages/FamillesDisciples';
+import GenealogicalTree from './pages/GenealogicalTree';
 
 // New Feature Pages
 import AppointmentsList from './pages/AppointmentsList';
@@ -217,6 +218,7 @@ function AppRoutes() {
         <Route path="disciples/:id" element={<DiscipleDetail />} />
         
         <Route path="circles" element={<Circles />} />
+        <Route path="arbre-genealogique" element={<GenealogicalTree />} />
         <Route path="prayer-requests" element={<PrayerList />} />
         <Route path="prayer-reminder" element={<PrayerReminder />} />
         <Route path="send-report" element={<SendReport />} />

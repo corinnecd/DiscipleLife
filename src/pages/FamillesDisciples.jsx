@@ -210,29 +210,36 @@ const FamillesDisciples = () => {
 
             setFamilles(famillesAvecSuperviseurs);
 
-            // Calculer le nombre réel de membres pour chaque famille
+            // RPC pour compter les disciples (cercle_personnes) par famille (contourne RLS)
+            const familleIds = famillesAvecSuperviseurs.map(f => f.id);
+            const { data: rpcCounts, error: rpcError } = await supabase.rpc('get_nombre_disciples_par_familles', {
+              p_famille_ids: familleIds,
+            });
+            const cercleCountByFamille = {};
+            if (!rpcError && Array.isArray(rpcCounts)) {
+              (rpcCounts || []).forEach((row) => {
+                cercleCountByFamille[row.famille_id] = Number(row.nb_disciples_cercle) || 0;
+              });
+            }
+
+            // Calculer le nombre réel de membres pour chaque famille (profils + cercle)
             const nombreMembresMap = {};
             for (const famille of famillesAvecSuperviseurs) {
               let total = 0;
-              
-              // 1. Membres depuis profils avec famille_id
               const { data: membresData } = await supabase
                 .from('profils')
                 .select('id')
                 .eq('famille_id', famille.id);
-              
               total += (membresData || []).length;
-
-              // 2. Membres depuis cercle_personnes liés au superviseur
-              if (famille.superviseur_id) {
+              if (famille.id in cercleCountByFamille) {
+                total += cercleCountByFamille[famille.id];
+              } else if (famille.superviseur_id) {
                 const { data: disciplesData } = await supabase
                   .from('cercle_personnes')
                   .select('id')
                   .eq('user_id', famille.superviseur_id);
-                
                 total += (disciplesData || []).length;
               }
-
               nombreMembresMap[famille.id] = total;
             }
 
