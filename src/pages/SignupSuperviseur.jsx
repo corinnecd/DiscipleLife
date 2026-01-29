@@ -103,37 +103,35 @@ const SignupSuperviseur = () => {
 
     setLoading(true);
     try {
-      // Créer le compte utilisateur avec les métadonnées
+      // Créer le compte utilisateur avec les métadonnées (alignées sur la table profils)
       const { error: signUpError } = await signUp(formData.email, formData.password, {
         data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
             role: 'superviseur',
-            pasteur_id: formData.pasteurId // Stocké dans les métadonnées, sera utilisé par le trigger
+            pasteur_id: formData.pasteurId,
+            titre: formData.titre
         }
       });
 
       if (signUpError) throw signUpError;
 
-      // Attendre un peu pour que le trigger handle_new_user crée le profil
-      // Puis mettre à jour le profil avec pasteur_id
+      // Attendre que le trigger handle_new_user crée le profil (metadata contient déjà pasteur_id et titre)
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Mettre à jour le profil pour ajouter pasteur_id et titre
+      // Rattrapage : mettre à jour le profil si le trigger n'a pas encore écrit pasteur_id / titre
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { error: updateError } = await supabase
           .from('profils')
-          .update({ 
-            pasteur_id: formData.pasteurId,
-            titre: formData.titre
+          .update({
+            pasteur_id: formData.pasteurId || null,
+            titre: formData.titre || null
           })
           .eq('id', user.id);
 
         if (updateError) {
           console.error('Erreur lors de la mise à jour du profil:', updateError);
-          // Ne pas bloquer l'inscription si cette mise à jour échoue
-          // Le trigger devrait normalement gérer cela
         }
       }
       

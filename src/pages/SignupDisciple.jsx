@@ -25,10 +25,33 @@ const SignupDisciple = () => {
     password: '',
     confirmPassword: '',
     familleId: '',
-    dateEntreeFamille: new Date().toISOString().split('T')[0] // Date du jour par défaut
+    dateEntreeFamille: new Date().toISOString().split('T')[0],
+    role: 'disciple',
+    mentorId: '',
+    spiritualStage: '',
+    formationsPcncRealisees: '',
+    nombreDisciples: '',
+    phone: '',
+    villeResidence: ''
   });
 
   const [familles, setFamilles] = useState([]);
+  const [mentors, setMentors] = useState([]);
+
+  const SPIRITUAL_STAGES = [
+    { value: '', label: 'Non renseigné' },
+    { value: 'Non-croyant', label: 'Non-croyant' },
+    { value: 'Nouveau converti', label: 'Nouveau converti' },
+    { value: 'Disciple affermi', label: 'Disciple affermi' },
+    { value: 'Faiseur de disciples', label: 'Faiseur de disciples' }
+  ];
+
+  const ROLES = [
+    { value: 'disciple', label: 'Disciple' },
+    { value: 'mentor', label: 'Mentor' },
+    { value: 'superviseur', label: 'Superviseur' },
+    { value: 'pasteur', label: 'Pasteur' }
+  ];
 
   // Charger la liste des familles
   useEffect(() => {
@@ -58,12 +81,43 @@ const SignupDisciple = () => {
     fetchFamilles();
   }, [toast]);
 
+  // Charger la liste des mentors / superviseurs (pour "Suivi par")
+  useEffect(() => {
+    const fetchMentors = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profils')
+          .select('id, first_name, last_name, role')
+          .in('role', ['mentor', 'superviseur'])
+          .order('last_name');
+
+        if (error) throw error;
+        setMentors(data || []);
+      } catch (error) {
+        console.error('Erreur chargement mentors:', error);
+      }
+    };
+    fetchMentors();
+  }, []);
+
   const handleInputChange = (e) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleFamilleChange = (value) => {
     setFormData(prev => ({ ...prev, familleId: value }));
+  };
+
+  const handleRoleChange = (value) => {
+    setFormData(prev => ({ ...prev, role: value }));
+  };
+
+  const handleMentorChange = (value) => {
+    setFormData(prev => ({ ...prev, mentorId: value }));
+  };
+
+  const handleSpiritualStageChange = (value) => {
+    setFormData(prev => ({ ...prev, spiritualStage: value }));
   };
 
   const handleSubmit = async (e) => {
@@ -78,7 +132,7 @@ const SignupDisciple = () => {
         return;
     }
 
-    if (!formData.familleId) {
+    if (formData.role === 'disciple' && !formData.familleId) {
         toast({ 
           title: "Erreur", 
           description: "Veuillez sélectionner votre famille.", 
@@ -89,13 +143,20 @@ const SignupDisciple = () => {
 
     setLoading(true);
     try {
-      // Créer le compte utilisateur avec les métadonnées
+      // Créer le compte utilisateur avec les métadonnées (alignées sur la table profils)
       const { error: signUpError } = await signUp(formData.email, formData.password, {
         data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
-            role: 'disciple',
-            famille_id: formData.familleId // Stocké dans les métadonnées
+            role: formData.role || 'disciple',
+            famille_id: formData.familleId || null,
+            date_entree_famille: formData.dateEntreeFamille ? new Date(formData.dateEntreeFamille).toISOString().split('T')[0] : null,
+            mentor_id: formData.mentorId || null,
+            spiritual_stage: formData.spiritualStage || null,
+            formations_pcnc_realisees: formData.formationsPcncRealisees || null,
+            nombre_disciples: formData.nombreDisciples !== '' ? parseInt(formData.nombreDisciples, 10) : null,
+            phone: formData.phone || null,
+            ville_residence: formData.villeResidence || null
         }
       });
 
@@ -109,13 +170,20 @@ const SignupDisciple = () => {
       // Ici, on suppose qu'il y a un champ famille_id dans profils ou une table de liaison
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Vérifier si le profil existe et mettre à jour si nécessaire
+        const updatePayload = {
+          famille_id: formData.familleId || null,
+          date_entree_famille: formData.dateEntreeFamille ? new Date(formData.dateEntreeFamille).toISOString().split('T')[0] : null,
+          role: formData.role || 'disciple',
+          mentor_id: formData.mentorId || null,
+          spiritual_stage: formData.spiritualStage || null,
+          formations_pcnc_realisees: formData.formationsPcncRealisees || null,
+          nombre_disciples: formData.nombreDisciples !== '' ? parseInt(formData.nombreDisciples, 10) : null,
+          phone: formData.phone || null,
+          ville_residence: formData.villeResidence || null
+        };
         const { error: updateError } = await supabase
           .from('profils')
-          .update({ 
-            famille_id: formData.familleId,
-            date_entree_famille: formData.dateEntreeFamille ? new Date(formData.dateEntreeFamille).toISOString() : null
-          })
+          .update(updatePayload)
           .eq('id', user.id);
 
         if (updateError) {
@@ -150,8 +218,8 @@ const SignupDisciple = () => {
            <div className="w-12 h-12 bg-teal-500/10 rounded-lg flex items-center justify-center text-teal-400 mb-4">
                <UserPlus size={24} />
            </div>
-           <CardTitle className="text-2xl">Inscription Disciple</CardTitle>
-           <CardDescription className="text-gray-400">Commencez votre voyage de croissance spirituelle dès aujourd'hui.</CardDescription>
+           <CardTitle className="text-2xl">Inscription membre</CardTitle>
+           <CardDescription className="text-gray-400">Rôle, famille, date d'entrée, suivi par, statut spirituel, formations PCNC, nombre de disciples, téléphone, ville de résidence.</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
@@ -217,18 +285,109 @@ const SignupDisciple = () => {
                 </p>
              </div>
              <div className="space-y-2">
-                <Label>Disciple depuis le <span className="text-red-400">*</span></Label>
+                <Label>Rôle</Label>
+                <Select value={formData.role} onValueChange={handleRoleChange}>
+                  <SelectTrigger className="bg-black/20 border-white/10 text-white">
+                    <SelectValue placeholder="Sélectionnez votre rôle" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a0b2e] border-white/10">
+                    {ROLES.map((r) => (
+                      <SelectItem key={r.value} value={r.value} className="text-white focus:bg-teal-500/20">
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+             </div>
+             <div className="space-y-2">
+                <Label>Date d'entrée dans la famille</Label>
                 <Input 
                   type="date" 
                   name="dateEntreeFamille" 
                   value={formData.dateEntreeFamille} 
                   onChange={handleInputChange} 
-                  required 
                   className="bg-black/20 border-white/10 text-white" 
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Date d'entrée dans la famille.
                 </p>
+             </div>
+             <div className="space-y-2">
+                <Label>Suivi par (mentor / superviseur)</Label>
+                <Select value={formData.mentorId} onValueChange={handleMentorChange}>
+                  <SelectTrigger className="bg-black/20 border-white/10 text-white">
+                    <SelectValue placeholder="Optionnel : sélectionnez qui vous suit" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a0b2e] border-white/10">
+                    <SelectItem value="" className="text-white focus:bg-teal-500/20">Aucun</SelectItem>
+                    {mentors.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="text-white focus:bg-teal-500/20">
+                        {[m.first_name, m.last_name].filter(Boolean).join(' ')} ({m.role})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+             </div>
+             <div className="space-y-2">
+                <Label>Statut spirituel</Label>
+                <Select value={formData.spiritualStage} onValueChange={handleSpiritualStageChange}>
+                  <SelectTrigger className="bg-black/20 border-white/10 text-white">
+                    <SelectValue placeholder="Sélectionnez un statut" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a0b2e] border-white/10">
+                    {SPIRITUAL_STAGES.map((s) => (
+                      <SelectItem key={s.value || 'none'} value={s.value} className="text-white focus:bg-teal-500/20">
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+             </div>
+             <div className="space-y-2">
+                <Label>Formation(s) PCNC réalisées</Label>
+                <Input 
+                  name="formationsPcncRealisees" 
+                  value={formData.formationsPcncRealisees} 
+                  onChange={handleInputChange} 
+                  placeholder="Ex. Guérison des cœurs brisés, Fondations..."
+                  className="bg-black/20 border-white/10 text-white" 
+                />
+             </div>
+             <div className="space-y-2">
+                <Label>Nombre de disciples</Label>
+                <Input 
+                  type="number" 
+                  name="nombreDisciples" 
+                  value={formData.nombreDisciples} 
+                  onChange={handleInputChange} 
+                  min={0}
+                  placeholder="0"
+                  className="bg-black/20 border-white/10 text-white" 
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Pour les mentors : nombre de disciples suivis.
+                </p>
+             </div>
+             <div className="space-y-2">
+                <Label>Numéro de téléphone</Label>
+                <Input 
+                  type="tel" 
+                  name="phone" 
+                  value={formData.phone} 
+                  onChange={handleInputChange} 
+                  placeholder="+33 6 12 34 56 78"
+                  className="bg-black/20 border-white/10 text-white" 
+                />
+             </div>
+             <div className="space-y-2">
+                <Label>Ville de résidence</Label>
+                <Input 
+                  name="villeResidence" 
+                  value={formData.villeResidence} 
+                  onChange={handleInputChange} 
+                  placeholder="Ex. Libreville, Port-Gentil..."
+                  className="bg-black/20 border-white/10 text-white" 
+                />
              </div>
              <div className="space-y-2">
                 <Label>Email</Label>

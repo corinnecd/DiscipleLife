@@ -53,28 +53,32 @@ const SignupMentor = () => {
 
     setLoading(true);
     try {
+      // Métadonnées alignées sur la table profils (colonnes : first_name, last_name, role, titre, eglise)
       const { error } = await signUp(formData.email, formData.password, {
         data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
-            role: 'mentor', // Explicitly setting mentor role
-            church_affiliation: formData.church,
-            titre: formData.titre
+            role: 'mentor',
+            titre: formData.titre,
+            eglise: formData.church || null
         }
       });
 
       if (error) throw error;
 
-      // Mettre à jour le profil pour ajouter le titre
+      // Rattrapage : mettre à jour le profil (titre, eglise) si le trigger n'a pas encore écrit ces champs
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { error: updateError } = await supabase
           .from('profils')
-          .update({ titre: formData.titre })
+          .update({
+            titre: formData.titre || null,
+            eglise: formData.church || null
+          })
           .eq('id', user.id);
 
         if (updateError) {
-          console.error('Erreur lors de la mise à jour du titre:', updateError);
+          console.error('Erreur lors de la mise à jour du profil:', updateError);
         }
       }
       

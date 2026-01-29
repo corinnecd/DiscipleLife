@@ -88,12 +88,12 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      // Pass metadata explicitly for the handle_new_user trigger
+      // Métadonnées alignées sur la table profils (champs de base ; pour famille/date, utiliser /signup/disciple)
       const { error } = await signUp(formData.email, formData.password, {
-        data: { // Supabase expects metadata inside 'data' key for signUp options in v2
+        data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
-            role: 'disciple' // Default role
+            role: 'disciple'
         }
       });
       

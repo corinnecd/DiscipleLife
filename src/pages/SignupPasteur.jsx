@@ -53,7 +53,7 @@ const SignupPasteur = () => {
       // Générer l'identifiant unique si non fourni
       const identifiantUnique = formData.identifiantUnique || generateIdentifiantUnique();
 
-      // Créer le compte utilisateur avec les métadonnées
+      // Créer le compte utilisateur avec les métadonnées (alignées sur la table profils)
       const { error: signUpError } = await signUp(formData.email, formData.password, {
         data: {
             first_name: formData.firstName,

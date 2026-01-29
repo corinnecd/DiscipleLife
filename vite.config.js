@@ -241,9 +241,12 @@ export default defineConfig({
 		addTransformIndexHtml
 	],
 	server: {
+		port: 3000,
 		cors: true,
 		headers: {
-			'Cross-Origin-Embedder-Policy': 'credentialless',
+			// En dev, ne pas imposer COEP pour éviter les blocages en iframe (ex. prévisualisation Cursor)
+			...(isDev ? {} : { 'Cross-Origin-Embedder-Policy': 'credentialless' }),
+			'Access-Control-Allow-Origin': '*',
 		},
 		allowedHosts: true,
 	},
