@@ -52,12 +52,12 @@ const PrayerList = () => {
           cacheKey,
           async () => {
             const { data, error } = await supabase
-              .from('cercle_personnes')
-              .select('id, name')
-              .eq('user_id', user.id)
-              .order('name');
+              .from('profils')
+              .select('id, first_name, last_name')
+              .eq('mentor_id', user.id)
+              .order('first_name');
             if (error) throw error;
-            return data || [];
+            return (data || []).map(p => ({ id: p.id, name: `${(p.first_name || '')} ${(p.last_name || '')}`.trim() || 'Sans nom' }));
           },
           2 * 60 * 1000 // 2 minutes
         );

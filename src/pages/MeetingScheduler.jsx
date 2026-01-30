@@ -60,13 +60,13 @@ const MeetingScheduler = () => {
   const fetchDisciples = async () => {
     try {
       const { data, error } = await supabase
-        .from('cercle_personnes')
-        .select('id, name')
-        .eq('user_id', user.id)
-        .order('name');
+        .from('profils')
+        .select('id, first_name, last_name')
+        .eq('mentor_id', user.id)
+        .order('first_name');
       
       if (error) throw error;
-      setDisciples(data || []);
+      setDisciples((data || []).map(p => ({ id: p.id, name: `${(p.first_name || '')} ${(p.last_name || '')}`.trim() || 'Sans nom' })));
     } catch (error) {
       console.error("Error fetching disciples:", error);
     }

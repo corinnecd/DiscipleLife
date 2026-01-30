@@ -19,6 +19,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { Helmet } from 'react-helmet';
@@ -33,6 +34,10 @@ import {
 import { 
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
+
+const devLog = (...args) => { if (import.meta.env.DEV) console.log(...args); };
+const devWarn = (...args) => { if (import.meta.env.DEV) console.warn(...args); };
+const devError = (...args) => { if (import.meta.env.DEV) console.error(...args); };
 
 /** Curseur de survol du Tooltip : barre fine et gris clair pour les BarChart verticalux */
 const TooltipCursorBar = (props) => {
@@ -56,6 +61,7 @@ const PasteurDashboard = () => {
   const { role } = useRole();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { handleError } = useErrorHandler();
   const [loading, setLoading] = useState(true);
   const [pasteurNom, setPasteurNom] = useState({ first_name: '', last_name: '', identifiant_unique: '' });
   const [superviseurs, setSuperviseurs] = useState([]);
@@ -140,12 +146,11 @@ const PasteurDashboard = () => {
       });
   }, [user?.id, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
 
-  // Charger les mentors consolidés après le chargement des familles (user?.id pour stabilité)
+  // Charger les mentors consolidés : dès que l'utilisateur pasteur est prêt (RPC), puis quand les familles sont chargées (repli)
   useEffect(() => {
-    if (familles.length > 0 && user?.id) {
-      fetchMentorsConsolides();
-    }
-  }, [familles, user?.id]);
+    if (!user?.id || (role !== 'pasteur' && role !== 'admin' && role !== 'super_admin')) return;
+    fetchMentorsConsolides();
+  }, [user?.id, role, familles.length]);
 
   // Charger KPI Total Disciples par Pasteur (pasteur, admin, super_admin)
   useEffect(() => {
@@ -164,13 +169,13 @@ const PasteurDashboard = () => {
       clearCache(`${cacheKeyBase}_info`);
       clearCache(`${cacheKeyBase}_superviseurs`);
       clearCache(`familles_${role}_${role === 'superviseur' ? user.id : 'all'}`);
+      for (let i = 0; i <= 50; i++) clearCache(`pasteur_${user.id}_mentors_consolides_f${i}`);
       await fetchPasteurData();
       if (role === 'pasteur' || role === 'admin' || role === 'super_admin') {
         await fetchKpiParPasteur();
       }
     } catch (e) {
-      console.error('Erreur rafraîchissement:', e);
-      toast({ title: 'Erreur', description: 'Impossible de rafraîchir les données.', variant: 'destructive' });
+      handleError(e, { context: 'refreshPasteurData' }, "Impossible de rafraîchir les données.");
     } finally {
       setRefreshing(false);
     }
@@ -256,7 +261,7 @@ const PasteurDashboard = () => {
             .eq('role', 'superviseur')
             .order('first_name', { ascending: true });
           if (error) {
-            console.error('Erreur lors de la récupération des superviseurs:', error);
+            devError('Erreur lors de la récupération des superviseurs:', error);
             throw error;
           }
           return data || [];
@@ -291,7 +296,7 @@ const PasteurDashboard = () => {
       let superviseursFinal = superviseursAvecTitres || [];
       
       if (!superviseursAvecTitres || superviseursAvecTitres.length === 0) {
-        console.log('Aucun superviseur trouvé via pasteur_id, tentative via familles...');
+        devLog('Aucun superviseur trouvé via pasteur_id, tentative via familles...');
         
         // Récupérer toutes les familles avec leurs superviseurs
         const { data: famillesData, error: famillesError } = await supabase
@@ -333,13 +338,13 @@ const PasteurDashboard = () => {
                 })
               );
               
-              console.log('Superviseurs trouvés via familles et filtrés par pasteur_id:', superviseursFinal.length);
+              devLog('Superviseurs trouvés via familles et filtrés par pasteur_id:', superviseursFinal.length);
             }
           }
         }
       }
 
-      console.log('Total superviseurs récupérés pour pasteur', user.id, ':', superviseursFinal?.length || 0);
+      devLog('Total superviseurs récupérés pour pasteur', user.id, ':', superviseursFinal?.length || 0);
       setSuperviseurs(superviseursFinal || []);
 
       // 3. Pour chaque superviseur, récupérer sa famille et calculer les stats
@@ -354,7 +359,7 @@ const PasteurDashboard = () => {
             .limit(1);
 
           if (familleError) {
-            console.error(`Erreur famille pour superviseur ${superviseur.id}:`, familleError);
+            devError(`Erreur famille pour superviseur ${superviseur.id}:`, familleError);
             // Ne pas retourner null, continuer avec famille: null
           }
 
@@ -362,7 +367,7 @@ const PasteurDashboard = () => {
           const familleData = famillesData && famillesData.length > 0 ? famillesData[0] : null;
 
           if (!familleData) {
-            console.warn(`⚠️ Superviseur ${superviseur.first_name} ${superviseur.last_name} (${superviseur.id}) n'a pas de famille assignée`);
+            devWarn(`⚠️ Superviseur ${superviseur.first_name} ${superviseur.last_name} (${superviseur.id}) n'a pas de famille assignée`);
             return {
               superviseur,
               famille: null,
@@ -375,14 +380,14 @@ const PasteurDashboard = () => {
             };
           }
 
-          // Compter les disciples de la famille (cercle_personnes : tous les disciples sont sous user_id = superviseur)
+          // Effectifs par famille (repli) : source unique = profils (plus de cercle_personnes)
           const { count: nombreDisciples, error: countError } = await supabase
-            .from('cercle_personnes')
+            .from('profils')
             .select('*', { count: 'exact', head: true })
-            .eq('user_id', superviseur.id);
+            .eq('famille_id', familleData.id);
 
           if (countError) {
-            console.error(`Erreur comptage disciples pour famille ${familleData.id}:`, countError);
+            devError(`Erreur comptage disciples pour famille ${familleData.id}:`, countError);
           }
 
           const nombreMembres = nombreMembresPourStats(
@@ -440,27 +445,27 @@ const PasteurDashboard = () => {
       // Identifier les superviseurs sans famille
       const superviseursSansFamille = famillesValides.filter(f => f.famille === null);
       if (superviseursSansFamille.length > 0) {
-        console.warn('⚠️ Superviseurs sans famille:', superviseursSansFamille.map(s => `${s.superviseur.first_name} ${s.superviseur.last_name} (${s.superviseur.id})`));
+        devWarn('⚠️ Superviseurs sans famille:', superviseursSansFamille.map(s => `${s.superviseur.first_name} ${s.superviseur.last_name} (${s.superviseur.id})`));
       }
 
       // 4. Calculer les statistiques globales
       // Utiliser directement la longueur de superviseursFinal pour le nombre de superviseurs
       const totalSuperviseurs = superviseursFinal?.length || 0;
-      console.log('Total superviseurs calculé:', totalSuperviseurs, 'sur', superviseursFinal?.length || 0);
+      devLog('Total superviseurs calculé:', totalSuperviseurs, 'sur', superviseursFinal?.length || 0);
       // Le nombre de familles devrait correspondre au nombre de superviseurs (chaque superviseur a une famille)
       let totalFamilles = famillesValides.filter(f => f.famille !== null).length;
-      console.log('Total familles trouvées:', totalFamilles, 'sur', totalSuperviseurs, 'superviseurs');
+      devLog('Total familles trouvées:', totalFamilles, 'sur', totalSuperviseurs, 'superviseurs');
       
       // Si le nombre de familles ne correspond pas, afficher un avertissement
       if (totalFamilles < totalSuperviseurs) {
-        console.warn(`⚠️ ATTENTION: ${totalSuperviseurs - totalFamilles} superviseur(s) n'ont pas de famille assignée`);
+        devWarn(`⚠️ ATTENTION: ${totalSuperviseurs - totalFamilles} superviseur(s) n'ont pas de famille assignée`);
       }
       let totalDisciples = famillesValides.reduce((sum, f) => sum + f.stats.nombreMembres, 0);
       let objectifTotal = famillesValides.reduce((sum, f) => sum + f.stats.objectif, 0);
       let progressionGlobale = objectifTotal > 0 ? (totalDisciples / objectifTotal) * 100 : 0;
       let famillesObjectifAtteint = famillesValides.filter(f => f.stats.nombreMembres >= f.stats.objectif).length;
 
-      // RPC KPI familles (contourne RLS sur cercle_personnes) pour disciples et progression corrects
+      // RPC KPI familles (source = profils, contourne RLS) pour disciples et progression corrects
       const { data: kpiFamillesRows, error: kpiFamillesErr } = await supabase.rpc('get_kpi_familles_pour_pasteur', { p_pasteur_id: user.id });
       if (!kpiFamillesErr && kpiFamillesRows && kpiFamillesRows.length > 0) {
         const k = kpiFamillesRows[0];
@@ -624,14 +629,14 @@ const PasteurDashboard = () => {
       });
 
     } catch (error) {
-      console.error('Erreur lors du chargement des données pasteur:', error);
+      handleError(error, { context: 'fetchPasteurData' }, "Impossible de charger les données du tableau de bord.");
     } finally {
       setLoading(false);
     }
   };
 
   // KPI Globaux - Total Disciples par Pasteur (pasteur, admin, super_admin)
-  // Priorité : RPC get_kpi_disciples_par_pasteur (contourne RLS sur cercle_personnes) ; repli sur requêtes directes.
+  // Priorité : RPC get_kpi_disciples_par_pasteur (source = profils) ; repli sur requêtes directes.
   const fetchKpiParPasteur = async () => {
     if (role !== 'pasteur' && role !== 'admin' && role !== 'super_admin') return;
     setKpiParPasteurLoading(true);
@@ -704,7 +709,7 @@ const PasteurDashboard = () => {
       setKpiParPasteurTotalCumule(result.reduce((s, r) => s + r.totalDisciples, 0));
       setKpiParPasteurTotalFamilles(result.reduce((s, r) => s + (r.totalFamilles || 0), 0));
     } catch (e) {
-      console.error('Erreur fetchKpiParPasteur:', e);
+      handleError(e, { context: 'fetchKpiParPasteur' }, "Impossible de charger les KPI par pasteur.");
       setKpiParPasteur([]);
       setKpiParPasteurTotalCumule(0);
       setKpiParPasteurTotalFamilles(0);
@@ -745,12 +750,7 @@ const PasteurDashboard = () => {
       if (error) throw error;
       setSuperviseursOptions(data || []);
     } catch (error) {
-      console.error('Erreur lors du chargement des superviseurs:', error);
-      toast({
-        title: 'Erreur',
-        description: 'Impossible de charger la liste des superviseurs',
-        variant: 'destructive',
-      });
+      handleError(error, { context: 'loadSuperviseursOptions' }, "Impossible de charger la liste des superviseurs.");
     }
   };
 
@@ -809,12 +809,7 @@ const PasteurDashboard = () => {
         description: `La famille "${createForm.nom}" a été ajoutée avec succès.`,
       });
     } catch (error) {
-      console.error('Erreur lors de la création de la famille:', error);
-      toast({
-        title: 'Erreur',
-        description: "Impossible de créer la famille. Vérifiez que l'identifiant est unique.",
-        variant: 'destructive',
-      });
+      handleError(error, { context: 'handleCreateFamille' }, "Impossible de créer la famille. Vérifiez que l'identifiant est unique.");
     } finally {
       setCreateLoading(false);
     }
@@ -912,8 +907,7 @@ const PasteurDashboard = () => {
       await exportElementToPDF('pasteur-dashboard-content', filename);
       toast({ title: 'Export PDF réussi', description: 'Le tableau de bord a été exporté en PDF.' });
     } catch (error) {
-      console.error('Erreur lors de l\'export PDF:', error);
-      toast({ variant: 'destructive', title: 'Erreur export PDF', description: 'Impossible d\'exporter le tableau de bord en PDF.' });
+      handleError(error, { context: 'handleExportPDF' }, "Impossible d'exporter le tableau de bord en PDF.");
     } finally {
       setExporting(false);
     }
@@ -946,8 +940,7 @@ const PasteurDashboard = () => {
       });
       toast({ title: 'Export réussi', description: `${exportData.length} famille(s) exportée(s).` });
     } catch (error) {
-      console.error('Erreur lors de l\'export Excel:', error);
-      toast({ variant: 'destructive', title: 'Erreur export', description: 'Impossible d\'exporter les familles.' });
+      handleError(error, { context: 'handleExportExcel' }, "Impossible d'exporter les familles.");
     }
   };
 
@@ -955,11 +948,14 @@ const PasteurDashboard = () => {
   const handleExportExcelMentors = () => {
     try {
       const exportData = filteredMentorsConsolides.map(m => ({
-        'Nom du mentor': [m.prenom, m.nom].filter(Boolean).join(' ') || '',
-        'Nom de la famille': m.eglise || '',
-        'Suivi par': m.suivi_par ?? '',
-        'Nombre de disciples': m.nombre_disciples,
-        'Titre': m.titre || '',
+        'Nom': m.nom || '',
+        'Prénom': m.prenom || '',
+        'Familles': m.eglise || '',
+        'Nombre de disciples': m.nombre_disciples ?? 0,
+        'Avancement % (objectif 70)': m.avancement_pourcentage != null ? m.avancement_pourcentage : '',
+        'Présence Culte Samedi': m.presence_culte_samedi != null ? m.presence_culte_samedi : '',
+        'Présence Culte Dimanche': m.disciples_presents != null ? m.disciples_presents : '',
+        'Taux participation semaine (%)': m.taux_participation_semaine != null ? m.taux_participation_semaine : '',
       }));
 
       if (exportData.length === 0) {
@@ -969,14 +965,13 @@ const PasteurDashboard = () => {
 
       const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
       exportToExcel(exportData, `dashboard_pasteur_mentors_${timestamp}`, {
-        title: 'Tableau consolidé des mentors (piliers) – Dashboard Pasteur',
-        description: 'Vue d\'ensemble des mentors avec statistiques de progression',
+        title: 'Tableau consolidé 7 colonnes – Dashboard Pasteur',
+        description: 'Nom, Prénom, Familles, Nombre de disciples, Avancement %, Présence Culte Samedi, Présence Culte Dimanche, Taux participation',
         author: 'DiscipleLife',
       });
       toast({ title: 'Export réussi', description: `${exportData.length} mentor(s) exporté(s).` });
     } catch (error) {
-      console.error('Erreur lors de l\'export Excel mentors:', error);
-      toast({ variant: 'destructive', title: 'Erreur export', description: 'Impossible d\'exporter le tableau des mentors.' });
+      handleError(error, { context: 'handleExportExcelMentors' }, "Impossible d'exporter le tableau des mentors.");
     }
   };
 
@@ -1050,7 +1045,7 @@ const PasteurDashboard = () => {
         });
       }
     } catch (error) {
-      console.error('Erreur lors de la vérification des rapports manquants:', error);
+      handleError(error, { context: 'checkMissingReports' }, "Impossible de vérifier les rapports manquants.");
     }
   };
 
@@ -1058,7 +1053,7 @@ const PasteurDashboard = () => {
   const fetchMentorsConsolides = async () => {
     try {
       setLoadingMentors(true);
-      const cacheKeyBase = `pasteur_${user.id}_mentors_consolides`;
+      const cacheKeyBase = `pasteur_${user.id}_mentors_consolides_f${familles.length}`;
       
       const mentorsData = await getOrSetCache(
         cacheKeyBase,
@@ -1069,18 +1064,23 @@ const PasteurDashboard = () => {
           });
           if (!rpcError && Array.isArray(rpcRows) && rpcRows.length > 0) {
             const roleToTitre = (r) => (r === 'superviseur' ? 'Superviseur' : r === 'mentor' ? 'Mentor' : r === 'disciple_pillier' ? 'Berger' : r === 'disciple' ? 'Disciple' : r || 'Disciple');
-            return rpcRows.map((row) => ({
-              mentor_id: row.user_id,
-              nom: row.last_name || '',
-              prenom: row.first_name || '',
-              eglise: row.famille_nom || 'N/A',
-              suivi_par: row.suivi_par_nom || '—',
-              nombre_disciples: Number(row.nombre_disciples) || 0,
-              titre: row.titre || roleToTitre(row.role_profil),
-              avancement_pourcentage: 0,
-              disciples_presents: 0,
-              taux_participation_semaine: 0,
-            }));
+            const objectif = 70;
+            return rpcRows.map((row) => {
+              const nb = Number(row.nombre_disciples) || 0;
+              return {
+                mentor_id: row.user_id,
+                nom: row.last_name || '',
+                prenom: row.first_name || '',
+                eglise: row.famille_nom || 'N/A',
+                suivi_par: row.suivi_par_nom || '—',
+                nombre_disciples: nb,
+                titre: row.titre || roleToTitre(row.role_profil),
+                avancement_pourcentage: objectif > 0 ? Math.round(Math.min((nb / objectif) * 100, 100)) : 0,
+                presence_culte_samedi: 0,
+                disciples_presents: 0,
+                taux_participation_semaine: 0,
+              };
+            });
           }
           // Repli : requêtes directes (comptages cercle peuvent être 0 si RLS bloque)
           const familleIds = familles.filter(f => f.famille?.id).map(f => f.famille.id);
@@ -1102,10 +1102,11 @@ const PasteurDashboard = () => {
               const nomEglise = superviseurDeLaFamille?.famille?.nom || 'N/A';
               const sup = superviseurDeLaFamille?.superviseur;
               const suiviPar = sup ? [sup.first_name || '', sup.last_name || ''].map(s => String(s).trim()).join(' ').trim().toUpperCase() || '—' : '—';
+              // Nombre de disciples du mentor : source = profils (mentor_id)
               const { count: nombreDisciples } = await supabase
-                .from('cercle_personnes')
+                .from('profils')
                 .select('*', { count: 'exact', head: true })
-                .eq('user_id', mentor.id);
+                .eq('mentor_id', mentor.id);
               const nombreDisciplesTotal = nombreDisciples || 0;
               const objectif = 70;
               const avancementPourcentage = Math.min((nombreDisciplesTotal / objectif) * 100, 100);
@@ -1119,6 +1120,7 @@ const PasteurDashboard = () => {
                 nombre_disciples: nombreDisciplesTotal,
                 titre,
                 avancement_pourcentage: Math.round(avancementPourcentage),
+                presence_culte_samedi: 0,
                 disciples_presents: 0,
                 taux_participation_semaine: 0,
               };
@@ -1131,12 +1133,7 @@ const PasteurDashboard = () => {
 
       setMentorsConsolides(mentorsData || []);
     } catch (error) {
-      console.error('Erreur lors de la récupération des mentors consolidés:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Erreur',
-        description: 'Impossible de charger les données des mentors.',
-      });
+      handleError(error, { context: 'fetchMentorsConsolides' }, "Impossible de charger les données des mentors.");
     } finally {
       setLoadingMentors(false);
     }
@@ -1152,19 +1149,37 @@ const PasteurDashboard = () => {
     return nomSuperviseur.includes(search) || nomFamille.includes(search) || identifiantFamille.includes(search);
   });
 
-  // Exclure les superviseurs : ne garder que les faiseurs de disciples (mentors) des familles
+  // Uniquement les disciples qui ont des disciples (pas les superviseurs) : piliers / mentors
   const mentorsConsolidesSansSuperviseurs = mentorsConsolides.filter(m => (m.titre || '').toLowerCase() !== 'superviseur');
-  // Filtrer par recherche (nom, prénom, famille) et par famille
+  // Parser le champ recherche : ex. "< 50", "> 70", "≥ 53", "≤ 60" pour filtre Nbre disciples, le reste = recherche texte
+  const parseSearchMentors = (term) => {
+    const t = (term || '').trim();
+    const match = t.match(/^\s*(>=|<=|<|>|\u2264|\u2265)\s*(\d+)\s*(.*)$/); // \u2264=≤ \u2265=≥ (>= et <= avant < et >)
+    if (!match) return { op: null, x: null, text: t };
+    let op = match[1];
+    if (op === '\u2264') op = '<='; else if (op === '\u2265') op = '>=';
+    return { op, x: Number(match[2]), text: (match[3] || '').trim() };
+  };
+  const searchMentorsParsed = parseSearchMentors(searchTermMentors);
+  // Filtrer par recherche (nom, prénom, famille), par famille et par Nbre disciples (si op + x dans la recherche)
   const filteredMentorsConsolides = mentorsConsolidesSansSuperviseurs.filter(m => {
-    const matchSearch = !searchTermMentors || (() => {
-      const search = normalizeString(searchTermMentors);
+    const matchEglise = filterEgliseMentors === '__toutes__' || !filterEgliseMentors || (m.eglise === filterEgliseMentors);
+    const nb = Number(m.nombre_disciples) ?? 0;
+    let matchNbreDisciples = true;
+    if (searchMentorsParsed.op != null && searchMentorsParsed.x != null) {
+      if (searchMentorsParsed.op === '<') matchNbreDisciples = nb < searchMentorsParsed.x;
+      else if (searchMentorsParsed.op === '>') matchNbreDisciples = nb > searchMentorsParsed.x;
+      else if (searchMentorsParsed.op === '>=') matchNbreDisciples = nb >= searchMentorsParsed.x;
+      else if (searchMentorsParsed.op === '<=') matchNbreDisciples = nb <= searchMentorsParsed.x;
+    }
+    const matchSearch = !searchMentorsParsed.text || (() => {
+      const search = normalizeString(searchMentorsParsed.text);
       const nom = normalizeString(m.nom || '');
       const prenom = normalizeString(m.prenom || '');
       const eglise = normalizeString(m.eglise || '');
       return nom.includes(search) || prenom.includes(search) || eglise.includes(search);
     })();
-    const matchEglise = filterEgliseMentors === '__toutes__' || !filterEgliseMentors || (m.eglise === filterEgliseMentors);
-    return matchSearch && matchEglise;
+    return matchSearch && matchEglise && matchNbreDisciples;
   });
 
   // Spinner pleine page uniquement au premier chargement (pas à chaque refetch KPI)
@@ -2265,18 +2280,19 @@ const PasteurDashboard = () => {
                   <div className="relative flex-1 min-w-[180px] max-w-xs">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
-                      placeholder="Rechercher par nom, prénom ou famille..."
+                      type="text"
+                      placeholder="Nom, Prénom, Familles, Nbre disciples (ex: < 50, > 70, ≥ 53, ≤ 60)"
                       value={searchTermMentors}
                       onChange={(e) => setSearchTermMentors(e.target.value)}
-                      className="pl-9 bg-gray-50 border-gray-200"
+                      className="pl-9 bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-500"
                     />
                   </div>
                   <Select value={filterEgliseMentors || '__toutes__'} onValueChange={setFilterEgliseMentors}>
                     <SelectTrigger className="w-[200px] bg-gray-50 border-gray-200 text-gray-900">
-                      <SelectValue placeholder="Toutes les églises" />
+                      <SelectValue placeholder="Toutes les Familles" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200">
-                      <SelectItem value="__toutes__" className="text-gray-900">Toutes les églises</SelectItem>
+                      <SelectItem value="__toutes__" className="text-gray-900">Toutes les Familles</SelectItem>
                       {[...new Set(mentorsConsolides.map(m => m.eglise).filter(Boolean))].sort().map(eglise => (
                         <SelectItem key={eglise} value={eglise} className="text-gray-900">{eglise}</SelectItem>
                       ))}
@@ -2297,57 +2313,73 @@ const PasteurDashboard = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-purple-600 mx-auto mb-4" />
                 <p className="text-gray-500">Chargement des données des mentors...</p>
               </div>
-            ) : mentorsConsolides.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun mentor trouvé dans les familles sous votre responsabilité.</p>
-              </div>
-            ) : filteredMentorsConsolides.length === 0 ? (
-              <div className="text-center py-12">
-                <Filter className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun mentor ne correspond aux critères de recherche.</p>
-                <Button variant="outline" size="sm" className="mt-2" onClick={() => { setSearchTermMentors(''); setFilterEgliseMentors('__toutes__'); }}>
-                  Réinitialiser les filtres
-                </Button>
-              </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="group bg-purple-200 hover:bg-purple-300 transition-colors">
-                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Nom du mentor</TableHead>
-                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Nom de la famille</TableHead>
-                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Suivi par</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Nombre de disciples</TableHead>
-                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Titre</TableHead>
+                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors align-top py-2 whitespace-normal min-w-0" style={{ maxWidth: '5rem' }}>Nom<br />&nbsp;</TableHead>
+                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors align-top py-2 whitespace-normal min-w-0" style={{ maxWidth: '5rem' }}>Prénom<br />&nbsp;</TableHead>
+                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors align-top py-2 whitespace-normal min-w-0" style={{ maxWidth: '5rem' }}>Familles<br />&nbsp;</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors align-top py-2 whitespace-normal min-w-0" style={{ maxWidth: '5.5rem' }}>Nombre de<br />disciples</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors align-top py-2 whitespace-normal min-w-0" style={{ maxWidth: '5.5rem' }}>Avancement %<br />(objectif 70)</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors align-top py-2 whitespace-normal min-w-0" style={{ maxWidth: '5.5rem' }}>Présence Culte<br />Samedi</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors align-top py-2 whitespace-normal min-w-0" style={{ maxWidth: '5.5rem' }}>Présence Culte<br />Dimanche</TableHead>
+                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors align-top py-2 whitespace-normal min-w-0" style={{ maxWidth: '5.5rem' }}>Taux participation<br />semaine</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredMentorsConsolides.map((mentor) => (
-                      <TableRow key={mentor.mentor_id} className="hover:bg-gray-50 transition-colors">
-                        <TableCell>
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/disciples/${mentor.mentor_id}`)}
-                            className="font-semibold text-purple-600 hover:text-purple-800 hover:underline text-left"
-                          >
-                            {[mentor.prenom, mentor.nom].filter(Boolean).join(' ') || '—'}
-                          </button>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-gray-700">{mentor.eglise}</span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-gray-700">{mentor.suivi_par ?? '—'}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="font-semibold text-gray-900">{mentor.nombre_disciples}</span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-gray-700">{mentor.titre || '—'}</span>
+                    {filteredMentorsConsolides.length === 0 ? (
+                      <TableRow className="hover:bg-gray-100 transition-colors">
+                        <TableCell colSpan={8} className="text-center py-12 text-gray-500">
+                          {mentorsConsolides.length === 0 ? (
+                            <>Aucun mentor trouvé dans les familles sous votre responsabilité.</>
+                          ) : (
+                            <>
+                              Aucun mentor ne correspond aux critères de recherche.
+                              <Button variant="outline" size="sm" className="mt-2 ml-2 bg-green-600 text-white border-green-600 hover:bg-blue-600 hover:text-white hover:border-blue-600" onClick={() => { setSearchTermMentors(''); setFilterEgliseMentors('__toutes__'); }}>
+                                Réinitialiser les filtres
+                              </Button>
+                            </>
+                          )}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      filteredMentorsConsolides.map((mentor, idx) => (
+                        <TableRow key={mentor.mentor_id ?? `mentor-${idx}`} className="hover:bg-gray-50 transition-colors">
+                          <TableCell>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/disciples/${mentor.mentor_id}`)}
+                              className="font-semibold text-purple-600 hover:text-purple-800 hover:underline text-left"
+                            >
+                              {mentor.nom || '—'}
+                            </button>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-gray-700">{mentor.prenom || '—'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-gray-700">{mentor.eglise || '—'}</span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-semibold text-gray-900">{mentor.nombre_disciples ?? 0}</span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="text-gray-700">{mentor.avancement_pourcentage != null ? `${mentor.avancement_pourcentage} %` : '—'}</span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="text-gray-700">{mentor.presence_culte_samedi != null ? mentor.presence_culte_samedi : '—'}</span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="text-gray-700">{mentor.disciples_presents != null ? mentor.disciples_presents : '—'}</span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="text-gray-700">{mentor.taux_participation_semaine != null ? `${mentor.taux_participation_semaine} %` : '—'}</span>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>

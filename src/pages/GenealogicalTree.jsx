@@ -288,14 +288,13 @@ const GenealogicalTree = () => {
         // Fetch all disciples recursively (simulated with flat fetch for now + simple reconstruction)
         // In a real optimized app, this might be a recursive CTE in SQL
         const { data: disciplesData, error: disciplesError } = await supabase
-            .from('cercle_personnes')
-            .select('id, name, first_name, last_name, avatar_url, parent_disciple_id, user_id, group_id')
-            .eq('circle_type', 'Disciple')
-            .order('name');
+            .from('profils')
+            .select('id, first_name, last_name, avatar_url, mentor_id')
+            .not('mentor_id', 'is', null)
+            .order('first_name');
             
         if (disciplesError) throw disciplesError;
 
-        // Build the tree
         const root = {
             id: user.id,
             name: `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.email,
@@ -304,42 +303,24 @@ const GenealogicalTree = () => {
             children: []
         };
 
-        // Note: The current DB structure has 'cercle_personnes' which tracks people.
-        // We need to link them. Assuming 'parent_disciple_id' points to another entry in 'cercle_personnes'.
-        // BUT the root is a 'profils' user. 
-        // For this demo, let's assume 'cercle_personnes.user_id' refers to the mentor (the root user).
-        
-        // Let's attach direct disciples to root
-        const directDisciples = disciplesData.filter(d => d.user_id === user.id);
-        
-        // Recursive function to attach children
-        // (This assumes we have a way to track sub-disciples. If 'user_id' is always the root mentor, 
-        // the current DB schema might be flat. We will assume a flat structure for now where all are direct children 
-        // unless specific parent_disciple_id logic exists. 
-        // To make the tree interesting, we will simulate a hierarchy if 'parent_disciple_id' is null or matches root)
-        
+        const dataList = disciplesData || [];
         const buildHierarchy = (parentId) => {
-             return disciplesData
-                .filter(d => d.parent_disciple_id === parentId) // Find children of this node
+             return dataList
+                .filter(d => d.mentor_id === parentId)
                 .map(d => ({
                     id: d.id,
-                    name: d.name || `${d.first_name} ${d.last_name}`,
+                    name: `${(d.first_name || '')} ${(d.last_name || '')}`.trim() || 'Sans nom',
                     avatar_url: d.avatar_url,
                     role: 'Disciple',
-                    children: buildHierarchy(d.id) // Recurse
+                    children: buildHierarchy(d.id)
                 }));
         };
 
-        // If parent_disciple_id is used for hierarchy within the disciple table:
-        // We find top-level disciples (those belonging to user, with no parent within the disciple table, or parent is the user?)
-        // Since 'parent_disciple_id' references 'cercle_personnes(id)', it can't reference the 'profils' root directly by foreign key usually 
-        // unless UUIDs match. Let's assume top level have NULL parent_disciple_id
-        
-        const topLevelDisciples = disciplesData
-            .filter(d => d.user_id === user.id && !d.parent_disciple_id)
+        const topLevelDisciples = dataList
+            .filter(d => d.mentor_id === user.id)
             .map(d => ({
                 id: d.id,
-                name: d.name || `${d.first_name} ${d.last_name}`,
+                name: `${(d.first_name || '')} ${(d.last_name || '')}`.trim() || 'Sans nom',
                 avatar_url: d.avatar_url,
                 role: 'Disciple',
                 children: buildHierarchy(d.id)

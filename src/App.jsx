@@ -233,7 +233,11 @@ function AppRoutes() {
                 <AdminDashboard />
             </ProtectedRoute>
         } />
-        <Route path="admin/reports" element={<AdminReportsView />} />
+        <Route path="admin/reports" element={
+          <ProtectedDashboard allowedRoles={['super_admin', 'admin', 'pasteur']} dashboardName="Rapports">
+            <AdminReportsView />
+          </ProtectedDashboard>
+        } />
         <Route path="admin/testimonies" element={<AdminTestimonyModeration />} />
         <Route path="admin/access-codes" element={<AdminAccessCodeManager />} />
         <Route path="admin/activity-logs" element={<AdminActivityLog />} />

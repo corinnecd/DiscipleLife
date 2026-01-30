@@ -92,14 +92,14 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('mentor_id', user.id)
         .eq('circle_type', category.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setPeople(data || []);
+      setPeople((data || []).map(p => ({ ...p, name: `${(p.first_name || '')} ${(p.last_name || '')}`.trim() || 'Sans nom' })));
     } catch (error) {
       console.error('Error fetching people:', error);
       toast({ title: "Erreur", description: "Impossible de charger la liste.", variant: "destructive" });
@@ -123,59 +123,40 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
         .select('user_id, can_have_disciples')
         .eq('can_have_disciples', true);
 
-      // Récupérer tous les disciples de la table cercle_personnes
       const { data: allDisciplesData, error: disciplesError } = await supabase
-        .from('cercle_personnes')
-        .select('id, name, first_name, last_name, user_id');
+        .from('profils')
+        .select('id, first_name, last_name, mentor_id');
 
       if (disciplesError) throw disciplesError;
 
-      // Créer une liste combinée
       const allMembers = [];
 
-      // Ajouter les mentors depuis profils (mentors et admins)
       if (mentorsData) {
         mentorsData.forEach(mentor => {
           if (mentor.role === 'mentor' || mentor.role === 'admin' || mentor.is_approved_as_disciple_maker) {
             const fullName = `${mentor.first_name || ''} ${mentor.last_name || ''}`.trim() || 'Mentor';
-            allMembers.push({
-              id: mentor.id,
-              name: fullName,
-              type: 'mentor'
-            });
+            allMembers.push({ id: mentor.id, name: fullName, type: 'mentor' });
           }
         });
       }
 
-      // Ajouter les utilisateurs avec can_have_disciples
       if (permissionsData) {
         const mentorIds = new Set(mentorsData?.map(m => m.id) || []);
         permissionsData.forEach(perm => {
           if (!mentorIds.has(perm.user_id)) {
-            // Récupérer le nom depuis profils
             const mentorProfile = mentorsData?.find(m => m.id === perm.user_id);
             if (mentorProfile) {
               const fullName = `${mentorProfile.first_name || ''} ${mentorProfile.last_name || ''}`.trim() || 'Mentor';
-              allMembers.push({
-                id: perm.user_id,
-                name: fullName,
-                type: 'mentor'
-              });
+              allMembers.push({ id: perm.user_id, name: fullName, type: 'mentor' });
             }
           }
         });
       }
 
-      // Ajouter tous les disciples
       if (allDisciplesData) {
         allDisciplesData.forEach(disciple => {
-          const fullName = disciple.name || `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() || 'Disciple';
-          allMembers.push({
-            id: disciple.id,
-            name: fullName,
-            type: 'disciple',
-            user_id: disciple.user_id
-          });
+          const fullName = `${(disciple.first_name || '')} ${(disciple.last_name || '')}`.trim() || 'Disciple';
+          allMembers.push({ id: disciple.id, name: fullName, type: 'disciple', user_id: disciple.mentor_id });
         });
       }
 
@@ -244,121 +225,47 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
       }
 
       try {
-        // Déterminer si le parent est un mentor (ID de profils) ou un disciple (ID de cercle_personnes)
-        let parentDiscipleId = null;
-        if (fullFormData.parentDisciple && fullFormData.parentDisciple !== 'none') {
-          // Vérifier si c'est un mentor ou un disciple
-          const selectedParent = allPotentialParents.find(m => m.id === fullFormData.parentDisciple);
-          if (selectedParent) {
-            if (selectedParent.type === 'mentor') {
-              // Pour les mentors : vérifier s'ils ont déjà une entrée dans cercle_personnes
-              // Si oui, utiliser cette entrée comme parent, sinon créer une entrée minimale
-              const { data: mentorEntry, error: mentorEntryError } = await supabase
-                .from('cercle_personnes')
-                .select('id')
-                .eq('user_id', selectedParent.id)
-                .maybeSingle();
-              
-              if (mentorEntryError && mentorEntryError.code !== 'PGRST116') {
-                console.error('Erreur vérification entrée mentor:', mentorEntryError);
-                toast({ 
-                  title: "Attention", 
-                  description: "Impossible de vérifier l'entrée du mentor. Le disciple sera créé sans parent.", 
-                  variant: "warning" 
-                });
-                parentDiscipleId = null;
-              } else if (mentorEntry) {
-                // Le mentor a déjà une entrée dans cercle_personnes, utiliser cet ID
-                parentDiscipleId = mentorEntry.id;
-              } else {
-                // Le mentor n'a pas d'entrée, créer une entrée minimale pour permettre la liaison
-                const { data: mentorProfile } = await supabase
-                  .from('profils')
-                  .select('first_name, last_name, email')
-                  .eq('id', selectedParent.id)
-                  .single();
-                
-                const mentorFullName = mentorProfile 
-                  ? `${mentorProfile.first_name || ''} ${mentorProfile.last_name || ''}`.trim()
-                  : 'Mentor';
-                
-                const { data: newMentorEntry, error: createMentorEntryError } = await supabase
-                  .from('cercle_personnes')
-                  .insert({
-                    user_id: selectedParent.id,
-                    name: mentorFullName,
-                    first_name: mentorProfile?.first_name || null,
-                    last_name: mentorProfile?.last_name || null,
-                    email: mentorProfile?.email || null,
-                    circle_type: 'Faiseur de Disciples',
-                    created_at: new Date().toISOString()
-                  })
-                  .select('id')
-                  .single();
-                
-                if (createMentorEntryError) {
-                  console.error('Erreur création entrée mentor:', createMentorEntryError);
-                  toast({ 
-                    title: "Attention", 
-                    description: "Impossible de créer l'entrée du mentor. Le disciple sera créé sans parent.", 
-                    variant: "warning" 
-                  });
-                  parentDiscipleId = null;
-                } else {
-                  parentDiscipleId = newMentorEntry.id;
-                }
-              }
-            } else {
-              // Pour les disciples, on peut utiliser leur ID directement
-              parentDiscipleId = fullFormData.parentDisciple;
-            }
-          }
-        }
+        // Source unique : profils. Récupérer famille_id du mentor (utilisateur connecté) pour le nouveau disciple.
+        const { data: mentorProfil } = await supabase
+          .from('profils')
+          .select('famille_id')
+          .eq('id', user.id)
+          .maybeSingle();
 
-        // Préparer les données à insérer (sans les colonnes qui n'existent pas)
         const insertData = {
-            user_id: user.id,
-            name: `${fullFormData.firstName} ${fullFormData.lastName}`.trim(),
-            first_name: fullFormData.firstName,
-            last_name: fullFormData.lastName || null,
-            email: fullFormData.email || null,
-            phone: fullFormData.phone || null,
-            church: fullFormData.church || null,
-            country: fullFormData.country || null,
-            circle_type: mapLevelToCategory(fullFormData.spiritualLevel),
-            visible_to_others: false,
-            start_date: fullFormData.startDate || null,
-            parent_disciple_id: parentDiscipleId
+          id: crypto.randomUUID(),
+          first_name: fullFormData.firstName.trim(),
+          last_name: fullFormData.lastName?.trim() || null,
+          email: fullFormData.email?.trim() || null,
+          role: 'disciple',
+          mentor_id: user.id,
+          famille_id: mentorProfil?.famille_id || null,
+          circle_type: mapLevelToCategory(fullFormData.spiritualLevel),
+          visible_to_others: false,
         };
-
-        // Retirer les champs null pour éviter les erreurs
-        Object.keys(insertData).forEach(key => {
-            if (insertData[key] === null || insertData[key] === '') {
-                delete insertData[key];
-            }
-        });
+        if (fullFormData.phone?.trim()) insertData.phone = fullFormData.phone.trim();
+        if (fullFormData.country?.trim()) insertData.ville_residence = fullFormData.country.trim();
 
         const { data, error } = await supabase
-            .from('cercle_personnes')
-            .insert([insertData])
-            .select()
-            .single();
+          .from('profils')
+          .insert([insertData])
+          .select()
+          .single();
 
         if (error) {
           console.error("Supabase error:", error);
           throw new Error(error.message || "Erreur lors de l'insertion dans la base de données");
         }
-        
-        // If the category changed based on dropdown, we might not see it in this modal immediately if it moved to another bucket
-        // But if it's the same bucket, update list:
-        if (mapLevelToCategory(fullFormData.spiritualLevel) === category.id) {
-             setPeople([data, ...people]);
+
+        if (data && mapLevelToCategory(fullFormData.spiritualLevel) === category.id) {
+          setPeople([{ ...data, name: `${(data.first_name || '')} ${(data.last_name || '')}`.trim() || 'Sans nom' }, ...people]);
         }
         
         setIsAdding(false);
         initializeFormData();
         onUpdate(); // refresh counts
-        toast({ title: "Disciple ajouté !", description: `${data.name} a été ajouté avec succès.` });
+        const newName = `${(data.first_name || '')} ${(data.last_name || '')}`.trim() || 'Sans nom';
+        toast({ title: "Disciple ajouté !", description: `${newName} a été ajouté avec succès.` });
 
       } catch (error) {
         console.error('Error adding person:', error);
@@ -381,7 +288,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
   const updateVisibility = async (id, isVisible) => {
     try {
       const { error } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .update({ visible_to_others: isVisible })
         .eq('id', id);
       if (error) throw error;
@@ -401,7 +308,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
   const movePerson = async (person, targetCategoryKey) => {
     try {
       const { error } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .update({ circle_type: targetCategoryKey })
         .eq('id', person.id);
       if (error) throw error;
@@ -421,7 +328,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
     if (!deleteConfirmPerson) return;
     try {
       const { error } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .delete()
         .eq('id', deleteConfirmPerson.id);
       if (error) throw error;
@@ -770,7 +677,7 @@ const Circles = () => {
   const fetchCounts = async () => {
     if (!user) return;
     try {
-        const { data, error } = await supabase.from('cercle_personnes').select('circle_type').eq('user_id', user.id);
+        const { data, error } = await supabase.from('profils').select('circle_type').eq('mentor_id', user.id);
         if (error) throw error;
         const newCounts = { unbelievers: 0, newBelievers: 0, established: 0, makers: 0 };
         data.forEach(p => { if (newCounts[p.circle_type] !== undefined) newCounts[p.circle_type]++; });

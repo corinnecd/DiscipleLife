@@ -154,9 +154,9 @@ const SendReport = () => {
       setLoading(true);
       
       const { count, error } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
+        .eq('mentor_id', user.id);
       
       if (!error) {
         setDiscipleCount(count || 0);
@@ -166,9 +166,9 @@ const SendReport = () => {
       if (count > 0) {
         // Récupérer les disciples avec leurs emails pour obtenir leurs IDs utilisateurs
         const { data: disciples } = await supabase
-          .from('cercle_personnes')
+          .from('profils')
           .select('id, email')
-          .eq('user_id', user.id);
+          .eq('mentor_id', user.id);
         
         // Récupérer les IDs utilisateurs des disciples
         const discipleUserIds = [];
@@ -312,11 +312,10 @@ const SendReport = () => {
         return;
       }
       
-      // Récupérer les noms des disciples
       const { data: disciplesData } = await supabase
-        .from('cercle_personnes')
-        .select('id, name, first_name, last_name, email')
-        .eq('user_id', user.id);
+        .from('profils')
+        .select('id, first_name, last_name, email')
+        .eq('mentor_id', user.id);
       
       // Créer une map disciple_id -> nom du disciple
       const discipleNameMap = {};
@@ -330,7 +329,7 @@ const SendReport = () => {
             .maybeSingle();
           
           if (profilData && profilData.id) {
-            discipleNameMap[profilData.id] = disciple.name || `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() || 'Disciple sans nom';
+            discipleNameMap[profilData.id] = `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() || 'Disciple sans nom';
           }
         }
       }
@@ -410,9 +409,21 @@ const SendReport = () => {
   const performSend = async () => {
     setSubmitting(true);
     try {
+      // Récupérer le pasteur de tutelle du superviseur (pour flux superviseur → pasteur)
+      let pasteurId = null;
+      try {
+        const { data: userProfile } = await supabase
+          .from('profils')
+          .select('pasteur_id')
+          .eq('id', user.id)
+          .maybeSingle();
+        pasteurId = userProfile?.pasteur_id ?? null;
+      } catch (_) { /* ignorer */ }
+
       // Préparer les données selon le type de rapport
       const reportData = {
         user_id: user.id,
+        ...(pasteurId && { pasteur_id: pasteurId }),
         report_type: reportType,
         content: stats.notes,
         statistics_snapshot: {
@@ -454,30 +465,17 @@ const SendReport = () => {
 
       if (error) throw error;
 
-      // Récupérer l'email du pasteur de tutelle
+      // Récupérer l'email du pasteur de tutelle pour le message de confirmation
       let pasteurEmail = '';
-      try {
-        // Récupérer le profil de l'utilisateur pour obtenir pasteur_id
-        const { data: userProfile } = await supabase
-          .from('profils')
-          .select('pasteur_id')
-          .eq('id', user.id)
-          .single();
-
-        if (userProfile && userProfile.pasteur_id) {
-          // Récupérer l'email du pasteur
+      if (pasteurId) {
+        try {
           const { data: pasteurProfile } = await supabase
             .from('profils')
             .select('email')
-            .eq('id', userProfile.pasteur_id)
-            .single();
-
-          if (pasteurProfile && pasteurProfile.email) {
-            pasteurEmail = pasteurProfile.email;
-          }
-        }
-      } catch (emailError) {
-        console.error('Erreur lors de la récupération de l\'email du pasteur:', emailError);
+            .eq('id', pasteurId)
+            .maybeSingle();
+          pasteurEmail = pasteurProfile?.email ?? '';
+        } catch (_) { /* ignorer */ }
       }
       
       setStats({ ...stats, notes: '' });

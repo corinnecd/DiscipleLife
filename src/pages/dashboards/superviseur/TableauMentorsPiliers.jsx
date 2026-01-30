@@ -1,6 +1,7 @@
 import React from 'react';
-import { Users, Loader2 } from 'lucide-react';
+import { Users, Loader2, FileText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -11,25 +12,39 @@ import {
 } from '@/components/ui/table';
 
 /**
- * Tableau consolidé des mentors (piliers) avec statistiques de progression.
+ * Tableau consolidé des mentors (piliers) – 8 colonnes, aligné Dashboard Pasteur.
+ * Familles, Présence Culte Samedi, Présence Culte Dimanche.
  */
 export function TableauMentorsPiliers({
   loading = false,
   mentors = [],
+  onExportExcel,
 }) {
   return (
     <Card className="bg-white border-gray-200 shadow-sm">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle className="text-lg font-semibold text-gray-900">Tableau Consolidé des Mentors (Piliers)</CardTitle>
             <CardDescription>
               Vue d'ensemble de tous les mentors (piliers) avec leurs statistiques de progression
             </CardDescription>
           </div>
-          {loading && (
-            <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-          )}
+          <div className="flex items-center gap-2">
+            {loading && <Loader2 className="h-5 w-5 animate-spin text-purple-600" />}
+            {onExportExcel && mentors.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onExportExcel}
+                disabled={loading}
+                className="shrink-0 border-0 bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Exporter CSV
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -50,11 +65,12 @@ export function TableauMentorsPiliers({
                 <TableRow className="bg-purple-200 hover:bg-purple-300">
                   <TableHead className="font-semibold text-gray-900">Nom</TableHead>
                   <TableHead className="font-semibold text-gray-900">Prénom</TableHead>
-                  <TableHead className="font-semibold text-gray-900">Église</TableHead>
-                  <TableHead className="font-semibold text-center text-gray-900">Nombre de Disciples</TableHead>
-                  <TableHead className="font-semibold text-center text-gray-900">Avancement (%)</TableHead>
-                  <TableHead className="font-semibold text-center text-gray-900">Disciples Présents</TableHead>
-                  <TableHead className="font-semibold text-center text-gray-900">Taux Participation Semaine (%)</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Familles</TableHead>
+                  <TableHead className="font-semibold text-center text-gray-900">Nombre de disciples</TableHead>
+                  <TableHead className="font-semibold text-center text-gray-900">Avancement % (objectif 70)</TableHead>
+                  <TableHead className="font-semibold text-center text-gray-900">Présence Culte Samedi</TableHead>
+                  <TableHead className="font-semibold text-center text-gray-900">Présence Culte Dimanche</TableHead>
+                  <TableHead className="font-semibold text-center text-gray-900">Taux participation semaine</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -64,39 +80,42 @@ export function TableauMentorsPiliers({
                     <TableCell className="font-semibold text-gray-900">{mentor.prenom}</TableCell>
                     <TableCell className="text-gray-700">{mentor.eglise}</TableCell>
                     <TableCell className="text-center">
-                      <span className="font-semibold text-gray-900">{mentor.nombre_disciples}</span>
+                      <span className="font-semibold text-gray-900">{mentor.nombre_disciples ?? 0}</span>
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-24 bg-gray-200 rounded-full h-2">
                           <div
                             className={`h-2 rounded-full ${
-                              mentor.avancement_pourcentage >= 100
+                              (mentor.avancement_pourcentage ?? 0) >= 100
                                 ? 'bg-green-500'
-                                : mentor.avancement_pourcentage >= 50
+                                : (mentor.avancement_pourcentage ?? 0) >= 50
                                 ? 'bg-purple-600'
                                 : 'bg-amber-500'
                             }`}
-                            style={{ width: `${Math.min(mentor.avancement_pourcentage, 100)}%` }}
+                            style={{ width: `${Math.min(mentor.avancement_pourcentage ?? 0, 100)}%` }}
                           />
                         </div>
                         <span className="text-sm font-medium text-gray-700 w-12 text-left">
-                          {mentor.avancement_pourcentage}%
+                          {mentor.avancement_pourcentage ?? 0}%
                         </span>
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="font-semibold text-gray-900">{mentor.disciples_presents}</span>
+                      <span className="text-gray-700">{mentor.presence_culte_samedi != null ? mentor.presence_culte_samedi : '—'}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="font-semibold text-gray-900">{mentor.disciples_presents ?? 0}</span>
                     </TableCell>
                     <TableCell className="text-center">
                       <span className={`font-semibold ${
-                        mentor.taux_participation_semaine >= 70
+                        (mentor.taux_participation_semaine ?? 0) >= 70
                           ? 'text-green-600'
-                          : mentor.taux_participation_semaine >= 50
+                          : (mentor.taux_participation_semaine ?? 0) >= 50
                           ? 'text-amber-600'
                           : 'text-red-600'
                       }`}>
-                        {mentor.taux_participation_semaine}%
+                        {mentor.taux_participation_semaine ?? 0}%
                       </span>
                     </TableCell>
                   </TableRow>

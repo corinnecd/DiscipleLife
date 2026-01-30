@@ -95,13 +95,13 @@ const FamillesDisciples = () => {
           .select('id')
           .eq('famille_id', selectedFamille.id);
 
-        // 2. Membres depuis cercle_personnes liés au superviseur
+        // 2. Membres depuis profils (famille_id = famille)
         let disciplesData = [];
-        if (selectedFamille.superviseur_id) {
+        if (selectedFamille.id) {
           const { data: disciples, error: disciplesError } = await supabase
-            .from('cercle_personnes')
+            .from('profils')
             .select('id')
-            .eq('user_id', selectedFamille.superviseur_id);
+            .eq('famille_id', selectedFamille.id);
 
           if (!disciplesError && disciples) {
             disciplesData = disciples;
@@ -109,16 +109,11 @@ const FamillesDisciples = () => {
         }
 
         // 3. Calculer le total
-        const nombreMembresProfils = (membresData || []).length;
-        const nombreMembresCercle = disciplesData.length;
-        const total = nombreMembresProfils + nombreMembresCercle;
+        const total = (membresData || []).length;
 
         console.log('📊 Calcul membres famille (modal):', {
           familleId: selectedFamille.id,
-          superviseurId: selectedFamille.superviseur_id,
-          membresProfils: nombreMembresProfils,
-          membresCercle: nombreMembresCercle,
-          total: total
+          total
         });
 
         setNombreMembresReel(total);
@@ -395,19 +390,12 @@ const FamillesDisciples = () => {
                 return { superviseurId: superviseur.id, count: 0 };
               }
 
-              // Compter les membres depuis profils
               const { count: membresProfils } = await supabase
                 .from('profils')
                 .select('id', { count: 'exact', head: true })
                 .eq('famille_id', familleSuperviseur.id);
 
-              // Compter les membres depuis cercle_personnes
-              const { count: membresCercle } = await supabase
-                .from('cercle_personnes')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', superviseur.id);
-
-              const totalMembres = (membresProfils || 0) + (membresCercle || 0);
+              const totalMembres = membresProfils || 0;
               return { superviseurId: superviseur.id, count: totalMembres };
             } catch (error) {
               console.error(`Erreur calcul membres pour superviseur ${superviseur.id}:`, error);
@@ -552,22 +540,21 @@ const FamillesDisciples = () => {
         });
       }
 
-      // 5. Récupérer les disciples depuis cercle_personnes (liés au superviseur)
+      // 5. Récupérer les disciples depuis profils (famille du superviseur, mentor_id = parent)
       const { data: disciplesData, error: disciplesError } = await supabase
-        .from('cercle_personnes')
-        .select('id, first_name, last_name, parent_disciple_id, user_id, start_date, created_at')
-        .eq('user_id', superviseurId);
+        .from('profils')
+        .select('id, first_name, last_name, mentor_id, created_at')
+        .eq('famille_id', familleId);
 
       if (!disciplesError && disciplesData) {
-        // Récupérer les infos des parents pour l'affiliation
         const parentIds = disciplesData
-          .map(d => d.parent_disciple_id)
+          .map(d => d.mentor_id)
           .filter(id => id !== null);
 
         let parentsMap = {};
         if (parentIds.length > 0) {
           const { data: parentsData } = await supabase
-            .from('cercle_personnes')
+            .from('profils')
             .select('id, first_name, last_name')
             .in('id', parentIds);
 
@@ -581,13 +568,12 @@ const FamillesDisciples = () => {
         // Compter combien de disciples suit chaque membre (pour la colonne "Suit lui-même")
         const disciplesSuivisMap = {};
         disciplesData.forEach(disciple => {
-          if (disciple.parent_disciple_id) {
-            disciplesSuivisMap[disciple.parent_disciple_id] = (disciplesSuivisMap[disciple.parent_disciple_id] || 0) + 1;
+          if (disciple.mentor_id) {
+            disciplesSuivisMap[disciple.mentor_id] = (disciplesSuivisMap[disciple.mentor_id] || 0) + 1;
           }
         });
 
-        // Pour le superviseur, compter tous les disciples directs
-        const disciplesDirects = disciplesData.filter(d => !d.parent_disciple_id).length;
+        const disciplesDirects = disciplesData.filter(d => d.mentor_id === superviseurId).length;
         if (superviseurData) {
           const membreSuperviseur = membres.find(m => m.id === superviseurData.id);
           if (membreSuperviseur) {
@@ -655,12 +641,11 @@ const FamillesDisciples = () => {
         console.log('📋 Membre superviseur dans membres:', membres.find(m => m.type === 'superviseur'));
 
         disciplesData.forEach(disciple => {
-          const isDirect = !disciple.parent_disciple_id;
+          const isDirect = !disciple.mentor_id || disciple.mentor_id === superviseurId;
           let affiliation = null;
           
-          if (disciple.parent_disciple_id) {
-            // Disciple indirect - affiliation avec le parent disciple
-            affiliation = parentsMap[disciple.parent_disciple_id] || 'Discipline indirect';
+          if (disciple.mentor_id && disciple.mentor_id !== superviseurId) {
+            affiliation = parentsMap[disciple.mentor_id] || 'Discipline indirect';
           } else {
             // Disciple direct - affiliation avec le superviseur de la famille
             // TOUJOURS afficher le nom du superviseur (prénom nom) pour les disciples directs
@@ -688,7 +673,7 @@ const FamillesDisciples = () => {
             last_name: disciple.last_name,
             titre: 'Disciple',
             affiliation: affiliation,
-            dateEntreeFamille: disciple.start_date || disciple.created_at || null,
+            dateEntreeFamille: disciple.created_at || null,
             type: isDirect ? 'disciple_direct' : 'disciple_indirect',
             isDirect: isDirect,
             disciplesSuivis: disciplesSuivisMap[disciple.id] || 0
@@ -701,11 +686,10 @@ const FamillesDisciples = () => {
       // Récupérer le nombre de disciples suivis par chaque membre
       const disciplesCountMap = {};
       for (const membre of membres) {
-        // Compter les disciples dans cercle_personnes où user_id = membre.id
         const { count: disciplesCount } = await supabase
-          .from('cercle_personnes')
+          .from('profils')
           .select('id', { count: 'exact', head: true })
-          .eq('user_id', membre.id);
+          .eq('mentor_id', membre.id);
         
         disciplesCountMap[membre.id] = disciplesCount || 0;
       }
@@ -723,11 +707,10 @@ const FamillesDisciples = () => {
     setSelectedMembreForDisciples({ id: membreId, name: membreName });
     
     try {
-      // Récupérer tous les disciples qui ont ce membre comme user_id (mentor/superviseur)
       const { data: disciplesData, error: disciplesError } = await supabase
-        .from('cercle_personnes')
-        .select('id, first_name, last_name, name, email, avatar_url, circle_type, created_at, parent_disciple_id')
-        .eq('user_id', membreId)
+        .from('profils')
+        .select('id, first_name, last_name, email, avatar_url, circle_type, created_at, mentor_id')
+        .eq('mentor_id', membreId)
         .order('created_at', { ascending: false });
 
       if (disciplesError) throw disciplesError;
@@ -737,12 +720,11 @@ const FamillesDisciples = () => {
         return;
       }
 
-      // Pour chaque disciple, compter combien de disciples ils suivent eux-mêmes
       const disciplesIds = disciplesData.map(d => d.id);
       const { data: sousDisciplesData, error: sousDisciplesError } = await supabase
-        .from('cercle_personnes')
-        .select('parent_disciple_id')
-        .in('parent_disciple_id', disciplesIds);
+        .from('profils')
+        .select('mentor_id')
+        .in('mentor_id', disciplesIds);
 
       if (sousDisciplesError) throw sousDisciplesError;
 
@@ -750,8 +732,8 @@ const FamillesDisciples = () => {
       const disciplesSuivisMap = {};
       if (sousDisciplesData) {
         sousDisciplesData.forEach(sousDisciple => {
-          const parentId = sousDisciple.parent_disciple_id;
-          disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
+          const parentId = sousDisciple.mentor_id;
+          if (parentId) disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
         });
       }
 
@@ -760,7 +742,7 @@ const FamillesDisciples = () => {
         id: discipleItem.id,
         first_name: discipleItem.first_name || '',
         last_name: discipleItem.last_name || '',
-        name: discipleItem.name || `${discipleItem.first_name || ''} ${discipleItem.last_name || ''}`.trim(),
+        name: `${(discipleItem.first_name || '')} ${(discipleItem.last_name || '')}`.trim(),
         email: discipleItem.email || null,
         avatar_url: discipleItem.avatar_url || null,
         circle_type: discipleItem.circle_type || null,

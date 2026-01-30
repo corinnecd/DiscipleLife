@@ -107,10 +107,10 @@ const Disciples = () => {
   const fetchDisciples = async () => {
     try {
       const { data, error } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .select('*')
-        .eq('user_id', user.id)
-        .order('name');
+        .eq('mentor_id', user.id)
+        .order('first_name');
       
       if (error) throw error;
       setDisciples(data || []);
@@ -136,10 +136,9 @@ const Disciples = () => {
             .select('user_id, can_have_disciples')
             .eq('can_have_disciples', true);
 
-          // Récupérer tous les disciples de la table cercle_personnes
           const { data: allDisciplesData, error: disciplesError } = await supabase
-            .from('cercle_personnes')
-            .select('id, name, first_name, last_name, user_id');
+            .from('profils')
+            .select('id, first_name, last_name, mentor_id');
 
           if (disciplesError) throw disciplesError;
 
@@ -182,12 +181,12 @@ const Disciples = () => {
           // Ajouter tous les disciples
           if (allDisciplesData) {
             allDisciplesData.forEach(disciple => {
-              const fullName = disciple.name || `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() || 'Disciple';
+              const fullName = `${(disciple.first_name || '')} ${(disciple.last_name || '')}`.trim() || 'Disciple';
               allMembers.push({
                 id: disciple.id,
                 name: fullName,
                 type: 'disciple',
-                user_id: disciple.user_id
+                user_id: disciple.mentor_id
               });
             });
           }
@@ -260,95 +259,26 @@ const Disciples = () => {
 
         const fullName = `${formData.firstName} ${formData.lastName}`.trim();
         
-        // Déterminer si le parent est un mentor (ID de profils) ou un disciple (ID de cercle_personnes)
-        let parentDiscipleId = null;
+        let mentorId = user.id;
         if (formData.parentId && formData.parentId !== 'none') {
-          // Vérifier si c'est un mentor ou un disciple
           const selectedParent = allMembers.find(m => m.id === formData.parentId);
-          if (selectedParent) {
-            if (selectedParent.type === 'mentor') {
-              // Pour les mentors : vérifier s'ils ont déjà une entrée dans cercle_personnes
-              // Si oui, utiliser cette entrée comme parent, sinon créer une entrée minimale
-              const { data: mentorEntry, error: mentorEntryError } = await supabase
-                .from('cercle_personnes')
-                .select('id')
-                .eq('user_id', selectedParent.id)
-                .maybeSingle();
-              
-              if (mentorEntryError && mentorEntryError.code !== 'PGRST116') {
-                console.error('Erreur vérification entrée mentor:', mentorEntryError);
-                toast({ 
-                  title: "Attention", 
-                  description: "Impossible de vérifier l'entrée du mentor. Le disciple sera créé sans parent.", 
-                  variant: "warning" 
-                });
-                parentDiscipleId = null;
-              } else if (mentorEntry) {
-                // Le mentor a déjà une entrée dans cercle_personnes, utiliser cet ID
-                parentDiscipleId = mentorEntry.id;
-              } else {
-                // Le mentor n'a pas d'entrée, créer une entrée minimale pour permettre la liaison
-                const { data: mentorProfile } = await supabase
-                  .from('profils')
-                  .select('first_name, last_name, email')
-                  .eq('id', selectedParent.id)
-                  .single();
-                
-                const mentorFullName = mentorProfile 
-                  ? `${mentorProfile.first_name || ''} ${mentorProfile.last_name || ''}`.trim()
-                  : 'Mentor';
-                
-                const { data: newMentorEntry, error: createMentorEntryError } = await supabase
-                  .from('cercle_personnes')
-                  .insert({
-                    user_id: selectedParent.id,
-                    name: mentorFullName,
-                    first_name: mentorProfile?.first_name || null,
-                    last_name: mentorProfile?.last_name || null,
-                    email: mentorProfile?.email || null,
-                    circle_type: 'Faiseur de Disciples',
-                    created_at: new Date().toISOString()
-                  })
-                  .select('id')
-                  .single();
-                
-                if (createMentorEntryError) {
-                  console.error('Erreur création entrée mentor:', createMentorEntryError);
-                  toast({ 
-                    title: "Attention", 
-                    description: "Impossible de créer l'entrée du mentor. Le disciple sera créé sans parent.", 
-                    variant: "warning" 
-                  });
-                  parentDiscipleId = null;
-                } else {
-                  parentDiscipleId = newMentorEntry.id;
-                }
-              }
-            } else {
-              // Pour les disciples, on peut utiliser leur ID directement
-              parentDiscipleId = formData.parentId;
-            }
-          }
+          if (selectedParent) mentorId = selectedParent.id;
         }
-        
-        // Préparer les données à insérer (sans les colonnes qui n'existent pas)
+
+        const { data: myProfil } = await supabase.from('profils').select('famille_id').eq('id', user.id).maybeSingle();
         const insertData = {
-            user_id: user.id,
-            name: fullName,
+            id: crypto.randomUUID(),
             first_name: formData.firstName,
             last_name: formData.lastName,
             email: formData.email || null,
-            phone: formData.phone || null,
-            church: formData.church || null,
-            country: formData.country || null,
-            start_date: formData.startDate || null,
+            role: 'disciple',
+            mentor_id: mentorId,
+            famille_id: myProfil?.famille_id || null,
             circle_type: formData.level,
-            parent_disciple_id: parentDiscipleId,
             avatar_url: avatarUrl || null,
             created_at: new Date().toISOString()
         };
 
-        // Retirer les champs null pour éviter les erreurs
         Object.keys(insertData).forEach(key => {
             if (insertData[key] === null || insertData[key] === '') {
                 delete insertData[key];
@@ -356,7 +286,7 @@ const Disciples = () => {
         });
 
         const { data, error } = await supabase
-            .from('cercle_personnes')
+            .from('profils')
             .insert([insertData])
             .select()
             .single();

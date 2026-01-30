@@ -22,41 +22,25 @@ const CreateDiscipleAccounts = () => {
   const fetchDisciplesWithoutAccounts = async () => {
     try {
       setLoading(true);
-      
-      // Récupérer tous les disciples du mentor actuel
-      const { data: cercleData, error: cercleError } = await supabase
-        .from('cercle_personnes')
-        .select('id, name, first_name, last_name, email, user_id')
-        .eq('user_id', user.id)
-        .order('name');
-      
-      if (cercleError) throw cercleError;
-      
-      // Vérifier quels disciples n'ont pas de compte utilisateur
-      const disciplesNeedingAccounts = [];
-      
-      for (const disciple of cercleData || []) {
-        let hasAccount = false;
-        
-        // Si le disciple a un email, vérifier s'il a un compte
-        if (disciple.email) {
-          const { data: profilData } = await supabase
-            .from('profils')
-            .select('id')
-            .eq('email', disciple.email)
-            .maybeSingle();
-          
-          if (profilData) {
-            hasAccount = true;
-          }
-        }
-        
-        if (!hasAccount) {
-          disciplesNeedingAccounts.push(disciple);
-        }
-      }
-      
-      setDisciplesWithoutAccounts(disciplesNeedingAccounts);
+
+      // Source unique : profils. Récupérer tous les disciples du mentor actuel (role=disciple, mentor_id=user.id)
+      const { data: profilsData, error: profilsError } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, email')
+        .eq('mentor_id', user.id)
+        .eq('role', 'disciple')
+        .order('last_name');
+
+      if (profilsError) throw profilsError;
+
+      // Considérer comme "sans compte" les profils dont l'email n'est pas encore utilisé dans auth
+      // (on ne peut pas interroger auth depuis le client ; on affiche la liste pour création de compte)
+      const list = (profilsData || []).map((p) => ({
+        ...p,
+        name: `${(p.first_name || '')} ${(p.last_name || '')}`.trim() || 'Sans nom'
+      }));
+
+      setDisciplesWithoutAccounts(list);
     } catch (error) {
       console.error("Error fetching disciples:", error);
       toast({
@@ -94,12 +78,8 @@ const CreateDiscipleAccounts = () => {
         .maybeSingle();
       
       if (existingProfils) {
-        // Le compte existe déjà, mettre à jour l'email dans cercle_personnes
         if (!disciple.email || disciple.email !== email) {
-          await supabase
-            .from('cercle_personnes')
-            .update({ email: email })
-            .eq('id', disciple.id);
+          await supabase.from('profils').update({ email: email }).eq('id', disciple.id);
         }
         return { success: true, userId: existingProfils.id, email, method: 'existing' };
       }
@@ -137,12 +117,8 @@ const CreateDiscipleAccounts = () => {
             .maybeSingle();
           
           if (profilData) {
-            // Mettre à jour l'email dans cercle_personnes
             if (!disciple.email || disciple.email !== email) {
-              await supabase
-                .from('cercle_personnes')
-                .update({ email: email })
-                .eq('id', disciple.id);
+              await supabase.from('profils').update({ email: email }).eq('id', disciple.id);
             }
             return { success: true, userId: profilData.id, email, method: 'signup' };
           }
@@ -176,12 +152,8 @@ const CreateDiscipleAccounts = () => {
             .maybeSingle();
           
           if (existing) {
-            // Mettre à jour l'email dans cercle_personnes
             if (!disciple.email || disciple.email !== email) {
-              await supabase
-                .from('cercle_personnes')
-                .update({ email: email })
-                .eq('id', disciple.id);
+              await supabase.from('profils').update({ email: email }).eq('id', disciple.id);
             }
             return { success: true, userId: existing.id, email, method: 'existing' };
           }
@@ -189,18 +161,14 @@ const CreateDiscipleAccounts = () => {
         throw insertError;
       }
       
-      // Mettre à jour l'email dans cercle_personnes
       if (!disciple.email || disciple.email !== email) {
-        await supabase
-          .from('cercle_personnes')
-          .update({ email: email })
-          .eq('id', disciple.id);
+        await supabase.from('profils').update({ email: email }).eq('id', disciple.id);
       }
       
       return { success: true, userId: insertedProfil.id, email, method: 'direct_insert' };
       
     } catch (error) {
-      console.error(`Error creating account for ${disciple.name}:`, error);
+      console.error(`Error creating account for ${disciple.first_name} ${disciple.last_name}:`, error);
       throw error;
     }
   };

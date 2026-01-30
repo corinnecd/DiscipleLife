@@ -10,6 +10,8 @@
 Ce rapport recense **tout ce qu’il reste à implémenter** et **intègre désormais** :
 - **CRUD profils et formulaire unique** : profils = seule source de vérité, formulaire unique d’inscription/ajout de membre, cercles limités aux comptages par catégorie (voir § 2.3).
 - **Comparaison profils / formulaires d’inscription** : schéma `profils` (24 colonnes + migrations 092/093), champs du formulaire d’inscription alignés (rôle, date d’entrée, suivi par, statut spirituel, formations PCNC, nombre de disciples, téléphone, ville de résidence) — voir § 2.3.
+- **Logique du discipolat (plusieurs générations)** : Pasteur → Superviseurs ; Superviseur → famille de 70 (directs, piliers, mentors, disciples) ; Mentor (≥ 1 disciple) ; Disciple (0 disciple) ; Tutorés (upgrade par mentor en Disciple). Voir § 2.4.
+- **Migration 100 et upgrades fiche disciple** : rôle pilier, trigger disciple→mentor automatique, boutons Tutoré→Disciple (par mentor) et Mentor→Pilier/Berger (par superviseur). Voir § 2.5.
 
 Sont également couverts : **modèle cible des données** (sync cercle → profils, migration 075), **fonctionnalités métier** (Dashboard Pasteur, Superviseur, arbre, rapports, présence/Disciples 70, Objectif 3), **nouveaux modules** (notation, bilans, signalisation d’abus CSA, KPI accueil), **performance et UX** (Phase 4 Claude), et **technique** (refactor SuperviseurDashboard, exports, ErrorHandler, qualité de code). Les priorités et l’ordre recommandé sont en sections **4, 5, 8 et 9**. **La suite des développements se basera sur ce rapport.**
 
@@ -22,7 +24,7 @@ Ce document regroupe **tout ce qui reste à implémenter** et constitue **le doc
 - **Comparaison profils / formulaires d’inscription** (`COMPARAISON_PROFILS_FORMULAIRES_INSCRIPTION.md`) : schéma `profils` (24 colonnes + date_entree_famille, phone, ville_residence), mapping formulaire → profils, statut spirituel = `spiritual_stage` (libellé FR).
 - **Rapport Claude** (plan agile 14 sprints, 586 h), synthèse dans `RAPPORT_FEEDBACK_ANALYSE_CLAUDE_ET_COMPARAISON.md`.
 
-Sont couverts : données et modèle cible (§ 2), **CRUD profils et formulaire unique** (§ 2.3), fonctionnalités métier (§ 3), performance et UX (§ 5), technique (§ 7), notation/bilans/signalisation d’abus. Sources : rapport Claude, `ETAT_FONCTIONNALITES_RESTANTES.md`, `ETAT_OBJECTIFS.md`, `MODELE_CIBLE_DONNEES.md`, `RAPPORT_CRUD_PROFILS_FORMULAIRE_UNIQUE_SOURCE_VERITE.md`, `COMPARAISON_PROFILS_FORMULAIRES_INSCRIPTION.md`.
+Sont couverts : données et modèle cible (§ 2), **CRUD profils et formulaire unique** (§ 2.3), **logique du discipolat** (§ 2.4), **migration 100 et upgrades fiche disciple** (§ 2.5), fonctionnalités métier (§ 3), performance et UX (§ 5), technique (§ 7), notation/bilans/signalisation d’abus. Sources : rapport Claude, `ETAT_FONCTIONNALITES_RESTANTES.md`, `ETAT_OBJECTIFS.md`, `MODELE_CIBLE_DONNEES.md`, `RAPPORT_CRUD_PROFILS_FORMULAIRE_UNIQUE_SOURCE_VERITE.md`, `COMPARAISON_PROFILS_FORMULAIRES_INSCRIPTION.md`.
 
 ---
 
@@ -78,6 +80,87 @@ Référence : **`MODELE_CIBLE_DONNEES.md`**.
 | **Phase 5** | CRUD cohérent : Create/Read/Update/Delete tous via profils ; pas de fiche membre dans cercle_personnes. | Haute |
 
 **Actions immédiates déjà réalisées :** formulaire SignupDisciple étendu (rôle, date d’entrée, suivi par, statut spirituel, formations PCNC, nombre de disciples, téléphone, ville de résidence) ; migrations 092 (date_entree_famille), 093 (phone, ville_residence) ; rapport de comparaison profils/formulaires à jour. **À faire ensuite :** exécuter 092/093 si besoin, puis Phase 2 (formulaire unique réutilisable + une route), puis Phase 3 (lecture tout depuis profils).
+
+---
+
+### 2.4 Logique du discipolat (plusieurs générations)
+
+Référence pour les rôles, la hiérarchie et les upgrades (Tutoré → Disciple, Mentor → Pilier/Berger). À aligner avec le schéma `profils` / `familles_disciples` et les libellés de l’app.
+
+**Niveau 1 : Pasteur de tutelle**
+
+- Responsable de **plusieurs familles** (chaque famille = objectif 70).
+- **Tous ses superviseurs sont ses disciples** (avec le titre « superviseur »).
+- Lien : `profils.pasteur_id` (superviseur → pasteur) ; côté pasteur, « disciples » = tous les profils où `pasteur_id = pasteur.id` (ou via familles dont le superviseur a ce pasteur).
+
+**Niveau 2 : Superviseur**
+
+- Responsable d’**une seule famille de 70**.
+- Disciple de son pasteur de tutelle (lien hiérarchique = pasteur).
+- Dans sa famille de 70, il a :
+  - **Disciples directs** (suivis directement par le superviseur).
+  - **Piliers** : mentors qui ont plusieurs disciples et/ou sont choisis par le superviseur.
+  - **Mentors** : disciples qui suivent **au moins 1 disciple** (ont au moins un disciple sous eux).
+  - **Disciples simples** : **zéro disciple** (ne suivent personne « en dessous »).
+
+**Niveau 3 : Mentor**
+
+- Disciple qui suit **au moins 1 disciple** (a au moins un disciple sous lui).
+- Peut être **« pilier »** si plusieurs disciples et/ou désigné par le superviseur.
+
+**Niveau 4 : Disciple**
+
+- **Ne suit personne** (au sens : n’a **aucun disciple sous lui**) → zéro disciple.
+- Peut être suivi par un mentor, un pilier ou le superviseur.
+
+**Tutorés (catégorie à part)**
+
+- **Nouveaux convertis / nouveaux arrivants** : intégrables dans une famille de 70 mais **pas encore disciples** ; par défaut **« Tutorés »**.
+- Après un **bilan**, le **mentor direct** peut les **upgrader en Disciple**.
+
+**Récap hiérarchique**
+
+| Niveau | Rôle         | Qui il suit (au-dessus)     | Qui le suit (en dessous)                          |
+|--------|--------------|-----------------------------|---------------------------------------------------|
+| 1      | Pasteur      | —                           | Tous ses superviseurs (disciples titre « superviseur ») |
+| 2      | Superviseur  | Pasteur de tutelle          | Sa famille de 70 : directs, piliers, mentors, disciples |
+| 3      | Mentor       | Superviseur ou pilier        | ≥ 1 disciple                                      |
+| 4      | Disciple     | Mentor / pilier / superviseur| 0 disciple                                        |
+
+**Pilier** = cas particulier de mentor (plusieurs disciples et/ou choisi par le superviseur). **Berger** = titre équivalent (role = pilier, titre = Berger).
+
+---
+
+### 2.5 Migration 100 et upgrades (Tutoré, Pilier, Berger)
+
+**Contexte (demande)**
+
+- **Tutorés** : nouveaux convertis / nouveaux arrivants, intégrables dans une famille de 70, **pas encore disciples** ; par défaut « Tutorés ». Après un bilan, le **mentor direct** peut les **upgrader en Disciple**.
+- **Fiche disciple** : le **mentor** peut upgrader un **Tutoré → Disciple** ; le **superviseur direct** peut upgrader un **Mentor → Pilier** ou **→ Berger**.
+- **Mise à jour automatique** : quand un disciple (0 disciple) **commence à suivre au moins 1 disciple**, mise à jour **automatique** de sa fiche (rôle → mentor) et des **KPI** (calculés côté RPC sur profils).
+
+**Ce qui a été implémenté**
+
+**1) Migration 100 – `sql/migrations/100_role_pilier_trigger_mentor_auto.sql`**
+
+- **Rôle pilier** : la contrainte `profils_role_check` inclut désormais `'pilier'` (en plus de tutore, disciple, mentor, etc.).
+- **Trigger automatique** : après un `INSERT` ou `UPDATE` sur `profils` qui renseigne un `mentor_id`, si le mentor a le rôle `'disciple'` et a **au moins 1 disciple**, son rôle est passé à **`'mentor'`**. Les KPI (RPC basées sur profils) se mettent à jour naturellement.
+
+**2) Fiche disciple – `src/pages/DiscipleDetail.jsx`**
+
+- **Contexte** : chargement du **superviseur de la famille** (`famille_id` → `familles_disciples.superviseur_id`) pour savoir qui peut upgrader un mentor.
+- **Affichage** : badge **Tutoré / Mentor / Pilier** (et titre Berger si présent) à côté du niveau spirituel.
+- **Boutons d’upgrade** (selon qui est connecté) :
+  - **« Upgrader en Disciple »** : visible si la fiche est un **Tutoré** et que l’utilisateur connecté est son **mentor** (`user.id === disciple.mentor_id`).
+  - **« Upgrader en Pilier »** et **« Upgrader en Berger »** : visibles si la fiche est un **Mentor** et que l’utilisateur connecté est le **superviseur de la famille** (`user.id === familySupervisorId`).
+- **Modal d’upgrade** : un seul modal avec **motif obligatoire**, utilisé pour :
+  - le **niveau spirituel** (ex. Nouveau converti → Disciple affermi),
+  - **Tutoré → Disciple**,
+  - **Mentor → Pilier** (role = `pilier`, titre = `Pilier`),
+  - **Mentor → Berger** (role = `pilier`, titre = `Berger`).
+- Après un upgrade de **rôle**, la fiche est rechargée (`fetchDiscipleDetails`) pour mettre à jour l’affichage et les données utilisées par les KPI.
+
+**À faire côté base :** exécuter la migration **100** dans Supabase (SQL Editor) pour activer le rôle `pilier` et le trigger disciple → mentor.
 
 ---
 
@@ -441,7 +524,8 @@ Pour **tenir compte de la performance dès le début**, démarrer dans cet ordre
 | `INTEGRATION_ERRORHANDLER_COMPLETE.md` | Pattern d’intégration ErrorHandler, pages déjà traitées. |
 | `sql/migrations/075_modele_cible_sync_cercle_vers_profils.sql` | Migration modèle cible (profil_id + trigger). |
 | `sql/migrations/092_add_date_entree_famille_profils.sql`, `093_add_phone_ville_residence_profils.sql` | Colonnes profils pour formulaire d’inscription (date d’entrée famille, téléphone, ville de résidence). |
+| `sql/migrations/100_role_pilier_trigger_mentor_auto.sql` | Rôle `pilier`, trigger automatique disciple → mentor quand il obtient au moins 1 disciple. Voir § 2.5. |
 
 ---
 
-*Rapport mis à jour le 27 janvier 2026. Intègre le rapport CRUD profils / formulaire unique et la comparaison profils–formulaires d’inscription. **Document de référence unique : la suite des fonctionnalités à implémenter se base sur ce dernier rapport.** À actualiser au fil des livraisons.*
+*Rapport mis à jour le 30 janvier 2026. Intègre le rapport CRUD profils / formulaire unique, la comparaison profils–formulaires d’inscription, la **logique du discipolat** (§ 2.4) et la **migration 100 / upgrades fiche disciple** (§ 2.5). **Document de référence unique : la suite des fonctionnalités à implémenter se base sur ce dernier rapport.** À actualiser au fil des livraisons.*

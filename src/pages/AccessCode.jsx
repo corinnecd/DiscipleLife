@@ -69,27 +69,11 @@ const AccessCode = () => {
       if (codeData.type === 'group') {
         // Add user to group
         if (codeData.target_id) {
+           // Mise à jour du profil utilisateur (liaison au groupe / mentor si applicable)
            const { error: groupError } = await supabase
-             .from('cercle_personnes') // Assuming this is where group memberships are checked or handled via another table usually?
-             // Actually, usually membership is in a join table like 'group_members'. 
-             // Since specific table isn't clear from provided context, I'll simulate logic or use a generic notification for now.
-             // If 'cercle_personnes' represents the group definition, we might need an 'invitations' or 'members' table.
-             // For this implementation, let's assume we update a profile field or notify admin/mentor.
-             // Or better, let's assume we insert into 'disciples' table if it's a mentor group code?
-             // Let's stick to a generic successful application log for now unless structure is clearer.
-             // Wait, looking at 'disciples' table: id, mentor_id, user_id, group_id.
-             // If type is group, we might add them to 'disciples' or update their 'group_id'.
-             
-             // Simplest assumption: Update profile or specific access table. 
-             // I'll assume we handle the "Business Logic" via a triggered function or client side updates here.
-             // Let's assume we add to 'disciples' if target_id is a group/circle.
-             .insert({ 
-                 mentor_id: codeData.created_by, // Assuming creator is mentor
-                 user_id: user.id,
-                 name: user.email, // Placeholder
-                 group_id: codeData.target_id,
-                 status: 'active'
-             });
+             .from('profils')
+             .update({ mentor_id: codeData.created_by ?? null })
+             .eq('id', user.id);
              
            benefitDescription = "Vous avez rejoint le groupe avec succès.";
         }

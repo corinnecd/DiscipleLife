@@ -61,9 +61,9 @@ const MentorRichDashboard = () => {
       
       // 1. Fetch Disciples
       const { data: disciplesData } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('mentor_id', user.id)
         .order('created_at', { ascending: false });
       
       const loadedDisciples = disciplesData || [];

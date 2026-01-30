@@ -89,11 +89,11 @@ const GlobalSearch = ({ onClose }) => {
             testimoniesResult,
             resourcesResult
           ] = await Promise.all([
-            // 1. Recherche dans cercle_personnes (disciples)
+            // 1. Recherche dans profils (disciples / mentors)
             supabase
-              .from('cercle_personnes')
-              .select('id, first_name, last_name, name, email, circle_type')
-              .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,name.ilike.%${term}%,email.ilike.%${term}%`)
+              .from('profils')
+              .select('id, first_name, last_name, email, circle_type')
+              .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%`)
               .limit(10)
               .then(({ data, error }) => ({ data: data || [], error }))
               .catch(() => ({ data: [], error: null })),

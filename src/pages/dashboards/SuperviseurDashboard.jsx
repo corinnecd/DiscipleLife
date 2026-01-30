@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
-  Church, ChevronRight, Loader2, UserCircle, Eye, ArrowLeft, Camera, Sparkles, Zap, Trophy, Star, AlertCircle,
+  Church, ChevronRight, Loader2, UserCircle, Eye, Camera, Sparkles, Zap, Trophy, Star, AlertCircle,
   Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, CheckCircle2, PlayCircle, Download, FileText, History, Search, X, Calendar, User, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -41,9 +41,11 @@ import { TableauDetailleDisciples } from './superviseur/TableauDetailleDisciples
 import { TableauMentorsPiliers } from './superviseur/TableauMentorsPiliers';
 import { ChartsSupplementaires } from './superviseur/ChartsSupplementaires';
 import { ReportReminderCard } from './superviseur/ReportReminderCard';
+import { SuperviseurDashboardHeader } from './superviseur/SuperviseurDashboardHeader';
 
 const PAGE_NAME = 'SuperviseurDashboard';
 const LOAD_TIME_ALERT_MS = 4000; // Seuil au-delà duquel on affiche une alerte performance
+const devLog = (...args) => { if (import.meta.env.DEV) devLog(...args); }; // §5.4 Qualité : logs uniquement en dev
 
 const SuperviseurDashboard = () => {
   const { user } = useAuth();
@@ -245,7 +247,7 @@ const SuperviseurDashboard = () => {
             setChartsLoaded(prev => ({ ...prev, formationVideo: true }));
             try {
               await generateFormationVideoChartData();
-              console.log('✅ Données formations/vidéos générées (lazy loading)');
+              devLog('✅ Données formations/vidéos générées (lazy loading)');
             } catch (error) {
               handleError(error, { context: 'generateFormationVideoChartData', lazyLoad: true }, "Impossible de générer les données des formations et vidéos.");
             }
@@ -265,7 +267,7 @@ const SuperviseurDashboard = () => {
             setChartsLoaded(prev => ({ ...prev, statutsSpirituels: true }));
             try {
               await calculateStatutsSpirituels();
-              console.log('✅ Statuts spirituels calculés (lazy loading)');
+              devLog('✅ Statuts spirituels calculés (lazy loading)');
             } catch (error) {
               handleError(error, { context: 'calculateStatutsSpirituels', lazyLoad: true }, "Impossible de calculer la répartition des statuts spirituels.");
             }
@@ -285,7 +287,7 @@ const SuperviseurDashboard = () => {
             setChartsLoaded(prev => ({ ...prev, activiteRecente: true }));
             try {
               await fetchActiviteRecente();
-              console.log('✅ Activité récente récupérée (lazy loading)');
+              devLog('✅ Activité récente récupérée (lazy loading)');
             } catch (error) {
               handleError(error, { context: 'fetchActiviteRecente', lazyLoad: true }, "Impossible de récupérer l'activité récente.");
             }
@@ -330,11 +332,11 @@ const SuperviseurDashboard = () => {
       });
 
       if (membresAUpdater.length === 0) {
-        console.log('✅ Aucun disciple à mettre à jour en Mentor/Pilier');
+        devLog('✅ Aucun disciple à mettre à jour en Mentor/Pilier');
         return;
       }
 
-      console.log(`🔄 Mise à jour de ${membresAUpdater.length} disciple(s) en Mentor/Pilier:`, 
+      devLog(`🔄 Mise à jour de ${membresAUpdater.length} disciple(s) en Mentor/Pilier:`, 
         membresAUpdater.map(m => `${m.first_name} ${m.last_name} (${disciplesCountMap[m.id]} disciples)`));
 
       // Mettre à jour tous les membres en une seule fois avec Promise.all
@@ -354,7 +356,7 @@ const SuperviseurDashboard = () => {
           return { success: false, membreId: membre.id, error: updateError };
         }
 
-        console.log(`✅ ${membre.first_name} ${membre.last_name} mis à jour en Mentor/Pilier`);
+        devLog(`✅ ${membre.first_name} ${membre.last_name} mis à jour en Mentor/Pilier`);
         return { success: true, membreId: membre.id };
       });
 
@@ -378,6 +380,10 @@ const SuperviseurDashboard = () => {
           clearCache(`superviseur_${user.id}_phase2_membres_${famille.id}`);
           clearCache(`superviseur_${user.id}_phase2_rpc_${famille.id}`);
         }
+        if (superviseur?.pasteur_id != null) {
+          clearCache(`superviseur_${user.id}_phase2_extra_${superviseur.pasteur_id}`);
+        }
+        clearCache(`superviseur_${user.id}_phase2_extra_null`);
       }
 
       if (failureCount > 0) {
@@ -442,20 +448,17 @@ const SuperviseurDashboard = () => {
           // Pour chaque disciple, récupérer les données détaillées
           const disciplesAvecDetails = await Promise.all(
             disciplesProfils.map(async (disciple) => {
-              // 1. Trouver le mentor (pilier) du disciple depuis cercle_personnes
-              const { data: cercleData } = await supabase
-                .from('cercle_personnes')
-                .select('user_id, first_name, last_name')
-                .eq('id', disciple.id)
-                .maybeSingle();
-
-              const mentorPrenom = cercleData?.first_name || '';
-              const mentorNom = cercleData?.last_name || '';
-              const mentorId = cercleData?.user_id || null;
-
-              // Si pas de mentor dans cercle_personnes, chercher dans profils (mentor avec famille_id)
-              let mentorInfo = { prenom: mentorPrenom, nom: mentorNom, id: mentorId };
-              if (!mentorId) {
+              let mentorInfo = { prenom: '', nom: '', id: disciple.mentor_id || null };
+              if (disciple.mentor_id) {
+                const { data: mentorProfil } = await supabase
+                  .from('profils')
+                  .select('id, first_name, last_name')
+                  .eq('id', disciple.mentor_id)
+                  .maybeSingle();
+                if (mentorProfil) {
+                  mentorInfo = { prenom: mentorProfil.first_name || '', nom: mentorProfil.last_name || '', id: mentorProfil.id };
+                }
+              } else {
                 const { data: mentorProfil } = await supabase
                   .from('profils')
                   .select('id, first_name, last_name')
@@ -583,11 +586,10 @@ const SuperviseurDashboard = () => {
               // 2. Église (nom de la famille)
               const nomEglise = famille.nom || 'N/A';
 
-              // 3. Nombre de disciples (depuis cercle_personnes)
               const { count: nombreDisciples } = await supabase
-                .from('cercle_personnes')
+                .from('profils')
                 .select('*', { count: 'exact', head: true })
-                .eq('user_id', mentor.id);
+                .eq('mentor_id', mentor.id);
 
               const nombreDisciplesTotal = nombreDisciples || 0;
 
@@ -595,11 +597,10 @@ const SuperviseurDashboard = () => {
               const objectif = 70;
               const avancementPourcentage = Math.min((nombreDisciplesTotal / objectif) * 100, 100);
 
-              // 5. Nombre de disciples présents à l'église
               const { data: disciplesData } = await supabase
-                .from('cercle_personnes')
+                .from('profils')
                 .select('id')
-                .eq('user_id', mentor.id);
+                .eq('mentor_id', mentor.id);
 
               const discipleIds = disciplesData?.map(d => d.id) || [];
               let disciplesPresents = 0;
@@ -642,6 +643,7 @@ const SuperviseurDashboard = () => {
                 eglise: nomEglise,
                 nombre_disciples: nombreDisciplesTotal,
                 avancement_pourcentage: Math.round(avancementPourcentage),
+                presence_culte_samedi: 0,
                 disciples_presents: disciplesPresents,
                 taux_participation_semaine: tauxParticipationSemaine
               };
@@ -673,24 +675,60 @@ const SuperviseurDashboard = () => {
     try {
       if (!user?.id || !familleData) return;
 
-      // Étape 3 : un seul appel RPC agrégé (migration 094) au lieu de ~15+ appels
+      const pasteurId = superviseurData?.pasteur_id ?? null;
       const cacheKeyRpc = `superviseur_${user.id}_phase2_rpc_${familleData.id}`;
+      const cacheKeyExtra = `superviseur_${user.id}_phase2_extra_${pasteurId ?? 'null'}`;
+
+      // Étape 3 : appels RPC en parallèle (094 phase2 + 095 phase2_extra) pour regrouper les requêtes
       let payload = null;
+      let extraPayload = null;
       try {
-        payload = await getOrSetCache(
-          cacheKeyRpc,
-          async () => {
-            const { data, error } = await supabase.rpc('get_superviseur_dashboard_phase2', {
-              p_user_id: user.id,
-              p_famille_id: familleData.id
-            });
-            if (error) throw error;
-            return data;
-          },
-          2 * 60 * 1000 // 2 minutes
-        );
+        const [phase2Result, extraResult] = await Promise.all([
+          getOrSetCache(
+            cacheKeyRpc,
+            async () => {
+              const { data, error } = await supabase.rpc('get_superviseur_dashboard_phase2', {
+                p_user_id: user.id,
+                p_famille_id: familleData.id
+              });
+              if (error) throw error;
+              return data;
+            },
+            2 * 60 * 1000
+          ),
+          getOrSetCache(
+            cacheKeyExtra,
+            async () => {
+              const { data, error } = await supabase.rpc('get_superviseur_dashboard_phase2_extra', {
+                p_user_id: user.id,
+                p_pasteur_id: pasteurId
+              });
+              if (error) throw error;
+              return data;
+            },
+            2 * 60 * 1000
+          )
+        ]);
+        payload = phase2Result;
+        extraPayload = extraResult;
       } catch (rpcErr) {
-        console.warn('RPC get_superviseur_dashboard_phase2 non disponible (exécuter migration 094), repli appels directs:', rpcErr?.message);
+        console.warn('RPC dashboard superviseur non disponible, repli appels directs:', rpcErr?.message);
+        try {
+          payload = await getOrSetCache(
+            cacheKeyRpc,
+            async () => {
+              const { data, error } = await supabase.rpc('get_superviseur_dashboard_phase2', {
+                p_user_id: user.id,
+                p_famille_id: familleData.id
+              });
+              if (error) throw error;
+              return data;
+            },
+            2 * 60 * 1000
+          );
+        } catch (e) {
+          // garder payload null, repli complet ci‑dessous
+        }
       }
 
       let tousLesMembres = [];
@@ -718,15 +756,13 @@ const SuperviseurDashboard = () => {
         const cachedMembres = await getOrSetCache(
           cacheKeyMembres,
           async () => {
-            const [membresResult, disciplesResult] = await Promise.all([
-              supabase.from('profils').select('id, first_name, last_name, email, avatar_url, created_at, role').eq('famille_id', familleData.id).order('created_at', { ascending: false }),
-              supabase.from('cercle_personnes').select('id, first_name, last_name, email, avatar_url, created_at, start_date, parent_disciple_id, user_id').eq('user_id', user.id)
-            ]);
-            const { data: membresData, error: membresError } = membresResult;
-            const { data: disciplesData, error: disciplesError } = disciplesResult;
+            const { data: membresData, error: membresError } = await supabase
+              .from('profils')
+              .select('id, first_name, last_name, email, avatar_url, created_at, role, mentor_id')
+              .eq('famille_id', familleData.id)
+              .order('created_at', { ascending: false });
             if (membresError) throw membresError;
-            if (disciplesError) throw disciplesError;
-            return { membresData: membresData || [], disciplesData: disciplesData || [] };
+            return { membresData: membresData || [], disciplesData: [] };
           },
           2 * 60 * 1000
         );
@@ -736,24 +772,7 @@ const SuperviseurDashboard = () => {
         if (membresData) {
           membresData.forEach(profil => {
             if (profil.id === user.id) return;
-            tousLesMembres.push({ ...profil, statut_spirituel: 'actif', source: 'profils', role: profil.role || 'disciple' });
-          });
-        }
-        if (disciplesData) {
-          disciplesData.forEach(disciple => {
-            if (tousLesMembres.some(m => m.id === disciple.id)) return;
-            tousLesMembres.push({
-              id: disciple.id,
-              first_name: disciple.first_name || '',
-              last_name: disciple.last_name || '',
-              email: disciple.email || null,
-              avatar_url: disciple.avatar_url || null,
-              created_at: disciple.start_date || disciple.created_at || null,
-              statut_spirituel: 'actif',
-              role: 'disciple',
-              source: 'cercle_personnes',
-              parent_disciple_id: disciple.parent_disciple_id || null
-            });
+            tousLesMembres.push({ ...profil, statut_spirituel: 'actif', source: 'profils', role: profil.role || 'disciple', parent_disciple_id: profil.mentor_id || null });
           });
         }
         const objectif = familleData.objectif_disciples || 70;
@@ -764,12 +783,11 @@ const SuperviseurDashboard = () => {
         setMembres(tousLesMembres);
         if (tousLesMembres.length > 0) {
           const membreIds = tousLesMembres.map(m => m.id);
-          const [progressionsRes, allProgressionsRes, videosRes, directRes, subRes] = await Promise.all([
+          const [progressionsRes, allProgressionsRes, videosRes, directRes] = await Promise.all([
             supabase.from('user_parcours_progression').select('id').in('user_id', membreIds),
             supabase.from('user_parcours_progression').select('id, user_id').in('user_id', membreIds),
             supabase.from('video_progress').select('disciple_id').in('disciple_id', membreIds).eq('is_completed', true),
-            supabase.from('cercle_personnes').select('user_id').in('user_id', membreIds),
-            supabase.from('cercle_personnes').select('parent_disciple_id').in('parent_disciple_id', membreIds)
+            supabase.from('profils').select('mentor_id').in('mentor_id', membreIds)
           ]);
           const progressionIds = progressionsRes?.data?.map(p => p.id) || [];
           let formationsTermineesCount = 0, formationsEnCoursCount = 0;
@@ -799,34 +817,23 @@ const SuperviseurDashboard = () => {
           });
           Object.keys(progressionMap).forEach(mid => { progressionMap[mid].total = progressionMap[mid].formations + progressionMap[mid].videos; });
           setMembresProgression(progressionMap);
-          const directDisciplesResult = directRes;
-          const subDisciplesResult = subRes;
           const disciplesCountMap = {};
           tousLesMembres.forEach(m => { disciplesCountMap[m.id] = 0; });
-          directDisciplesResult.data?.forEach(d => { if (d.user_id && disciplesCountMap[d.user_id] !== undefined) disciplesCountMap[d.user_id] = (disciplesCountMap[d.user_id] || 0) + 1; });
-          subDisciplesResult.data?.forEach(d => { if (d.parent_disciple_id && disciplesCountMap[d.parent_disciple_id] !== undefined) disciplesCountMap[d.parent_disciple_id] = (disciplesCountMap[d.parent_disciple_id] || 0) + 1; });
+          directRes.data?.forEach(d => { if (d.mentor_id && disciplesCountMap[d.mentor_id] !== undefined) disciplesCountMap[d.mentor_id] = (disciplesCountMap[d.mentor_id] || 0) + 1; });
           setMembresDisciplesCount(disciplesCountMap);
           updateDisciplesToMentors(disciplesCountMap, tousLesMembres).catch(() => {});
-          const allCercleData = (await supabase.from('cercle_personnes').select('id, user_id, parent_disciple_id, first_name, last_name').in('id', membreIds)).data || [];
-          const cercleMap = {};
-          allCercleData.forEach(c => { cercleMap[c.id] = c; });
-          const uniqueUserIds = [...new Set(allCercleData.filter(c => c.user_id).map(c => c.user_id))];
-          const uniqueParentIds = [...new Set(allCercleData.filter(c => c.parent_disciple_id).map(c => c.parent_disciple_id))];
-          const [profilsData, parentDisciplesData] = await Promise.all([
-            uniqueUserIds.length ? supabase.from('profils').select('id, first_name, last_name').in('id', uniqueUserIds) : { data: [] },
-            uniqueParentIds.length ? supabase.from('cercle_personnes').select('id, first_name, last_name').in('id', uniqueParentIds) : { data: [] }
-          ]);
-          const profilsMap = {}; (profilsData.data || []).forEach(p => { profilsMap[p.id] = p; });
-          const parentsMap = {}; (parentDisciplesData.data || []).forEach(p => { parentsMap[p.id] = p; });
+          const allProfilsData = (await supabase.from('profils').select('id, mentor_id, first_name, last_name').in('id', membreIds)).data || [];
+          const profilsById = {};
+          allProfilsData.forEach(p => { profilsById[p.id] = p; });
+          const uniqueMentorIds = [...new Set(allProfilsData.filter(p => p.mentor_id).map(p => p.mentor_id))];
+          const { data: mentorsData } = uniqueMentorIds.length ? await supabase.from('profils').select('id, first_name, last_name').in('id', uniqueMentorIds) : { data: [] };
+          const mentorsMap = {}; (mentorsData || []).forEach(p => { mentorsMap[p.id] = p; });
           const suiviParMap = {};
           tousLesMembres.forEach(membre => {
-            const c = cercleMap[membre.id];
-            if (c?.parent_disciple_id && parentsMap[c.parent_disciple_id]) {
-              const p = parentsMap[c.parent_disciple_id];
-              suiviParMap[membre.id] = { name: `${p.first_name || ''} ${p.last_name || ''}`.trim(), id: c.parent_disciple_id };
-            } else if (c?.user_id && profilsMap[c.user_id]) {
-              const pr = profilsMap[c.user_id];
-              suiviParMap[membre.id] = { name: `${pr.first_name || ''} ${pr.last_name || ''}`.trim(), id: c.user_id };
+            const p = profilsById[membre.id];
+            if (p?.mentor_id && mentorsMap[p.mentor_id]) {
+              const mentor = mentorsMap[p.mentor_id];
+              suiviParMap[membre.id] = { name: `${mentor.first_name || ''} ${mentor.last_name || ''}`.trim(), id: p.mentor_id };
             } else if (membre.source === 'profils' && membre.role !== 'superviseur') {
               suiviParMap[membre.id] = { name: `${superviseurNom.first_name || ''} ${superviseurNom.last_name || ''}`.trim(), id: user.id };
             }
@@ -835,14 +842,24 @@ const SuperviseurDashboard = () => {
         }
       }
 
-      // 5. Récupérer les rapports du superviseur pour les graphiques
-      const { data: rapportsData, error: rapportsError } = await supabase
-        .from('reports')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
+      // 5. Rapports + superviseurs famille : depuis RPC phase2_extra si disponible, sinon appels directs
+      let rapportsData = extraPayload?.rapports ?? null;
+      if (rapportsData == null) {
+        const { data, error: rapportsError } = await supabase
+          .from('reports')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true });
+        if (!rapportsError) rapportsData = data;
+      }
+      if (extraPayload?.superviseurs_famille) {
+        setSuperviseursFamille(Array.isArray(extraPayload.superviseurs_famille) ? extraPayload.superviseurs_famille : []);
+      }
+      if (extraPayload?.nombre_membres_par_superviseur && typeof extraPayload.nombre_membres_par_superviseur === 'object') {
+        setNombreMembresParSuperviseur(extraPayload.nombre_membres_par_superviseur);
+      }
 
-      if (!rapportsError && rapportsData) {
+      if (rapportsData && rapportsData.length >= 0) {
         // Filtrer les rapports selon la période sélectionnée
         const rapportsFiltres = rapportsData.filter(r => {
           const selectedYear = parseInt(kpiSelectedYearForPeriod);
@@ -929,92 +946,44 @@ const SuperviseurDashboard = () => {
       }
       
       // 6. OPTIMISATION: Charger les données supplémentaires de manière paresseuse
-      // Ces données seront chargées uniquement quand les sections correspondantes sont visibles
-      console.log('📊 Données principales chargées. Les graphiques seront chargés de manière paresseuse.');
+      devLog('📊 Données principales chargées. Les graphiques seront chargés de manière paresseuse.');
       
-      // Seules les alertes sont chargées immédiatement car elles sont importantes
       try {
         await fetchAlertes();
-        console.log('✅ Alertes récupérées');
+        devLog('✅ Alertes récupérées');
       } catch (error) {
         console.error('❌ Erreur récupération alertes:', error);
       }
 
-      // 6. OPTIMISATION: Récupérer les autres superviseurs de la famille (même pasteur_id) avec calculs groupés
-      if (superviseurData?.pasteur_id) {
+      // Superviseurs famille + nombre membres : déjà remplis par RPC phase2_extra si disponible
+      if (!extraPayload?.superviseurs_famille && superviseurData?.pasteur_id) {
         const { data: superviseursData, error: superviseursError } = await supabase
           .from('profils')
           .select('id, first_name, last_name, email, avatar_url')
           .eq('pasteur_id', superviseurData.pasteur_id)
           .eq('role', 'superviseur')
-          .neq('id', user.id) // Exclure le superviseur actuel
+          .neq('id', user.id)
           .order('first_name', { ascending: true });
 
-        if (!superviseursError && superviseursData) {
+        if (!superviseursError && superviseursData?.length > 0) {
           setSuperviseursFamille(superviseursData || []);
-          
-          // OPTIMISATION: Récupérer toutes les familles et compter les membres en requêtes groupées
+          const superviseurIds = superviseursData.map(s => s.id);
+          const { data: allFamilles, error: famillesError } = await supabase
+            .from('familles_disciples')
+            .select('id, superviseur_id')
+            .in('superviseur_id', superviseurIds);
           const membresCountMap = {};
-          if (superviseursData.length > 0) {
-            const superviseurIds = superviseursData.map(s => s.id);
-            
-            // Récupérer toutes les familles des superviseurs en une seule requête
-            const { data: allFamilles, error: famillesError } = await supabase
-              .from('familles_disciples')
-              .select('id, superviseur_id')
-              .in('superviseur_id', superviseurIds);
-
-            if (!famillesError && allFamilles) {
-              // Créer un map superviseur_id -> famille_id
-              const superviseurToFamilleMap = {};
-              const familleIds = [];
-              allFamilles.forEach(famille => {
-                superviseurToFamilleMap[famille.superviseur_id] = famille.id;
-                familleIds.push(famille.id);
-              });
-
-              // Récupérer tous les comptages en requêtes groupées
-              const [profilsCountsResult, cercleCountsResult] = await Promise.all([
-                // Compter les membres depuis profils pour toutes les familles
-                familleIds.length > 0
-                  ? supabase
-                      .from('profils')
-                      .select('famille_id')
-                      .in('famille_id', familleIds)
-                  : Promise.resolve({ data: [] }),
-                // Compter les membres depuis cercle_personnes pour tous les superviseurs
-                supabase
-                  .from('cercle_personnes')
-                  .select('user_id')
-                  .in('user_id', superviseurIds)
-              ]);
-
-              // Compter les membres par famille depuis profils
-              const membresParFamille = {};
-              profilsCountsResult.data?.forEach(p => {
-                if (p.famille_id) {
-                  membresParFamille[p.famille_id] = (membresParFamille[p.famille_id] || 0) + 1;
-                }
-              });
-
-              // Compter les membres par superviseur depuis cercle_personnes
-              const membresParSuperviseur = {};
-              cercleCountsResult.data?.forEach(c => {
-                if (c.user_id) {
-                  membresParSuperviseur[c.user_id] = (membresParSuperviseur[c.user_id] || 0) + 1;
-                }
-              });
-
-              // Calculer le total pour chaque superviseur
-              superviseursData.forEach(superviseur => {
-                const familleId = superviseurToFamilleMap[superviseur.id];
-                const membresProfils = familleId ? (membresParFamille[familleId] || 0) : 0;
-                const membresCercle = membresParSuperviseur[superviseur.id] || 0;
-                membresCountMap[superviseur.id] = membresProfils + membresCercle;
-              });
-            }
+          if (!famillesError && allFamilles?.length > 0) {
+            const superviseurToFamilleMap = {};
+            const familleIds = allFamilles.map(f => { superviseurToFamilleMap[f.superviseur_id] = f.id; return f.id; });
+            const profilsCountsResult = await supabase.from('profils').select('famille_id').in('famille_id', familleIds);
+            const membresParFamille = {};
+            profilsCountsResult.data?.forEach(p => { if (p.famille_id) membresParFamille[p.famille_id] = (membresParFamille[p.famille_id] || 0) + 1; });
+            superviseursData.forEach(s => {
+              const fid = superviseurToFamilleMap[s.id];
+              membresCountMap[s.id] = fid ? (membresParFamille[fid] || 0) : 0;
+            });
           }
-          
           setNombreMembresParSuperviseur(membresCountMap);
         }
       }
@@ -1064,6 +1033,66 @@ const SuperviseurDashboard = () => {
     } catch (error) {
       console.error('Erreur lors de l\'export Excel:', error);
       toast({ variant: 'destructive', title: 'Erreur', description: "Impossible d'exporter le CSV." });
+    }
+  };
+
+  // Export CSV du tableau détaillé des disciples (10 colonnes)
+  const handleExportDisciplesDetailleExcel = () => {
+    try {
+      const exportData = disciplesDetaille.map(d => ({
+        'Prénom Pilier': d.mentor_prenom || '',
+        'Nom Pilier': d.mentor_nom || '',
+        'Prénom Disciple': d.disciple_prenom || '',
+        'Nom Disciple': d.disciple_nom || '',
+        'Statut spirituel': d.statut_spirituel || '',
+        "Date d'ajout": d.date_ajout || '',
+        'Date dernière présence': d.date_derniere_presence || '',
+        "Niveau d'engagement": d.niveau_engagement || '',
+        'Statut (Actif/Inactif)': d.statut_actif ? 'Actif' : 'Inactif',
+        'Présence dernier culte': d.presence_dernier_culte ? 'Oui' : 'Non',
+      }));
+      if (exportData.length === 0) {
+        toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucun disciple à exporter.' });
+        return;
+      }
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      exportToExcel(exportData, `superviseur_tableau_disciples_${timestamp}`, {
+        title: 'Tableau détaillé des disciples – Dashboard Superviseur',
+        description: '10 colonnes : Pilier, Disciple, Statut, Dates, Engagement, Présence',
+        author: 'DiscipleLife',
+      });
+      toast({ title: 'Export réussi', description: `${exportData.length} disciple(s) exporté(s).`, className: 'bg-green-50 border-green-200' });
+    } catch (error) {
+      handleError(error, { context: 'handleExportDisciplesDetailleExcel' }, "Impossible d'exporter le tableau des disciples.");
+    }
+  };
+
+  // Export CSV du tableau consolidé des mentors (piliers) – rapport au pasteur
+  const handleExportMentorsConsolidesExcel = () => {
+    try {
+      const exportData = mentorsConsolides.map(m => ({
+        'Nom': m.nom || '',
+        'Prénom': m.prenom || '',
+        'Familles': m.eglise || '',
+        'Nombre de disciples': m.nombre_disciples ?? 0,
+        'Avancement % (objectif 70)': m.avancement_pourcentage != null ? m.avancement_pourcentage : '',
+        'Présence Culte Samedi': m.presence_culte_samedi != null ? m.presence_culte_samedi : '',
+        'Présence Culte Dimanche': m.disciples_presents != null ? m.disciples_presents : '',
+        'Taux participation semaine (%)': m.taux_participation_semaine != null ? m.taux_participation_semaine : '',
+      }));
+      if (exportData.length === 0) {
+        toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucun mentor à exporter.' });
+        return;
+      }
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      exportToExcel(exportData, `superviseur_mentors_consolides_${timestamp}`, {
+        title: 'Tableau consolidé mentors (piliers) – Dashboard Superviseur',
+        description: 'Nom, Prénom, Familles, Nombre de disciples, Avancement %, Présence Culte Samedi, Présence Culte Dimanche, Taux participation',
+        author: 'DiscipleLife',
+      });
+      toast({ title: 'Export réussi', description: `${exportData.length} mentor(s) exporté(s).`, className: 'bg-green-50 border-green-200' });
+    } catch (error) {
+      handleError(error, { context: 'handleExportMentorsConsolidesExcel' }, "Impossible d'exporter le tableau des mentors.");
     }
   };
 
@@ -1143,15 +1172,7 @@ const SuperviseurDashboard = () => {
         .select('id, created_at')
         .eq('famille_id', famille.id);
       
-      const { data: disciplesData } = await supabase
-        .from('cercle_personnes')
-        .select('id, created_at')
-        .eq('user_id', user.id);
-      
-      const allMemberIds = [
-        ...(membresData || []).map(m => m.id),
-        ...(disciplesData || []).map(d => d.id)
-      ];
+      const allMemberIds = (membresData || []).map(m => m.id);
       
       if (allMemberIds.length === 0) {
         setFormationVideoChartData([]);
@@ -1368,7 +1389,7 @@ const SuperviseurDashboard = () => {
     if (!famille || !famille.id) return;
     
     try {
-      console.log('📊 Début calcul stats comparatives pour famille:', famille.id);
+      devLog('📊 Début calcul stats comparatives pour famille:', famille.id);
       
       // Ne pas réinitialiser les stats ici : loadingStatsComparatives gère l'affichage du spinner
       
@@ -1382,7 +1403,7 @@ const SuperviseurDashboard = () => {
       }
       
       if (!toutesFamilles || toutesFamilles.length === 0) {
-        console.log('⚠️ Aucune famille trouvée');
+        devLog('⚠️ Aucune famille trouvée');
         setStatsComparatives({
           moyenneAutresFamilles: 0,
           classement: 1,
@@ -1391,7 +1412,7 @@ const SuperviseurDashboard = () => {
         return;
       }
       
-      console.log(`📊 ${toutesFamilles.length} familles trouvées`);
+      devLog(`📊 ${toutesFamilles.length} familles trouvées`);
       
       // Calculer les nombres réels de membres pour chaque famille
       const famillesAvecStats = await Promise.all(
@@ -1407,22 +1428,7 @@ const SuperviseurDashboard = () => {
               console.error(`Erreur profils pour famille ${f.id}:`, profilsError);
             }
             
-            // Récupérer les membres depuis cercle_personnes
-            let membresCercle = 0;
-            if (f.superviseur_id) {
-              const { count, error: cercleError } = await supabase
-                .from('cercle_personnes')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', f.superviseur_id);
-              
-              if (!cercleError) {
-                membresCercle = count || 0;
-              } else {
-                console.error(`Erreur cercle pour famille ${f.id}:`, cercleError);
-              }
-            }
-            
-            const totalMembres = (membresProfils || 0) + membresCercle;
+            const totalMembres = membresProfils || 0;
             return {
               ...f,
               nombreMembresReel: totalMembres
@@ -1454,7 +1460,7 @@ const SuperviseurDashboard = () => {
         .sort((a, b) => b.nombreMembresReel - a.nombreMembresReel)
         .findIndex(f => f.id === famille.id) + 1;
       
-      console.log('✅ Stats comparatives calculées:', {
+      devLog('✅ Stats comparatives calculées:', {
         moyenne,
         classement,
         totalFamilles: famillesAvecStats.length,
@@ -1532,15 +1538,7 @@ const SuperviseurDashboard = () => {
         .select('id, first_name, last_name')
         .eq('famille_id', famille.id);
       
-      const { data: disciplesData } = await supabase
-        .from('cercle_personnes')
-        .select('id, first_name, last_name')
-        .eq('user_id', user.id);
-      
-      const allMemberIds = [
-        ...(tousMembres || []).map(m => m.id),
-        ...(disciplesData || []).map(d => d.id)
-      ];
+      const allMemberIds = (tousMembres || []).map(m => m.id);
       
       const membresSansProgression = [];
       if (allMemberIds.length > 0) {
@@ -1639,7 +1637,7 @@ const SuperviseurDashboard = () => {
       const nombreDisciples = membresDisciplesCount[membre.id] ?? 0;
       // Log pour déboguer si le nombre est 0
       if (nombreDisciples === 0 && Object.keys(membresDisciplesCount).length > 0) {
-        console.log(`🔍 Membre ${membre.first_name} ${membre.last_name} (${membre.id}): nombreDisciples = ${nombreDisciples}, disponible dans map: ${membre.id in membresDisciplesCount}`);
+        devLog(`🔍 Membre ${membre.first_name} ${membre.last_name} (${membre.id}): nombreDisciples = ${nombreDisciples}, disponible dans map: ${membre.id in membresDisciplesCount}`);
       }
       return {
         ...membre,
@@ -1722,11 +1720,10 @@ const SuperviseurDashboard = () => {
     setSelectedMembreForDisciples({ id: membreId, name: membreName });
     
     try {
-      // Récupérer tous les disciples qui ont ce membre comme user_id (mentor/superviseur)
       const { data: disciplesData, error: disciplesError } = await supabase
-        .from('cercle_personnes')
-        .select('id, first_name, last_name, name, email, avatar_url, circle_type, created_at, parent_disciple_id')
-        .eq('user_id', membreId)
+        .from('profils')
+        .select('id, first_name, last_name, email, avatar_url, circle_type, created_at, mentor_id')
+        .eq('mentor_id', membreId)
         .order('created_at', { ascending: false });
 
       if (disciplesError) throw disciplesError;
@@ -1736,30 +1733,27 @@ const SuperviseurDashboard = () => {
         return;
       }
 
-      // Pour chaque disciple, compter combien de disciples ils suivent eux-mêmes
       const disciplesIds = disciplesData.map(d => d.id);
       const { data: sousDisciplesData, error: sousDisciplesError } = await supabase
-        .from('cercle_personnes')
-        .select('parent_disciple_id')
-        .in('parent_disciple_id', disciplesIds);
+        .from('profils')
+        .select('mentor_id')
+        .in('mentor_id', disciplesIds);
 
       if (sousDisciplesError) throw sousDisciplesError;
 
-      // Créer un map pour compter les disciples suivis par chaque disciple
       const disciplesSuivisMap = {};
       if (sousDisciplesData) {
         sousDisciplesData.forEach(sousDisciple => {
-          const parentId = sousDisciple.parent_disciple_id;
-          disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
+          const parentId = sousDisciple.mentor_id;
+          if (parentId) disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
         });
       }
 
-      // Enrichir les données avec le nombre de disciples suivis
       const disciplesAvecCompte = disciplesData.map(discipleItem => ({
         id: discipleItem.id,
         first_name: discipleItem.first_name || '',
         last_name: discipleItem.last_name || '',
-        name: discipleItem.name || `${discipleItem.first_name || ''} ${discipleItem.last_name || ''}`.trim(),
+        name: `${(discipleItem.first_name || '')} ${(discipleItem.last_name || '')}`.trim(),
         email: discipleItem.email || null,
         avatar_url: discipleItem.avatar_url || null,
         circle_type: discipleItem.circle_type || null,
@@ -1799,7 +1793,7 @@ const SuperviseurDashboard = () => {
         return;
       }
 
-      console.log('📊 Export démarré:', { format, nombreMembres: filteredMembres.length, totalMembres: membres.length });
+      devLog('📊 Export démarré:', { format, nombreMembres: filteredMembres.length, totalMembres: membres.length });
 
       const exportData = filteredMembres.map(membre => ({
         'Prénom': membre.first_name || '',
@@ -1866,7 +1860,7 @@ const SuperviseurDashboard = () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const pdfFilename = `${filename}.pdf`;
-        console.log('📄 Tentative export PDF:', { uniqueId, pdfFilename });
+        devLog('📄 Tentative export PDF:', { uniqueId, pdfFilename });
         
         try {
           await exportElementToPDF(uniqueId, pdfFilename, {
@@ -1880,7 +1874,7 @@ const SuperviseurDashboard = () => {
               'Filtres appliqués': searchTerm || statusFilter !== 'tous' || dateFilter || progressionFilter !== 'tous' ? 'Oui' : 'Non'
             }
           });
-          console.log('✅ Export PDF réussi');
+          devLog('✅ Export PDF réussi');
           document.body.removeChild(tempDiv);
         } catch (pdfError) {
           console.error('❌ Erreur export PDF:', pdfError);
@@ -1888,7 +1882,7 @@ const SuperviseurDashboard = () => {
           throw pdfError;
         }
       } else {
-        console.log('📊 Tentative export Excel:', { filename, nombreLignes: exportData.length });
+        devLog('📊 Tentative export Excel:', { filename, nombreLignes: exportData.length });
         try {
           exportToExcel(exportData, filename, {
             title: 'Liste des Membres de la Famille',
@@ -1899,7 +1893,7 @@ const SuperviseurDashboard = () => {
               'Filtres appliqués': searchTerm || statusFilter !== 'tous' || dateFilter || progressionFilter !== 'tous' ? 'Oui' : 'Non'
             }
           });
-          console.log('✅ Export Excel réussi');
+          devLog('✅ Export Excel réussi');
         } catch (excelError) {
           console.error('❌ Erreur export Excel:', excelError);
           throw excelError;
@@ -2247,15 +2241,7 @@ const SuperviseurDashboard = () => {
       </Helmet>
       
       <div id="superviseur-dashboard-content" className="space-y-6 p-6 bg-gray-50 min-h-screen">
-        {/* Bouton retour */}
-        <Button
-          variant="ghost"
-          onClick={() => navigate(-1)}
-          className="mb-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Retour
-        </Button>
+        <SuperviseurDashboardHeader onBack={() => navigate(-1)} />
 
         <ReportReminderCard
           reportReminder={reportReminder}
@@ -2384,11 +2370,13 @@ const SuperviseurDashboard = () => {
           loading={loadingDisciplesDetaille}
           disciples={disciplesDetaille}
           onNavigate={navigate}
+          onExportExcel={handleExportDisciplesDetailleExcel}
         />
 
         <TableauMentorsPiliers
           loading={loadingMentorsConsolides}
           mentors={mentorsConsolides}
+          onExportExcel={handleExportMentorsConsolidesExcel}
         />
 
         <ChartsSupplementaires

@@ -80,9 +80,9 @@ const MentorDashboard = () => {
         `${cacheKeyBase}_disciples`,
         async () => {
           const { data, error } = await supabase
-            .from('cercle_personnes')
+            .from('profils')
             .select('*')
-            .eq('user_id', user.id);
+            .eq('mentor_id', user.id);
           if (error) throw error;
           return data || [];
         },

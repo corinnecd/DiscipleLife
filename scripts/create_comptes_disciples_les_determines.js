@@ -1,6 +1,6 @@
-ÙUNNI /**
- * Script pour créer les comptes Auth (et profils) des disciples de la famille "Les Déterminés"
- * qui n'ont pas encore de profil_id dans cercle_personnes.
+/**
+ * Script pour créer les comptes Auth des disciples de la famille "Les Déterminés"
+ * (source unique : profils ; plus de lecture dans cercle_personnes).
  *
  * PRÉREQUIS:
  * 1. Fichier .env à la racine avec:
@@ -81,15 +81,19 @@ async function getDisciplesSansCompteLesDetermines() {
   const mentorIds = (mentors || []).map((p) => p.id);
   const allUserIds = [...new Set([...superviseurIds, ...mentorIds])];
 
-  // 3. Disciples dans cercle_personnes sans profil_id et dont le mentor/superviseur est de cette famille
-  const { data: disciples, error: errCp } = await supabase
-    .from('cercle_personnes')
-    .select('id, first_name, last_name, email, user_id')
-    .is('profil_id', null)
-    .in('user_id', allUserIds);
+  // 3. Disciples dans profils (source unique) : role=disciple, mentor ou superviseur de cette famille
+  const { data: profilsDisciples, error: errP } = await supabase
+    .from('profils')
+    .select('id, first_name, last_name, email, mentor_id, famille_id')
+    .eq('role', 'disciple')
+    .in('mentor_id', allUserIds);
 
-  if (errCp) throw errCp;
-  return disciples || [];
+  if (errP) throw errP;
+
+  // Filtrer ceux dont l'id n'est pas encore dans auth (sans compte)
+  const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 10000 });
+  const authIds = new Set((authUsers?.users || []).map((u) => u.id));
+  return (profilsDisciples || []).filter((p) => !authIds.has(p.id));
 }
 
 async function createAccountForDisciple(disciple) {
@@ -99,10 +103,7 @@ async function createAccountForDisciple(disciple) {
   const { data: existing } = await supabase.auth.admin.listUsers();
   const already = existing?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
   if (already) {
-    await supabase
-      .from('cercle_personnes')
-      .update({ email })
-      .eq('id', disciple.id);
+    await supabase.from('profils').update({ email }).eq('id', disciple.id);
     return { success: true, userId: already.id, email, method: 'existing' };
   }
 
@@ -120,13 +121,19 @@ async function createAccountForDisciple(disciple) {
   if (authError) throw authError;
   if (!authData?.user) throw new Error('Utilisateur Auth non créé');
 
-  // Mettre à jour l'email dans cercle_personnes : le trigger sync_cercle_vers_profils crée le profil (auth.users → profils)
-  const { error: updateErr } = await supabase
-    .from('cercle_personnes')
-    .update({ email })
-    .eq('id', disciple.id);
-
-  if (updateErr) throw updateErr;
+  // Source unique : profils. Le trigger handle_new_user crée une ligne profils (id = auth.uid()).
+  // Copier mentor_id, famille_id du profil existant vers le nouveau profil puis supprimer l'ancien.
+  const { error: updateNewErr } = await supabase
+    .from('profils')
+    .update({
+      mentor_id: disciple.mentor_id ?? null,
+      famille_id: disciple.famille_id ?? null
+    })
+    .eq('id', authData.user.id);
+  if (updateNewErr) {
+    console.warn('Mise à jour mentor_id/famille_id sur nouveau profil:', updateNewErr.message);
+  }
+  await supabase.from('profils').delete().eq('id', disciple.id);
 
   return { success: true, userId: authData.user.id, email, method: 'created' };
 }

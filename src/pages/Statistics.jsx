@@ -43,20 +43,19 @@ const Statistics = () => {
       const result = await getOrSetCache(
         cacheKey,
         async () => {
-          // Récupérer les disciples
-          const { data: cercleData, error: cercleError } = await supabase
-            .from('cercle_personnes')
-            .select('id, name, first_name, last_name, email')
-            .eq('user_id', user.id)
-            .order('name');
+          // Récupérer les disciples (source = profils, mentor_id = moi)
+          const { data: profilsData, error: profilsError } = await supabase
+            .from('profils')
+            .select('id, first_name, last_name, email')
+            .eq('mentor_id', user.id)
+            .order('first_name');
           
-          if (cercleError) throw cercleError;
+          if (profilsError) throw profilsError;
 
-          // Pour chaque disciple, récupérer son ID utilisateur depuis profils
-          // OPTIMISATION: Paralléliser les requêtes pour améliorer les performances
+          // Les id profils sont déjà les id utilisateur si le disciple a un compte
           const disciplesWithUserIds = await Promise.all(
-            (cercleData || []).map(async (disciple) => {
-              let discipleUserId = null;
+            (profilsData || []).map(async (disciple) => {
+              let discipleUserId = disciple.id;
               
               if (disciple.email) {
                 const { data: profilData } = await supabase
@@ -72,6 +71,7 @@ const Statistics = () => {
               
               return {
                 ...disciple,
+                name: `${(disciple.first_name || '')} ${(disciple.last_name || '')}`.trim(),
                 disciple_user_id: discipleUserId
               };
             })

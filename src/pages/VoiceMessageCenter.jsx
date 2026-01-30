@@ -24,14 +24,11 @@ const VoiceMessageCenter = () => {
   }, [user]);
 
   const fetchDisciples = async () => {
-      // Assuming 'cercle_personnes' contains disciples managed by this user (mentor)
-      // Or 'disciples' table based on previous analysis. 
-      // We'll query 'cercle_personnes' where user_id matches mentor
       const { data, error } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .select('id, first_name, last_name')
-        .eq('user_id', user.id)
-        .eq('circle_type', 'Disciple');
+        .eq('mentor_id', user.id)
+        .eq('role', 'disciple');
         
       if (!error && data) {
           setDisciples(data);
@@ -58,24 +55,14 @@ const VoiceMessageCenter = () => {
             recipients = [selectedRecipient];
         }
 
-        // We assume 'cercle_personnes' ID maps to a 'profils' ID (user_id) if they are registered users.
-        // If not, we can't send them in-app messages.
-        // For this implementation, we assume the selected IDs are valid receiver_ids.
-        // Note: In a real app, you'd check if these disciples have app accounts.
-        
+        // Source unique : profils. Les destinataires viennent de profils (mentor_id = user.id, role = disciple).
         const messages = recipients.map(receiverId => ({
             sender_id: user.id,
-            receiver_id: receiverId, // This might fail if cercle_personnes.id != profils.id. 
-                                     // Ideally, circle_personnes should have a 'linked_user_id'. 
-                                     // We will assume for now we are picking from 'profils' or similar. 
-                                     // Let's assume we fetched registered users.
+            receiver_id: receiverId,
             audio_url: audioData.url,
             duration: audioData.duration,
             title: messageTitle
         }));
-
-        // NOTE: Since I can't easily fix the data model discrepancy blindly, 
-        // I will insert. If FK fails, toast will show error.
         const { error } = await supabase.from('voice_messages').insert(messages);
 
         if (error) throw error;

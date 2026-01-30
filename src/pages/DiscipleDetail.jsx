@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Mail, Phone, Calendar, MessageSquare, MapPin, Activity, X, Flame, Trash2, Loader2, TrendingUp, Users, UserCheck } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, Calendar, MessageSquare, MapPin, Activity, X, Flame, Trash2, Loader2, TrendingUp, Users, UserCheck, Award, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/context/AuthContext';
 
 const STATUS_LABELS = {
   "newbelievers": "Nouveau converti",
@@ -83,14 +84,17 @@ const DiscipleDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [disciple, setDisciple] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [familySupervisorId, setFamilySupervisorId] = useState(null);
   const [isPrayerModalOpen, setIsPrayerModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState('');
+  const [upgradeRoleType, setUpgradeRoleType] = useState(null);
   const [disciplesSuivis, setDisciplesSuivis] = useState([]);
   const [loadingDisciplesSuivis, setLoadingDisciplesSuivis] = useState(false);
 
@@ -145,7 +149,7 @@ const DiscipleDetail = () => {
         cacheKey,
         async () => {
           const { data, error } = await supabase
-            .from('cercle_personnes')
+            .from('profils')
             .select('*')
             .eq('id', id)
             .single();
@@ -157,6 +161,12 @@ const DiscipleDetail = () => {
       );
 
       setDisciple(data);
+      if (data?.famille_id) {
+        const { data: fam } = await supabase.from('familles_disciples').select('superviseur_id').eq('id', data.famille_id).maybeSingle();
+        setFamilySupervisorId(fam?.superviseur_id ?? null);
+      } else {
+        setFamilySupervisorId(null);
+      }
     } catch (error) {
       console.error('Error fetching details:', error);
       toast({
@@ -182,11 +192,10 @@ const DiscipleDetail = () => {
       const result = await getOrSetCache(
         cacheKey,
         async () => {
-          // Récupérer tous les disciples qui ont ce disciple comme parent
           const { data: disciplesData, error: disciplesError } = await supabase
-            .from('cercle_personnes')
-            .select('id, first_name, last_name, name, parent_disciple_id')
-            .eq('parent_disciple_id', disciple.id);
+            .from('profils')
+            .select('id, first_name, last_name, mentor_id')
+            .eq('mentor_id', disciple.id);
 
           if (disciplesError) throw disciplesError;
 
@@ -194,30 +203,27 @@ const DiscipleDetail = () => {
             return [];
           }
 
-          // Pour chaque disciple, compter combien de disciples ils suivent eux-mêmes
           const disciplesIds = disciplesData.map(d => d.id);
           const { data: sousDisciplesData, error: sousDisciplesError } = await supabase
-            .from('cercle_personnes')
-            .select('parent_disciple_id')
-            .in('parent_disciple_id', disciplesIds);
+            .from('profils')
+            .select('mentor_id')
+            .in('mentor_id', disciplesIds);
 
           if (sousDisciplesError) throw sousDisciplesError;
 
-          // Créer un map pour compter les disciples suivis par chaque disciple
           const disciplesSuivisMap = {};
           if (sousDisciplesData) {
             sousDisciplesData.forEach(sousDisciple => {
-              const parentId = sousDisciple.parent_disciple_id;
-              disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
+              const parentId = sousDisciple.mentor_id;
+              if (parentId) disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
             });
           }
 
-          // Enrichir les données avec le nombre de disciples suivis
           const disciplesAvecCompte = disciplesData.map(discipleItem => ({
             id: discipleItem.id,
             first_name: discipleItem.first_name || '',
             last_name: discipleItem.last_name || '',
-            name: discipleItem.name || `${discipleItem.first_name || ''} ${discipleItem.last_name || ''}`.trim(),
+            name: `${(discipleItem.first_name || '')} ${(discipleItem.last_name || '')}`.trim(),
             disciplesSuivis: disciplesSuivisMap[discipleItem.id] || 0
           }));
 
@@ -266,7 +272,7 @@ const DiscipleDetail = () => {
     setIsDeleting(true);
     try {
       const { error } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .delete()
         .eq('id', disciple.id);
 
@@ -311,9 +317,47 @@ const DiscipleDetail = () => {
       return;
     }
 
-    // Ouvrir le modal de confirmation
+    setUpgradeRoleType(null);
     setIsUpgradeModalOpen(true);
     setUpgradeReason('');
+  };
+
+  const canUpgradeTutoreToDisciple = disciple?.role === 'tutore' && user?.id === disciple?.mentor_id;
+  const canUpgradeMentorToPilierOrBerger = disciple?.role === 'mentor' && user?.id === familySupervisorId;
+
+  const openUpgradeRoleModal = (type) => {
+    setUpgradeRoleType(type);
+    setIsUpgradeModalOpen(true);
+    setUpgradeReason('');
+  };
+
+  const handleConfirmUpgradeRole = async () => {
+    if (!upgradeReason.trim() || !disciple || disciple.is_demo || !upgradeRoleType) return;
+    setIsUpgrading(true);
+    try {
+      let updatePayload = {};
+      if (upgradeRoleType === 'tutore_to_disciple') {
+        updatePayload = { role: 'disciple' };
+      } else if (upgradeRoleType === 'mentor_to_pilier') {
+        updatePayload = { role: 'pilier', titre: 'Pilier' };
+      } else if (upgradeRoleType === 'mentor_to_berger') {
+        updatePayload = { role: 'pilier', titre: 'Berger' };
+      }
+      const { error } = await supabase.from('profils').update(updatePayload).eq('id', disciple.id);
+      if (error) throw error;
+      setDisciple({ ...disciple, ...updatePayload });
+      const labels = { tutore_to_disciple: 'Disciple', mentor_to_pilier: 'Pilier', mentor_to_berger: 'Berger' };
+      toast({ title: "Rôle mis à jour", description: `${disciple.name} est maintenant ${labels[upgradeRoleType]}.` });
+      setIsUpgradeModalOpen(false);
+      setUpgradeReason('');
+      setUpgradeRoleType(null);
+      fetchDiscipleDetails();
+    } catch (e) {
+      console.error(e);
+      toast({ variant: "destructive", title: "Erreur", description: e.message || "Impossible de mettre à jour le rôle." });
+    } finally {
+      setIsUpgrading(false);
+    }
   };
 
   const handleConfirmUpgrade = async () => {
@@ -335,6 +379,11 @@ const DiscipleDetail = () => {
       return;
     }
 
+    if (upgradeRoleType) {
+      await handleConfirmUpgradeRole();
+      return;
+    }
+
     const nextLevel = getNextLevel(disciple.circle_type);
     if (!nextLevel) {
       toast({
@@ -348,13 +397,12 @@ const DiscipleDetail = () => {
     setIsUpgrading(true);
     try {
       const { error } = await supabase
-        .from('cercle_personnes')
+        .from('profils')
         .update({ circle_type: nextLevel.dbValue })
         .eq('id', disciple.id);
 
       if (error) throw error;
 
-      // Mettre à jour l'état local
       setDisciple({ ...disciple, circle_type: nextLevel.dbValue });
 
       const nextLevelLabel = getStatusLabel(nextLevel.dbValue);
@@ -364,7 +412,6 @@ const DiscipleDetail = () => {
         className: "bg-green-600 text-white border-none"
       });
 
-      // Fermer le modal et réinitialiser le motif
       setIsUpgradeModalOpen(false);
       setUpgradeReason('');
     } catch (error) {
@@ -424,6 +471,11 @@ const DiscipleDetail = () => {
               <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-sm font-medium border border-purple-200">
                 {getStatusLabel(disciple.circle_type).toUpperCase()}
               </span>
+              {(disciple.role === 'tutore' || disciple.role === 'mentor' || disciple.role === 'pilier') && (
+                <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-sm font-medium border border-gray-200">
+                  {disciple.role === 'tutore' ? 'Tutoré' : disciple.titre || (disciple.role === 'pilier' ? 'Pilier' : 'Mentor')}
+                </span>
+              )}
               <span className="text-gray-600 text-sm flex items-center gap-1">
                 <Calendar size={14} /> Ajouté le {new Date(disciple.created_at).toLocaleDateString()}
               </span>
@@ -435,6 +487,21 @@ const DiscipleDetail = () => {
                <Button size="sm" variant="outline" className="border-gray-800 bg-gray-800 text-white hover:bg-gray-100 hover:text-black" onClick={() => handleAction("Appel lancé")}>
                  <Phone size={16} className="mr-2" /> Appeler
                </Button>
+               {canUpgradeTutoreToDisciple && (
+                 <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white" onClick={() => openUpgradeRoleModal('tutore_to_disciple')} disabled={isUpgrading}>
+                   <UserPlus size={16} className="mr-2" /> Upgrader en Disciple
+                 </Button>
+               )}
+               {canUpgradeMentorToPilierOrBerger && (
+                 <>
+                   <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => openUpgradeRoleModal('mentor_to_pilier')} disabled={isUpgrading}>
+                     <Award size={16} className="mr-2" /> Upgrader en Pilier
+                   </Button>
+                   <Button size="sm" variant="outline" className="border-indigo-600 text-indigo-600 hover:bg-indigo-50" onClick={() => openUpgradeRoleModal('mentor_to_berger')} disabled={isUpgrading}>
+                     <Award size={16} className="mr-2" /> Upgrader en Berger
+                   </Button>
+                 </>
+               )}
                {getNextLevel(disciple.circle_type) && (
                  <Button 
                    size="sm" 
@@ -755,7 +822,7 @@ const DiscipleDetail = () => {
         )}
       </AnimatePresence>
 
-      {/* Upgrade Level Confirmation Modal */}
+      {/* Upgrade Level ou Rôle – Modal de confirmation */}
       <AnimatePresence>
         {isUpgradeModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -766,6 +833,7 @@ const DiscipleDetail = () => {
               onClick={() => {
                 setIsUpgradeModalOpen(false);
                 setUpgradeReason('');
+                setUpgradeRoleType(null);
               }}
               className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             />
@@ -783,7 +851,9 @@ const DiscipleDetail = () => {
                   <div className="p-2 bg-teal-500/20 rounded-lg">
                     <TrendingUp className="text-teal-400" size={24} />
                   </div>
-                  <h3 className="text-xl font-bold text-white">Passer au niveau supérieur</h3>
+                  <h3 className="text-xl font-bold text-white">
+                    {upgradeRoleType === 'tutore_to_disciple' ? 'Upgrader en Disciple' : upgradeRoleType === 'mentor_to_pilier' ? 'Upgrader en Pilier' : upgradeRoleType === 'mentor_to_berger' ? 'Upgrader en Berger' : 'Passer au niveau supérieur'}
+                  </h3>
                 </div>
                 <Button 
                   variant="ghost" 
@@ -792,6 +862,7 @@ const DiscipleDetail = () => {
                   onClick={() => {
                     setIsUpgradeModalOpen(false);
                     setUpgradeReason('');
+                    setUpgradeRoleType(null);
                   }}
                 >
                   <X size={20} />
@@ -800,20 +871,36 @@ const DiscipleDetail = () => {
 
               <div className="space-y-4">
                 <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-                  <p className="text-sm text-gray-400 mb-1">Disciple</p>
+                  <p className="text-sm text-gray-400 mb-1">Personne</p>
                   <p className="text-white font-medium">{disciple.name}</p>
                 </div>
 
-                <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-                  <p className="text-sm text-gray-400 mb-1">Niveau actuel</p>
-                  <p className="text-white font-medium">{getStatusLabel(disciple.circle_type)}</p>
-                </div>
-
-                {getNextLevel(disciple.circle_type) && (
-                  <div className="p-3 bg-teal-500/10 rounded-lg border border-teal-500/20">
-                    <p className="text-sm text-teal-400 mb-1">Nouveau niveau</p>
-                    <p className="text-teal-300 font-medium">{getStatusLabel(getNextLevel(disciple.circle_type).dbValue)}</p>
-                  </div>
+                {upgradeRoleType ? (
+                  <>
+                    <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                      <p className="text-sm text-gray-400 mb-1">Rôle actuel</p>
+                      <p className="text-white font-medium">{disciple.role === 'tutore' ? 'Tutoré' : disciple.role === 'mentor' ? 'Mentor' : disciple.titre || disciple.role}</p>
+                    </div>
+                    <div className="p-3 bg-teal-500/10 rounded-lg border border-teal-500/20">
+                      <p className="text-sm text-teal-400 mb-1">Nouveau rôle</p>
+                      <p className="text-teal-300 font-medium">
+                        {upgradeRoleType === 'tutore_to_disciple' ? 'Disciple' : upgradeRoleType === 'mentor_to_pilier' ? 'Pilier' : 'Berger'}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                      <p className="text-sm text-gray-400 mb-1">Niveau actuel</p>
+                      <p className="text-white font-medium">{getStatusLabel(disciple.circle_type)}</p>
+                    </div>
+                    {getNextLevel(disciple.circle_type) && (
+                      <div className="p-3 bg-teal-500/10 rounded-lg border border-teal-500/20">
+                        <p className="text-sm text-teal-400 mb-1">Nouveau niveau</p>
+                        <p className="text-teal-300 font-medium">{getStatusLabel(getNextLevel(disciple.circle_type).dbValue)}</p>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div className="space-y-2">
@@ -823,7 +910,7 @@ const DiscipleDetail = () => {
                   <Textarea 
                     value={upgradeReason}
                     onChange={(e) => setUpgradeReason(e.target.value)}
-                    placeholder="Indiquez le motif de la promotion (ex: Progression spirituelle, engagement régulier, etc.)" 
+                    placeholder={upgradeRoleType ? "Indiquez le motif (ex: Bilan positif, évolution spirituelle, etc.)" : "Indiquez le motif de la promotion (ex: Progression spirituelle, engagement régulier, etc.)"} 
                     className="bg-white/5 border-white/10 text-white min-h-[100px] resize-none focus:ring-teal-500"
                     required
                   />
@@ -836,6 +923,7 @@ const DiscipleDetail = () => {
                     onClick={() => {
                       setIsUpgradeModalOpen(false);
                       setUpgradeReason('');
+                      setUpgradeRoleType(null);
                     }}
                     disabled={isUpgrading}
                   >

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, RefreshCw, Trash2, TrendingDown, TrendingUp, Activity } from 'lucide-react';
+import { Download, RefreshCw, Trash2, TrendingDown, TrendingUp, Activity, BarChart3 } from 'lucide-react';
 import performanceMonitor from '@/lib/PerformanceMonitor';
+import { exportToExcel } from '@/lib/ExportUtils';
 import { motion } from 'framer-motion';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const PerformanceDashboard = () => {
   const [report, setReport] = useState(null);
@@ -30,6 +32,38 @@ const PerformanceDashboard = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  /** Export CSV pour analyse Excel (§5.1 rapport) */
+  const handleExportCSV = () => {
+    const r = performanceMonitor.generateReport();
+    const rows = [];
+    rows.push({
+      Page: 'Résumé global',
+      'Temps chargement (ms)': '-',
+      'Appels API': r.global.totalApiCalls,
+      'Taux cache (%)': (r.global.cacheHitRate || '0').replace('%', ''),
+      'Cache hits': r.global.cacheHits,
+      'Cache misses': r.global.cacheMisses,
+    });
+    Object.entries(r.pages || {}).forEach(([page, stats]) => {
+      if (stats) {
+        rows.push({
+          Page: page,
+          'Temps chargement (ms)': stats.loadTime != null ? Math.round(stats.loadTime) : 'N/A',
+          'Appels API': stats.apiCallCount ?? 0,
+          'Taux cache (%)': (stats.cacheHitRate || '0').replace('%', ''),
+          'Cache hits': stats.cacheHits ?? 0,
+          'Cache misses': stats.cacheMisses ?? 0,
+        });
+      }
+    });
+    const filename = `metriques-performance-${new Date().toISOString().split('T')[0]}`;
+    exportToExcel(rows, filename, {
+      title: 'Rapport de performance DiscipleLife',
+      description: `Généré le ${new Date().toLocaleString('fr-FR')}`,
+      additionalInfo: { 'Appels API total': r.global.totalApiCalls, 'Taux cache': r.global.cacheHitRate },
+    });
   };
 
   const handleReset = () => {
@@ -60,6 +94,10 @@ const PerformanceDashboard = () => {
           <Button onClick={handleExport} variant="outline">
             <Download className="h-4 w-4 mr-2" />
             Exporter JSON
+          </Button>
+          <Button onClick={handleExportCSV} variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Exporter CSV
           </Button>
           <Button onClick={handleReset} variant="outline" className="text-red-600 hover:text-red-700">
             <Trash2 className="h-4 w-4 mr-2" />
@@ -145,6 +183,50 @@ const PerformanceDashboard = () => {
           </Card>
         </motion.div>
       </div>
+
+      {/* §5.1 Graphique de tendances : temps de chargement par page */}
+      {Object.keys(report.pages).length > 0 && (() => {
+        const chartData = Object.entries(report.pages)
+          .filter(([, s]) => s && s.loadTime != null)
+          .map(([page, stats]) => ({
+            page: page.length > 18 ? page.slice(0, 18) + '…' : page,
+            temps: Math.round(stats.loadTime),
+            fill: stats.loadTime < 1000 ? '#22c55e' : stats.loadTime < 3000 ? '#eab308' : '#ef4444',
+          }))
+          .sort((a, b) => b.temps - a.temps)
+          .slice(0, 12);
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Tendances : temps de chargement par page
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 60 }}>
+                    <XAxis dataKey="page" angle={-35} textAnchor="end" height={50} fontSize={11} />
+                    <YAxis fontSize={11} tickFormatter={(v) => `${v}ms`} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" opacity={0.5} />
+                    <Tooltip
+                      formatter={(v) => [`${v} ms`, 'Temps']}
+                      labelFormatter={(l) => `Page: ${l}`}
+                      contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb' }}
+                    />
+                    <Bar dataKey="temps" name="Temps (ms)" radius={[4, 4, 0, 0]}>
+                      {chartData.map((entry, i) => (
+                        <Cell key={i} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Alertes : pages au-dessus du seuil */}
       {(() => {

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
+import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { useToast } from '@/components/ui/use-toast';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -252,32 +253,24 @@ const Transformation = () => {
   };
 
   // ========== FONCTIONS POUR LES PARCOURS ==========
+  const CACHE_TTL_MS = 2 * 60 * 1000; // 2 min (§9.1 Étape 4 – extension cache)
+
   const fetchParcours = async () => {
     try {
       setParcoursLoading(true);
-      
-      // D'abord, essayer sans filtre pour voir ce qui existe
-      const { data: allData, error: allError } = await supabase
-        .from('parcours_transformation')
-        .select('*')
-        .order('ordre_affichage', { ascending: true });
-
-      console.log('🔍 Tous les parcours (sans filtre):', allData);
-      
-      // Ensuite, avec le filtre statut
-      const { data, error } = await supabase
-        .from('parcours_transformation')
-        .select('*')
-        .eq('statut', 'actif')
-        .order('ordre_affichage', { ascending: true });
-
-      if (error) {
-        console.error('❌ Erreur Supabase:', error);
-        throw error;
-      }
-      
-      console.log('✅ Parcours actifs récupérés:', data);
-      console.log('📊 Nombre de parcours:', data?.length || 0);
+      const data = await getOrSetCache(
+        'transformation_parcours_actifs',
+        async () => {
+          const { data: raw, error } = await supabase
+            .from('parcours_transformation')
+            .select('*')
+            .eq('statut', 'actif')
+            .order('ordre_affichage', { ascending: true });
+          if (error) throw error;
+          return raw || [];
+        },
+        CACHE_TTL_MS
+      );
       
       // Supprimer les doublons basés sur le nom (garder le premier)
       const uniqueParcours = [];
@@ -290,15 +283,8 @@ const Transformation = () => {
         }
       });
       
-      console.log('✨ Parcours uniques après déduplication:', uniqueParcours.length);
       setParcours(uniqueParcours);
       
-      if (uniqueParcours.length === 0) {
-        console.warn('⚠️ Aucun parcours trouvé. Vérifiez:');
-        console.warn('   1. Les migrations SQL ont-elles été exécutées ?');
-        console.warn('   2. Y a-t-il des données dans parcours_transformation ?');
-        console.warn('   3. Les RLS policies permettent-elles la lecture ?');
-      }
     } catch (error) {
       console.error('❌ Error fetching parcours:', error);
       toast({
@@ -818,25 +804,23 @@ const Transformation = () => {
 
   // ========== FONCTIONS POUR LE JOURNAL ==========
   const fetchJournalEntries = async () => {
+    if (!user?.id) return;
     try {
       setJournalLoading(true);
-      console.log('📔 Début fetchJournalEntries pour user:', user.id);
-      const { data, error } = await supabase
-        .from('journal_transformation')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) {
-        console.error('❌ Erreur fetchJournalEntries:', error);
-        throw error;
-      }
-      console.log('📔 Entrées récupérées:', data?.length || 0);
-      if (data && data.length > 0) {
-        console.log('📔 Première entrée:', data[0]);
-        console.log('📔 Thématiques trouvées:', data.map(e => e.thematique).filter(t => t));
-      }
+      const data = await getOrSetCache(
+        `transformation_journal_${user.id}`,
+        async () => {
+          const { data: raw, error } = await supabase
+            .from('journal_transformation')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(50);
+          if (error) throw error;
+          return raw || [];
+        },
+        CACHE_TTL_MS
+      );
       setJournalEntries(data || []);
     } catch (error) {
       console.error('❌ Error fetching journal entries:', error);
@@ -899,6 +883,7 @@ const Transformation = () => {
         prieres: '',
         tags: []
       });
+      clearCache(`transformation_journal_${user.id}`);
       await fetchJournalEntries();
     } catch (error) {
       console.error('❌ Error saving journal:', error);
@@ -933,6 +918,7 @@ const Transformation = () => {
 
       setIsDeleteJournalDialogOpen(false);
       setEntryToDelete(null);
+      clearCache(`transformation_journal_${user.id}`);
       await fetchJournalEntries();
     } catch (error) {
       console.error('❌ Error deleting journal:', error);
@@ -1473,21 +1459,18 @@ const Transformation = () => {
 
       if (allProgError) throw allProgError;
 
-      // 2) Tous les disciples pour récupérer les noms à partir du user_id
       const { data: disciplesData, error: disciplesError } = await supabase
-        .from('cercle_personnes')
-        .select('id, name, first_name, last_name, user_id');
+        .from('profils')
+        .select('id, first_name, last_name, mentor_id');
 
       if (disciplesError) throw disciplesError;
 
       const discipleNameByUserId = new Map();
       (disciplesData || []).forEach((disciple) => {
-        const fullName =
-          disciple.name ||
-          `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() ||
-          'Disciple';
-        if (disciple.user_id) {
-          discipleNameByUserId.set(disciple.user_id, fullName);
+        const fullName = `${(disciple.first_name || '')} ${(disciple.last_name || '')}`.trim() || 'Disciple';
+        discipleNameByUserId.set(disciple.id, fullName);
+        if (disciple.mentor_id) {
+          discipleNameByUserId.set(disciple.mentor_id, discipleNameByUserId.get(disciple.mentor_id) || fullName);
         }
       });
 
@@ -2003,28 +1986,14 @@ const Transformation = () => {
       // Récupérer le nom de l'utilisateur
       let userName = 'Disciple';
       
-      // Essayer de récupérer depuis cercle_personnes
-      const { data: discipleData } = await supabase
-        .from('cercle_personnes')
-        .select('name, first_name, last_name')
-        .eq('user_id', user.id)
+      const { data: profileData } = await supabase
+        .from('profils')
+        .select('first_name, last_name')
+        .eq('id', user.id)
         .maybeSingle();
 
-      if (discipleData) {
-        userName = discipleData.name || 
-          `${discipleData.first_name || ''} ${discipleData.last_name || ''}`.trim() || 
-          'Disciple';
-      } else {
-        // Essayer depuis profils
-        const { data: profileData } = await supabase
-          .from('profils')
-          .select('first_name, last_name')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        if (profileData) {
-          userName = `${profileData.first_name || ''} ${profileData.last_name || ''}`.trim() || 'Disciple';
-        }
+      if (profileData) {
+        userName = `${(profileData.first_name || '')} ${(profileData.last_name || '')}`.trim() || 'Disciple';
       }
 
       const parcoursNom = progressionData.parcours_transformation?.nom || 'Parcours de Transformation';
@@ -2146,18 +2115,16 @@ const Transformation = () => {
   const fetchDisciples = async () => {
     try {
       const { data, error } = await supabase
-        .from('cercle_personnes')
-        .select('id, name, first_name, last_name, user_id')
-        .order('name', { ascending: true });
+        .from('profils')
+        .select('id, first_name, last_name, mentor_id')
+        .order('first_name', { ascending: true });
 
       if (error) throw error;
 
       const disciplesList = (data || []).map(disciple => ({
         id: disciple.id,
-        user_id: disciple.user_id,
-        name: disciple.name || 
-              `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() || 
-              'Disciple'
+        user_id: disciple.id,
+        name: `${(disciple.first_name || '')} ${(disciple.last_name || '')}`.trim() || 'Disciple'
       }));
 
       setDisciples(disciplesList);
@@ -2182,12 +2149,6 @@ const Transformation = () => {
       });
 
       console.log('🔍 Récupération des formations pour disciple:', selectedDisciple?.name);
-      console.log('🔍 Disciple ID (cercle_personnes):', selectedDisciple?.id);
-      console.log('🔍 Disciple user_id:', discipleUserId);
-      console.log('🔍 user.id (utilisateur connecté):', user?.id);
-
-      // Récupérer les progressions du disciple
-      // D'abord, essayer de récupérer les progressions liées au disciple via cercle_personnes_id
       let query = supabase
         .from('user_parcours_progression')
         .select(`
@@ -2198,16 +2159,9 @@ const Transformation = () => {
           )
         `);
 
-      // Si le disciple a le même user_id que l'utilisateur connecté,
-      // chercher les progressions liées au disciple via cercle_personnes_id
-      if (discipleUserId === user?.id && selectedDisciple?.id) {
-        console.log('🔍 Le disciple a le même user_id que l\'utilisateur connecté. Recherche via cercle_personnes_id...');
-        query = query.eq('cercle_personnes_id', selectedDisciple.id);
-      } else {
-        // Si le disciple a son propre compte utilisateur, chercher via user_id
-        console.log('🔍 Le disciple a son propre compte utilisateur. Recherche via user_id...');
-        query = query.eq('user_id', discipleUserId);
-      }
+      // Source unique : profils. La progression est liée au disciple par user_id (= id du profil disciple).
+      const targetUserId = selectedDisciple?.id || discipleUserId;
+      query = query.eq('user_id', targetUserId);
 
       const { data: progressions, error: progError } = await query.order('date_debut', { ascending: false });
 

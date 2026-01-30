@@ -42,8 +42,8 @@ const AppointmentsList = () => {
 
   const fetchDisciples = async () => {
       // For mentors to select disciple
-      const { data } = await supabase.from('cercle_personnes').select('id, name').eq('user_id', user.id);
-      setDisciples(data || []);
+      const { data } = await supabase.from('profils').select('id, first_name, last_name').eq('mentor_id', user.id);
+      setDisciples((data || []).map(p => ({ id: p.id, name: `${(p.first_name || '')} ${(p.last_name || '')}`.trim() || 'Sans nom' })));
   };
 
   const fetchData = async () => {

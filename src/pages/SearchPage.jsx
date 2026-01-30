@@ -49,14 +49,14 @@ const SearchPage = () => {
       // Parallel queries for different content types
       // Limit 20 per table to avoid huge payload, client side merge/sort
       const queries = [
-        // 1. Disciples (cercle_personnes)
-        supabase.from('cercle_personnes')
-          .select('id, name, circle_type, created_at')
-          .ilike('name', `%${query}%`)
+        // 1. Disciples (profils)
+        supabase.from('profils')
+          .select('id, first_name, last_name, circle_type, created_at')
+          .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
           .limit(20)
           .then(({ data }) => data?.map(d => ({
-             id: d.id, type: 'disciple', title: d.name, 
-             description: `Disciple (${d.circle_type})`, 
+             id: d.id, type: 'disciple', title: `${(d.first_name || '')} ${(d.last_name || '')}`.trim() || 'Sans nom',
+             description: `Disciple (${d.circle_type || '-'})`,
              date: d.created_at, link: `/space/disciple/${d.id}`
           })) || []),
 

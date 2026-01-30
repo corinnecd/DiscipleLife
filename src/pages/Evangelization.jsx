@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
+import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/components/ui/use-toast';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
@@ -179,24 +180,27 @@ const Evangelization = () => {
     }
   }, [user, isAdmin]);
 
+  const CACHE_TTL_MS = 2 * 60 * 1000; // 2 min (§9.1 Étape 4 – extension cache)
+
   // ========== FONCTIONS POUR LES VISITEURS ==========
   const fetchVisiteurs = async () => {
     try {
       setVisiteursLoading(true);
-      let query = supabase
-        .from('visiteurs')
-        .select(`
-          *,
-          profils:invitant_id(first_name, last_name)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (!isAdmin) {
-        query = query.eq('invitant_id', user.id);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
+      const cacheKey = `evangelization_visiteurs_${isAdmin ? 'all' : user?.id}`;
+      const data = await getOrSetCache(
+        cacheKey,
+        async () => {
+          let query = supabase
+            .from('visiteurs')
+            .select(`*, profils:invitant_id(first_name, last_name)`)
+            .order('created_at', { ascending: false });
+          if (!isAdmin && user?.id) query = query.eq('invitant_id', user.id);
+          const { data: raw, error } = await query;
+          if (error) throw error;
+          return raw || [];
+        },
+        CACHE_TTL_MS
+      );
       setVisiteurs(data || []);
     } catch (error) {
       handleError(error, { context: 'fetchVisiteurs' }, "Impossible de charger les visiteurs.");
@@ -240,6 +244,7 @@ const Evangelization = () => {
 
       setIsVisiteurDialogOpen(false);
       resetVisiteurForm();
+      clearCache(`evangelization_visiteurs_${isAdmin ? 'all' : user?.id}`);
       fetchVisiteurs();
     } catch (error) {
       handleError(error, { context: 'handleSaveVisiteur', visiteurId: editingVisiteurId }, "Une erreur est survenue lors de l'enregistrement.");
@@ -269,6 +274,7 @@ const Evangelization = () => {
         .eq('id', id);
       if (error) throw error;
       toast({ title: "Supprimé", description: "Visiteur supprimé." });
+      clearCache(`evangelization_visiteurs_${isAdmin ? 'all' : user?.id}`);
       fetchVisiteurs();
     } catch (error) {
       handleError(error, { context: 'handleDeleteVisiteur', visiteurId: id }, "Impossible de supprimer le visiteur.");
@@ -279,20 +285,21 @@ const Evangelization = () => {
   const fetchCampagnes = async () => {
     try {
       setCampagnesLoading(true);
-      let query = supabase
-        .from('campagnes_evangelisation')
-        .select(`
-          *,
-          profils:responsable_id(first_name, last_name)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (!isAdmin) {
-        query = query.eq('responsable_id', user.id);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
+      const cacheKey = `evangelization_campagnes_${isAdmin ? 'all' : user?.id}`;
+      const data = await getOrSetCache(
+        cacheKey,
+        async () => {
+          let query = supabase
+            .from('campagnes_evangelisation')
+            .select(`*, profils:responsable_id(first_name, last_name)`)
+            .order('created_at', { ascending: false });
+          if (!isAdmin && user?.id) query = query.eq('responsable_id', user.id);
+          const { data: raw, error } = await query;
+          if (error) throw error;
+          return raw || [];
+        },
+        CACHE_TTL_MS
+      );
       setCampagnes(data || []);
     } catch (error) {
       console.error('Erreur lors du chargement des campagnes:', error);
@@ -340,6 +347,7 @@ const Evangelization = () => {
 
       setIsCampagneDialogOpen(false);
       resetCampagneForm();
+      clearCache(`evangelization_campagnes_${isAdmin ? 'all' : user?.id}`);
       fetchCampagnes();
     } catch (error) {
       console.error('Erreur lors de l\'enregistrement:', error);

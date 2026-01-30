@@ -1,6 +1,7 @@
 import React from 'react';
-import { Users, Loader2, CheckCircle2, X } from 'lucide-react';
+import { Users, Loader2, CheckCircle2, X, FileText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -18,20 +19,33 @@ export function TableauDetailleDisciples({
   loading = false,
   disciples = [],
   onNavigate,
+  onExportExcel,
 }) {
   return (
     <Card className="bg-white border-gray-200 shadow-sm">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle className="text-lg font-semibold text-gray-900">Tableau Détaillé des Disciples</CardTitle>
             <CardDescription>
               Vue détaillée de tous les disciples avec leurs informations de suivi
             </CardDescription>
           </div>
-          {loading && (
-            <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-          )}
+          <div className="flex items-center gap-2">
+            {loading && <Loader2 className="h-5 w-5 animate-spin text-purple-600" />}
+            {onExportExcel && disciples.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onExportExcel}
+                disabled={loading}
+                className="shrink-0 border-0 bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Exporter CSV
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
