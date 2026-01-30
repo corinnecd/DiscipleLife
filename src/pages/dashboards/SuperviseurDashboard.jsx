@@ -2,8 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
-  Church, ChevronRight, Loader2, UserCircle, Eye, ArrowLeft, Camera, Sparkles, Zap, Trophy, Star, AlertCircle, Clock,
-  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, CheckCircle2, PlayCircle, GraduationCap, Download, FileText, History, Search, X, Calendar, User, ChevronDown, ChevronUp
+  Church, ChevronRight, Loader2, UserCircle, Eye, ArrowLeft, Camera, Sparkles, Zap, Trophy, Star, AlertCircle,
+  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, CheckCircle2, PlayCircle, Download, FileText, History, Search, X, Calendar, User, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getWeek, getQuarter, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfMonth, endOfMonth, format } from 'date-fns';
@@ -12,22 +12,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
 import { compressImage } from '@/lib/ImageCompression';
 import { useToast } from '@/components/ui/use-toast';
@@ -36,14 +26,21 @@ import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { useSuperviseurData } from '@/hooks/useSuperviseurData';
 import performanceMonitor from '@/lib/PerformanceMonitor';
-import { 
-  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Brush, ReferenceLine
-} from 'recharts';
 import { WelcomeBanner } from './superviseur/WelcomeBanner';
+import { FamillePasteurCards } from './superviseur/FamillePasteurCards';
+import { SuperviseursFamilleCard } from './superviseur/SuperviseursFamilleCard';
+import { StatsRapidesEtActions } from './superviseur/StatsRapidesEtActions';
+import { KpiSection } from './superviseur/KpiSection';
 import { ChartsKpi } from './superviseur/ChartsKpi';
 import { StatsComparatives } from './superviseur/StatsComparatives';
 import { ActiviteRecente } from './superviseur/ActiviteRecente';
 import { AlertesSection } from './superviseur/AlertesSection';
+import { MembresListCard } from './superviseur/MembresListCard';
+import { SuperviseurModals } from './superviseur/SuperviseurModals';
+import { TableauDetailleDisciples } from './superviseur/TableauDetailleDisciples';
+import { TableauMentorsPiliers } from './superviseur/TableauMentorsPiliers';
+import { ChartsSupplementaires } from './superviseur/ChartsSupplementaires';
+import { ReportReminderCard } from './superviseur/ReportReminderCard';
 
 const PAGE_NAME = 'SuperviseurDashboard';
 const LOAD_TIME_ALERT_MS = 4000; // Seuil au-delà duquel on affiche une alerte performance
@@ -2014,6 +2011,79 @@ const SuperviseurDashboard = () => {
     }
   };
 
+  const handleExportSelectedExcel = () => {
+    const selectedData = filteredMembres.filter(m => selectedMembres.includes(m.id));
+    const exportData = selectedData.map(membre => ({
+      'Prénom': membre.first_name || '',
+      'Nom': membre.last_name || '',
+      'Email': membre.email || '',
+      'Statut': membre.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
+      'Nombre de Disciples': membre.nombreDisciples || 0,
+      'Formations terminées': membresProgression[membre.id]?.formations || 0,
+      'Vidéos terminées': membresProgression[membre.id]?.videos || 0,
+      'Total progression': membresProgression[membre.id]?.total || 0,
+      'Date d\'inscription': membre.created_at ? format(new Date(membre.created_at), 'dd/MM/yyyy', { locale: fr }) : ''
+    }));
+    const filename = `membres_selectionnes_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
+    exportToExcel(exportData, filename);
+    toast({ title: 'Export réussi', description: `${selectedMembres.length} membre(s) exporté(s)`, });
+  };
+
+  const handleExportSelectedPdf = async () => {
+    try {
+      const selectedData = filteredMembres.filter(m => selectedMembres.includes(m.id));
+      const tempDiv = document.createElement('div');
+      const uniqueId = `pdf-export-${Date.now()}`;
+      tempDiv.id = uniqueId;
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.width = '800px';
+      tempDiv.style.padding = '20px';
+      tempDiv.style.backgroundColor = '#ffffff';
+      tempDiv.innerHTML = `
+        <div style="font-family: Arial, sans-serif;">
+          <h2 style="color: #9333ea; margin-bottom: 10px;">Membres Sélectionnés - ${famille?.nom || 'Famille'}</h2>
+          <p style="color: #666; margin-bottom: 5px;">Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p>
+          <p style="color: #666; margin-bottom: 20px;">Total: ${selectedData.length} membre(s)</p>
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
+            <thead>
+              <tr style="background-color: #f3f4f6;">
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Prénom</th>
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Nom</th>
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Email</th>
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Statut</th>
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Disciples</th>
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Progression</th>
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${selectedData.map(m => `
+                <tr>
+                  <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.first_name || ''}</td>
+                  <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.last_name || ''}</td>
+                  <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.email || '-'}</td>
+                  <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif'}</td>
+                  <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.nombreDisciples || 0}</td>
+                  <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${membresProgression[m.id]?.total || 0}</td>
+                  <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.created_at ? format(new Date(m.created_at), 'dd/MM/yyyy', { locale: fr }) : '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      document.body.appendChild(tempDiv);
+      const filename = `membres_selectionnes_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}.pdf`;
+      await exportElementToPDF(uniqueId, filename);
+      document.body.removeChild(tempDiv);
+      toast({ title: 'Export réussi', description: `${selectedMembres.length} membre(s) exporté(s) en PDF`, });
+    } catch (error) {
+      console.error('Erreur export PDF:', error);
+      toast({ variant: 'destructive', title: 'Erreur', description: 'Impossible d\'exporter en PDF. Veuillez réessayer.', });
+    }
+  };
+
   // Fonctions pour sélection multiple
   const toggleSelectMembre = (membreId) => {
     setSelectedMembres(prev => 
@@ -2187,40 +2257,10 @@ const SuperviseurDashboard = () => {
           Retour
         </Button>
 
-        {/* Alerte de rappel pour le rapport mensuel (5 jours avant la fin du mois) */}
-        {reportReminder && reportReminder.showReminder && (
-          <Card className="bg-blue-50 border-blue-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold text-blue-900 flex items-center gap-2">
-                <Clock className="h-5 w-5 text-blue-600" />
-                Rappel : Rapport mensuel
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-blue-900 font-medium">
-                    {reportReminder.daysLeft === 0 
-                      ? "⏰ Le mois se termine aujourd'hui ! N'oubliez pas d'envoyer votre rapport mensuel."
-                      : reportReminder.daysLeft === 1
-                      ? "⏰ Le mois se termine demain ! N'oubliez pas d'envoyer votre rapport mensuel."
-                      : `⏰ Le mois se termine dans ${reportReminder.daysLeft} jours ! N'oubliez pas d'envoyer votre rapport mensuel.`
-                    }
-                  </p>
-                  <p className="text-sm text-blue-700 mt-2">
-                    Vous pouvez envoyer votre rapport depuis la page "Envoyer un rapport".
-                  </p>
-                </div>
-                <Button
-                  onClick={() => navigate('/send-report')}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  Envoyer le rapport
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <ReportReminderCard
+          reportReminder={reportReminder}
+          onGoToSendReport={() => navigate('/send-report')}
+        />
 
         {/* Bandeau de bienvenue */}
         {famille && (
@@ -2234,610 +2274,52 @@ const SuperviseurDashboard = () => {
         )}
         
         {/* En-tête avec nom de la famille et pasteur */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4 }}
-          >
-          <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-start justify-between">
-              <div className="flex-1">
-                <CardTitle className="flex items-center gap-2 text-gray-900">
-                  <Users className="h-5 w-5 text-purple-600" />
-                  {(() => {
-                    const nomComplet = `${superviseurNom.titre === 'Pasteur' ? 'Pasteur ' : ''}${superviseurNom.first_name || ''} ${superviseurNom.last_name || ''}`.trim();
-                    return nomComplet ? `Famille de ${nomComplet}` : 'Ma Famille';
-                  })()}
-                </CardTitle>
-                <CardDescription className="text-gray-600">
-                  <span>{famille.nom} ({famille.identifiant_famille})</span>
-                  {user?.email && (
-                    <span className="block mt-1 text-sm text-gray-500">{user.email}</span>
-                  )}
-                </CardDescription>
-              </div>
-              <div className="relative">
-                <label htmlFor="famille-avatar" className="cursor-pointer">
-                  <Avatar className="w-20 h-20 border-2 border-purple-200 hover:border-purple-400 transition-colors">
-                    <AvatarImage src={familleAvatarPreview} alt={famille.nom} />
-                    <AvatarFallback className="bg-purple-100 text-purple-600 text-lg">
-                      {famille.nom.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="absolute bottom-0 right-0 bg-purple-600 rounded-full p-1.5 border-2 border-white shadow-sm hover:bg-purple-700 transition-colors">
-                    <Camera className="h-3 w-3 text-white" />
-                  </div>
-                </label>
-                <input
-                  id="famille-avatar"
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleFamilleAvatarChange}
-                />
-                {familleAvatarFile && (
-                  <Button
-                    size="sm"
-                    onClick={uploadFamilleAvatar}
-                    disabled={uploadingFamilleAvatar}
-                    className="mt-2 w-full bg-purple-600 hover:bg-purple-700"
-                  >
-                    {uploadingFamilleAvatar ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Enregistrer'
-                    )}
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Objectif</span>
-                  <span className="text-lg font-semibold text-gray-900">{stats.objectif} disciples</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Membres actuels</span>
-                  <span className="text-lg font-semibold text-purple-600">{stats.nombreMembres}</span>
-                </div>
-                {stats.reste > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Il manque</span>
-                    <span className="text-lg font-semibold text-red-600">{stats.reste} Disciples</span>
-                  </div>
-                )}
-                {stats.nombreMembres > stats.objectif && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Objectif Atteint</span>
-                    <span className="text-lg font-semibold text-green-600">+ {stats.nombreMembres - stats.objectif} Disciples</span>
-                  </div>
-                )}
-              </div>
-              
-              {/* Barre de progression */}
-              <div className="mt-4">
-                <div className="flex justify-between text-xs text-gray-600 mb-1">
-                  <span>Progression</span>
-                  <span className="font-medium">{stats.progression.toFixed(0)}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${stats.progression}%` }}
-                    transition={{ duration: 0.5 }}
-                    className={cn(
-                      "h-3 rounded-full",
-                      stats.progression >= 100 ? "bg-green-500" : "bg-purple-600"
-                    )}
-                  />
-                </div>
-              </div>
-
-              {stats.nombreMembres >= stats.objectif && (
-                <Badge className="mt-4 bg-green-500 text-white">
-                  <Target className="h-3 w-3 mr-1" />
-                  Objectif atteint ! 🎉
-                </Badge>
-              )}
-            </CardContent>
-          </Card>
-          </motion.div>
-
-          {/* Carte du Pasteur de tutelle */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.1 }}
-          >
-          <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-start justify-between">
-              <div className="flex-1">
-                <CardTitle className="flex items-center gap-2 text-gray-900">
-                  <Church className="h-5 w-5 text-purple-600" />
-                  {pasteur ? `${pasteur.first_name} ${pasteur.last_name}` : 'Pasteur de tutelle'}
-                </CardTitle>
-                <CardDescription className="text-gray-600">
-                  {pasteur ? `Pasteur de tutelle de la famille ${famille.nom}` : 'Responsable de votre famille'}
-                </CardDescription>
-              </div>
-              <div className="relative">
-                <label htmlFor="pasteur-avatar" className="cursor-pointer">
-                  <Avatar className="w-20 h-20 border-2 border-purple-200 hover:border-purple-400 transition-colors">
-                    {pasteur ? (
-                      <>
-                        <AvatarImage src={pasteurAvatarPreview || pasteur.avatar_url} alt={`${pasteur.first_name} ${pasteur.last_name}`} />
-                        <AvatarFallback className="bg-purple-100 text-purple-600 text-lg">
-                          {pasteur.first_name?.charAt(0) || ''}{pasteur.last_name?.charAt(0) || ''}
-                        </AvatarFallback>
-                      </>
-                    ) : (
-                      <AvatarFallback className="bg-gray-100 text-gray-400 text-lg">
-                        <UserCircle className="h-8 w-8" />
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
-                  <div className="absolute bottom-0 right-0 bg-purple-600 rounded-full p-1.5 border-2 border-white shadow-sm hover:bg-purple-700 transition-colors">
-                    <Camera className="h-3 w-3 text-white" />
-                  </div>
-                </label>
-                <input
-                  id="pasteur-avatar"
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handlePasteurAvatarChange}
-                  disabled={!pasteur}
-                />
-                {pasteurAvatarFile && (
-                  <Button
-                    size="sm"
-                    onClick={uploadPasteurAvatar}
-                    disabled={uploadingPasteurAvatar || !pasteur}
-                    className="mt-2 w-full bg-purple-600 hover:bg-purple-700"
-                  >
-                    {uploadingPasteurAvatar ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Enregistrer'
-                    )}
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {pasteur ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                      <UserCircle className="h-6 w-6 text-purple-600" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900">
-                        {pasteur.identifiant_unique}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {pasteur.first_name} {pasteur.last_name}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-600 pt-2 border-t border-gray-200 italic">
-                    <p className="font-medium text-purple-600 mb-1">Matthieu 4:19 (LSG)</p>
-                    <p className="text-gray-700">Jésus leur dit : Suivez-moi, et je vous ferai pêcheurs d'hommes.</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center py-4">
-                  <p className="text-sm text-gray-500">
-                    Pasteur de tutelle non assigné
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          </motion.div>
-        </div>
+        <FamillePasteurCards
+          famille={famille}
+          user={user}
+          stats={stats}
+          superviseurNom={superviseurNom}
+          pasteur={pasteur}
+          familleAvatarPreview={familleAvatarPreview}
+          familleAvatarFile={familleAvatarFile}
+          uploadingFamilleAvatar={uploadingFamilleAvatar}
+          onFamilleAvatarChange={handleFamilleAvatarChange}
+          uploadFamilleAvatar={uploadFamilleAvatar}
+          pasteurAvatarPreview={pasteurAvatarPreview}
+          pasteurAvatarFile={pasteurAvatarFile}
+          uploadingPasteurAvatar={uploadingPasteurAvatar}
+          onPasteurAvatarChange={handlePasteurAvatarChange}
+          uploadPasteurAvatar={uploadPasteurAvatar}
+        />
 
         {/* Liste des superviseurs de la famille */}
-        {superviseursFamille.length > 0 && (
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-gray-900">
-                <Users className="h-5 w-5 text-purple-600" />
-                Autres Superviseurs de la famille
-              </CardTitle>
-              <CardDescription className="text-gray-600">
-                Autres superviseurs sous la même tutelle pastorale
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {superviseursFamille.map((superviseur) => (
-                  <div
-                    key={superviseur.id}
-                    onClick={() => setSelectedSuperviseur(superviseur)}
-                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-colors cursor-pointer"
-                  >
-                    <Avatar className="h-10 w-10 border border-gray-200">
-                      <AvatarImage src={superviseur.avatar_url} alt={`${superviseur.first_name} ${superviseur.last_name}`} />
-                      <AvatarFallback className="bg-purple-100 text-purple-600 text-sm">
-                        {superviseur.first_name?.charAt(0) || ''}{superviseur.last_name?.charAt(0) || ''}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm truncate">
-                        {superviseur.first_name} {superviseur.last_name}
-                      </p>
-                      {superviseur.titre && (
-                        <p className="text-xs text-gray-500">{superviseur.titre}</p>
-                      )}
-                      {superviseur.email && (
-                        <p className="text-xs text-gray-600 truncate">{superviseur.email}</p>
-                      )}
-                      {nombreMembresParSuperviseur[superviseur.id] !== undefined && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Users className="h-3 w-3 text-purple-600" />
-                          <span className="text-xs font-semibold text-purple-600">
-                            {nombreMembresParSuperviseur[superviseur.id] || 0} membre{nombreMembresParSuperviseur[superviseur.id] !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <SuperviseursFamilleCard
+          superviseursFamille={superviseursFamille}
+          nombreMembresParSuperviseur={nombreMembresParSuperviseur}
+          onSelectSuperviseur={setSelectedSuperviseur}
+        />
 
-        {/* Statistiques rapides */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-900">
-                Membres
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600">
-                {stats.nombreMembres}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                sur {stats.objectif} objectif
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-900">
-                Progression
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600">
-                {stats.progression.toFixed(0)}%
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                vers l'objectif
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-900">
-                {stats.nombreMembres >= stats.objectif ? 'Continuons d\'évangéliser' : 'Disciples à évangéliser'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className={`text-2xl font-bold ${stats.nombreMembres >= stats.objectif ? 'text-green-600' : 'text-red-600'}`}>
-                {stats.nombreMembres >= stats.objectif ? `+ ${stats.nombreMembres - stats.objectif}` : stats.reste}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {stats.nombreMembres >= stats.objectif ? 'Objectif atteint' : 'avant l\'objectif'}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Actions rapides */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-gray-900">Actions rapides</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              <Button
-                variant="outline"
-                className="group justify-start bg-white border-gray-200 hover:bg-amber-500 hover:border-amber-500 text-gray-900 hover:text-white transition-colors"
-                onClick={() => navigate('/familles')}
-              >
-                <Eye className="h-4 w-4 mr-2 text-purple-600 group-hover:text-white transition-colors" />
-                Voir ma famille
-              </Button>
-              <Button
-                variant="outline"
-                className="group justify-start bg-white border-gray-200 hover:bg-amber-500 hover:border-amber-500 text-gray-900 hover:text-white transition-colors"
-                onClick={() => navigate('/attendance')}
-              >
-                <Activity className="h-4 w-4 mr-2 text-purple-600 group-hover:text-white transition-colors" />
-                Suivi de présence
-              </Button>
-              <Button
-                variant="outline"
-                className="group justify-start bg-white border-gray-200 hover:bg-amber-500 hover:border-amber-500 text-gray-900 hover:text-white transition-colors"
-                onClick={() => navigate('/statistics')}
-              >
-                <TrendingUp className="h-4 w-4 mr-2 text-purple-600 group-hover:text-white transition-colors" />
-                Statistiques
-              </Button>
-              <Button
-                variant="outline"
-                className="group justify-start bg-white border-gray-200 hover:bg-amber-500 hover:border-amber-500 text-gray-900 hover:text-white transition-colors"
-                onClick={() => setShowHistory(true)}
-              >
-                <History className="h-4 w-4 mr-2 text-purple-600 group-hover:text-white transition-colors" />
-                Voir l'historique
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Statistiques rapides + Actions rapides */}
+        <StatsRapidesEtActions
+          stats={stats}
+          onNavigate={navigate}
+          onShowHistory={() => setShowHistory(true)}
+        />
 
         {/* Section KPI avec filtres de période */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-semibold text-gray-900">
-                {(() => {
-                  const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-                  if (kpiPeriodType === 'annuel') {
-                    return `KPI Annuels ${kpiSelectedYearForPeriod}`;
-                  } else if (kpiPeriodType === 'trimestriel') {
-                    return `KPI Trimestriels T${kpiSelectedQuarter} ${kpiSelectedYearForPeriod}`;
-                  } else if (kpiPeriodType === 'mensuel') {
-                    const monthName = months[parseInt(kpiSelectedMonth)];
-                    return `KPI Mensuels ${monthName} ${kpiSelectedYearForPeriod}`;
-                  } else {
-                    const selectedYear = parseInt(kpiSelectedYearForPeriod);
-                    const selectedWeek = parseInt(kpiSelectedWeek);
-                    const jan1 = new Date(selectedYear, 0, 1);
-                    const firstWeekStart = startOfWeek(jan1, { weekStartsOn: 1 });
-                    const targetWeekStart = new Date(firstWeekStart);
-                    targetWeekStart.setDate(firstWeekStart.getDate() + (selectedWeek - 1) * 7);
-                    const monthIndex = targetWeekStart.getMonth();
-                    const monthName = months[monthIndex];
-                    return `KPI Hebdomadaires Sem ${kpiSelectedWeek} ${monthName} ${kpiSelectedYearForPeriod}`;
-                  }
-                })()}
-              </CardTitle>
-              <div className="flex flex-wrap gap-2 items-center">
-                <Select value={kpiPeriodType} onValueChange={setKpiPeriodType}>
-                  <SelectTrigger className="w-[140px] bg-gray-200 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900 hover:bg-gray-300">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200">
-                    <SelectItem value="hebdomadaire" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Hebdomadaire</SelectItem>
-                    <SelectItem value="mensuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Mensuel</SelectItem>
-                    <SelectItem value="trimestriel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestriel</SelectItem>
-                    <SelectItem value="annuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Annuel</SelectItem>
-                  </SelectContent>
-                </Select>
-                
-                {kpiPeriodType === 'annuel' && (
-                  <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
-                    <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {Array.from({ length: 5 }, (_, i) => {
-                        const year = new Date().getFullYear() - i;
-                        return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
-                      })}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {kpiPeriodType === 'trimestriel' && (
-                  <>
-                    <Select value={kpiSelectedQuarter} onValueChange={setKpiSelectedQuarter}>
-                      <SelectTrigger className="w-[120px] bg-purple-600 border-0 text-white focus:ring-0 focus:ring-offset-0 focus:outline-none hover:bg-purple-700 [&>span]:text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        {[1, 2, 3, 4].map(q => (
-                          <SelectItem key={q} value={q.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">T{q}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
-                      <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        {Array.from({ length: 5 }, (_, i) => {
-                          const year = new Date().getFullYear() - i;
-                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
-                        })}
-                      </SelectContent>
-                    </Select>
-                  </>
-                )}
-
-                {kpiPeriodType === 'mensuel' && (
-                  <>
-                    <Select value={kpiSelectedMonth} onValueChange={setKpiSelectedMonth}>
-                      <SelectTrigger className="w-[140px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200 max-h-[200px]">
-                        {["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"].map((month, index) => (
-                          <SelectItem key={index} value={index.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-600">{month}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
-                      <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        {Array.from({ length: 5 }, (_, i) => {
-                          const year = new Date().getFullYear() - i;
-                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
-                        })}
-                      </SelectContent>
-                    </Select>
-                  </>
-                )}
-
-                {kpiPeriodType === 'hebdomadaire' && (
-                  <>
-                    <Select value={kpiSelectedWeek} onValueChange={setKpiSelectedWeek}>
-                      <SelectTrigger className="w-[120px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200 max-h-[200px]">
-                        {Array.from({ length: 52 }, (_, i) => (
-                          <SelectItem key={i + 1} value={(i + 1).toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Semaine {i + 1}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
-                      <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        {Array.from({ length: 7 }, (_, i) => {
-                          const year = 2025 + i;
-                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
-                        })}
-                      </SelectContent>
-                    </Select>
-                  </>
-                )}
-              </div>
-            </div>
-            <CardDescription className="mt-2">
-              Indicateurs de performance pour la période sélectionnée
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* 3 rangées de 4 cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Ligne 1 */}
-              <div className="group text-center p-4 bg-gradient-to-br from-indigo-200 to-indigo-300 hover:bg-purple-600 rounded-lg border-2 border-indigo-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-800 group-hover:from-indigo-600 group-hover:to-indigo-800 bg-clip-text text-transparent">
-                  {kpiData.culteSamediSoir || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Culte du Samedi Soir</div>
-                <Moon className="h-5 w-5 mx-auto mt-2 text-indigo-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-blue-200 to-blue-300 hover:bg-purple-600 rounded-lg border-2 border-blue-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 group-hover:from-blue-600 group-hover:to-blue-800 bg-clip-text text-transparent">
-                  {kpiData.culteDimancheMatin || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Culte du Dimanche Matin</div>
-                <Church className="h-5 w-5 mx-auto mt-2 text-blue-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-cyan-200 to-cyan-300 hover:bg-purple-600 rounded-lg border-2 border-cyan-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-cyan-600 to-cyan-800 group-hover:from-cyan-600 group-hover:to-cyan-800 bg-clip-text text-transparent">
-                  {kpiData.afterCulteDimanche || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">After Culte du Dimanche</div>
-                <Users className="h-5 w-5 mx-auto mt-2 text-cyan-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-amber-200 to-amber-300 hover:bg-purple-600 rounded-lg border-2 border-amber-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 group-hover:from-amber-600 group-hover:to-amber-800 bg-clip-text text-transparent">
-                  {kpiData.tempsPriere || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Temps de Prière</div>
-                <Heart className="h-5 w-5 mx-auto mt-2 text-amber-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-pink-200 to-pink-300 hover:bg-purple-600 rounded-lg border-2 border-pink-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-pink-600 to-pink-800 group-hover:from-pink-600 group-hover:to-pink-800 bg-clip-text text-transparent">
-                  {kpiData.personnesEvangelisees || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Personnes évangélisées</div>
-                <Target className="h-5 w-5 mx-auto mt-2 text-pink-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-emerald-200 to-emerald-300 hover:bg-purple-600 rounded-lg border-2 border-emerald-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-emerald-800 group-hover:from-emerald-600 group-hover:to-emerald-800 bg-clip-text text-transparent">
-                  {kpiData.nouveauxConvertis || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Nouveaux Convertis</div>
-                <Heart className="h-5 w-5 mx-auto mt-2 text-emerald-700 group-hover:text-white transition-colors" />
-              </div>
-              
-              {/* Ligne 2 */}
-              <div className="group text-center p-4 bg-gradient-to-br from-rose-200 to-rose-300 hover:bg-purple-600 rounded-lg border-2 border-rose-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-rose-600 to-rose-800 group-hover:from-rose-600 group-hover:to-rose-800 bg-clip-text text-transparent">
-                  {kpiData.nouveauxArrivants || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Nouveaux Arrivants</div>
-                <UserPlus className="h-5 w-5 mx-auto mt-2 text-rose-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-teal-200 to-teal-300 hover:bg-purple-600 rounded-lg border-2 border-teal-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-teal-600 to-teal-800 group-hover:from-teal-600 group-hover:to-teal-800 bg-clip-text text-transparent">
-                  {kpiData.sortiesEvangelisation || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Sorties d'Évangélisation</div>
-                <Megaphone className="h-5 w-5 mx-auto mt-2 text-teal-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-purple-200 to-purple-300 hover:bg-purple-600 rounded-lg border-2 border-purple-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 group-hover:from-amber-500 group-hover:to-amber-700 bg-clip-text text-transparent">
-                  {kpiData.comFratDisciples || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Com Frat Disciples</div>
-                <UserCheck className="h-5 w-5 mx-auto mt-2 text-purple-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-violet-200 to-violet-300 hover:bg-purple-600 rounded-lg border-2 border-violet-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-violet-600 to-violet-800 group-hover:from-amber-500 group-hover:to-amber-700 bg-clip-text text-transparent">
-                  {kpiData.veillee || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Veillée</div>
-                <Moon className="h-5 w-5 mx-auto mt-2 text-violet-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-orange-200 to-orange-300 hover:bg-purple-600 rounded-lg border-2 border-orange-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-orange-800 group-hover:from-orange-600 group-hover:to-orange-800 bg-clip-text text-transparent">
-                  {kpiData.meditationBible || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Méditation Bible</div>
-                <Book className="h-5 w-5 mx-auto mt-2 text-orange-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-green-200 to-green-300 hover:bg-purple-600 rounded-lg border-2 border-green-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-800 group-hover:from-green-600 group-hover:to-green-800 bg-clip-text text-transparent">
-                  {kpiData.tempsPartage || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Temps de Partage</div>
-                <HeartHandshake className="h-5 w-5 mx-auto mt-2 text-green-700 group-hover:text-white transition-colors" />
-              </div>
-              
-              {/* Ligne 4 - Nouvelles cartes */}
-              <div className="group text-center p-4 bg-gradient-to-br from-blue-200 to-blue-300 hover:bg-purple-600 rounded-lg border-2 border-blue-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 group-hover:from-blue-600 group-hover:to-blue-800 bg-clip-text text-transparent">
-                  {kpiData.formationsTerminees || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Formations Terminées</div>
-                <CheckCircle2 className="h-5 w-5 mx-auto mt-2 text-blue-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-yellow-200 to-yellow-300 hover:bg-purple-600 rounded-lg border-2 border-yellow-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-yellow-600 to-yellow-800 group-hover:from-yellow-600 group-hover:to-yellow-800 bg-clip-text text-transparent">
-                  {kpiData.formationsEnCours || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Formations en Cours</div>
-                <GraduationCap className="h-5 w-5 mx-auto mt-2 text-yellow-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-red-200 to-red-300 hover:bg-purple-600 rounded-lg border-2 border-red-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-4xl font-bold bg-gradient-to-r from-red-600 to-red-800 group-hover:from-red-600 group-hover:to-red-800 bg-clip-text text-transparent">
-                  {kpiData.videosTerminees || 0}
-                </div>
-                <div className="text-sm text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Vidéos Terminées</div>
-                <PlayCircle className="h-5 w-5 mx-auto mt-2 text-red-700 group-hover:text-white transition-colors" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <KpiSection
+          kpiPeriodType={kpiPeriodType}
+          setKpiPeriodType={setKpiPeriodType}
+          kpiSelectedYearForPeriod={kpiSelectedYearForPeriod}
+          setKpiSelectedYearForPeriod={setKpiSelectedYearForPeriod}
+          kpiSelectedQuarter={kpiSelectedQuarter}
+          setKpiSelectedQuarter={setKpiSelectedQuarter}
+          kpiSelectedMonth={kpiSelectedMonth}
+          setKpiSelectedMonth={setKpiSelectedMonth}
+          kpiSelectedWeek={kpiSelectedWeek}
+          setKpiSelectedWeek={setKpiSelectedWeek}
+          kpiData={kpiData}
+        />
 
         {/* Graphiques d'évolution des KPI */}
         <ChartsKpi chartData={chartData} />
@@ -2869,1337 +2351,79 @@ const SuperviseurDashboard = () => {
         />
 
         {/* Liste des membres de la famille */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <Users className="h-5 w-5 text-purple-600" />
-                  Membres de la famille ({filteredMembres.length})
-                </CardTitle>
-                <CardDescription className="mt-1">
-                  Liste complète des disciples de votre famille
-                </CardDescription>
-              </div>
-              <div className="flex gap-2">
-                {selectedMembres.length > 0 && (
-                  <div className="flex items-center gap-2 mr-2">
-                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                      {selectedMembres.length} sélectionné{selectedMembres.length > 1 ? 's' : ''}
-                    </Badge>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (selectedMembres.length === 1) {
-                          // Si un seul membre sélectionné, ouvrir sa fiche de détail
-                          const selectedId = selectedMembres[0];
-                          navigate(`/disciples/${selectedId}`);
-                        } else {
-                          // Si plusieurs membres sélectionnés, ouvrir le modal
-                          setShowSelectedModal(true);
-                        }
-                      }}
-                      className="bg-white border-gray-200 text-gray-900 hover:bg-purple-600 hover:text-white shrink-0"
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      Ouvrir
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowSelectedModal(true)}
-                      className="bg-white border-gray-200 text-gray-900 hover:bg-blue-600 hover:text-white shrink-0"
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      Voir sélection
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const selectedData = filteredMembres.filter(m => selectedMembres.includes(m.id));
-                        const exportData = selectedData.map(membre => ({
-                          'Prénom': membre.first_name || '',
-                          'Nom': membre.last_name || '',
-                          'Email': membre.email || '',
-                          'Statut': membre.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
-                          'Nombre de Disciples': membre.nombreDisciples || 0,
-                          'Formations terminées': membresProgression[membre.id]?.formations || 0,
-                          'Vidéos terminées': membresProgression[membre.id]?.videos || 0,
-                          'Total progression': membresProgression[membre.id]?.total || 0,
-                          'Date d\'inscription': membre.created_at ? format(new Date(membre.created_at), 'dd/MM/yyyy', { locale: fr }) : ''
-                        }));
-                        const filename = `membres_selectionnes_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
-                        exportToExcel(exportData, filename);
-                        toast({
-                          title: 'Export réussi',
-                          description: `${selectedMembres.length} membre(s) exporté(s)`,
-                        });
-                      }}
-                      className="bg-white border-gray-200 text-gray-900 hover:bg-green-600 hover:text-white shrink-0"
-                    >
-                      <Download className="h-4 w-4 mr-1" />
-                      Exporter sélection
-                    </Button>
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleExportFilteredList('excel')}
-                    className="bg-white border-gray-200 text-gray-900 hover:bg-green-600 hover:text-white shrink-0"
-                    disabled={filteredMembres.length === 0}
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    Excel
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleExportFilteredList('pdf')}
-                    className="bg-white border-gray-200 text-gray-900 hover:bg-red-600 hover:text-white shrink-0"
-                    disabled={filteredMembres.length === 0}
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    PDF
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {/* Barre de recherche et filtres */}
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="flex items-center gap-2 mb-3">
-                <Search className="h-5 w-5 text-purple-600" />
-                <h3 className="text-sm font-semibold text-gray-900">Recherche et Filtres</h3>
-              </div>
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 z-10" />
-                    <Input
-                      placeholder="Rechercher par prénom, nom, nombre de disciples... (ex: >=5, <=10, >3, <2)"
-                      value={searchTerm}
-                      onChange={(e) => {
-                        setSearchTerm(e.target.value);
-                        setCurrentPage(1);
-                      }}
-                      className="w-full pl-10 pr-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-500 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                    {searchTerm && (
-                      <button
-                        onClick={() => {
-                          setSearchTerm('');
-                          setCurrentPage(1);
-                        }}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-500 hover:text-red-700 transition-colors"
-                        type="button"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                  <Select value={statusFilter} onValueChange={(value) => {
-                    setStatusFilter(value);
-                    setCurrentPage(1);
-                  }}>
-                    <SelectTrigger className="w-[180px] bg-white border-gray-300 text-gray-900 [&>svg]:text-purple-600 [&>span]:text-gray-900 hover:border-purple-500">
-                      <SelectValue placeholder="Statut" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      <SelectItem value="tous" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">Tous les statuts</SelectItem>
-                      <SelectItem value="actif" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">Actifs</SelectItem>
-                      <SelectItem value="inactif" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">Inactifs</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-4 items-end">
-                  <div className="flex-1">
-                    <Label className="text-xs text-gray-600 mb-1 block">Date d'inscription</Label>
-                    <Input
-                      type="date"
-                      value={dateFilter}
-                      onChange={(e) => {
-                        setDateFilter(e.target.value);
-                        setCurrentPage(1);
-                      }}
-                      className="w-full bg-white border-gray-300 text-gray-900"
-                    />
-                  </div>
-                  <div className="w-[200px]">
-                    <Label className="text-xs text-gray-600 mb-1 block">Progression</Label>
-                    <Select value={progressionFilter} onValueChange={(value) => {
-                      setProgressionFilter(value);
-                      setCurrentPage(1);
-                    }}>
-                      <SelectTrigger className="w-full bg-white border-gray-300 text-gray-900 [&>svg]:text-purple-600 [&>span]:text-gray-900 hover:border-purple-500">
-                        <SelectValue placeholder="Progression" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        <SelectItem value="tous" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">Tous</SelectItem>
-                        <SelectItem value="avec" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">Avec progression</SelectItem>
-                        <SelectItem value="sans" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">Sans progression</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-[150px]">
-                    <Label className="text-xs text-gray-600 mb-1 block">Par page</Label>
-                    <Select value={itemsPerPage.toString()} onValueChange={(value) => {
-                      setItemsPerPage(parseInt(value));
-                      setCurrentPage(1);
-                    }}>
-                      <SelectTrigger className="w-full bg-white border-gray-300 text-gray-900 [&>svg]:text-purple-600 [&>span]:text-gray-900 hover:border-purple-500">
-                        <SelectValue placeholder="Par page" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        <SelectItem value="10" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">10 par page</SelectItem>
-                        <SelectItem value="25" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">25 par page</SelectItem>
-                        <SelectItem value="50" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">50 par page</SelectItem>
-                        <SelectItem value="100" className="text-gray-900 hover:bg-purple-50 hover:text-purple-600">100 par page</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            </div>
+        <MembresListCard
+          filteredMembres={filteredMembres}
+          paginatedMembres={paginatedMembres}
+          selectedMembres={selectedMembres}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          dateFilter={dateFilter}
+          setDateFilter={setDateFilter}
+          progressionFilter={progressionFilter}
+          setProgressionFilter={setProgressionFilter}
+          itemsPerPage={itemsPerPage}
+          setItemsPerPage={setItemsPerPage}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          totalPages={totalPages}
+          membresProgression={membresProgression}
+          membresSuiviPar={membresSuiviPar}
+          toggleSelectAll={toggleSelectAll}
+          toggleSelectMembre={toggleSelectMembre}
+          setShowSelectedModal={setShowSelectedModal}
+          onNavigate={navigate}
+          onExportFilteredList={handleExportFilteredList}
+          onExportSelection={handleExportSelectedExcel}
+          onFetchDisciples={fetchDisciplesOfMembre}
+          toast={toast}
+        />
 
-            {/* Table des membres */}
-            {paginatedMembres.length > 0 ? (
-              <>
-                <div className="rounded-md border border-gray-200">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-purple-200 hover:bg-purple-300 text-gray-900">
-                        <TableHead className="w-[50px]">
-                          <Checkbox
-                            checked={selectedMembres.length === paginatedMembres.length && paginatedMembres.length > 0}
-                            onCheckedChange={toggleSelectAll}
-                          />
-                        </TableHead>
-                        <TableHead className="w-[60px]">Photo</TableHead>
-                        <TableHead>Nom</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Statut spirituel</TableHead>
-                        <TableHead className="text-center">Nombre de Disciples</TableHead>
-                        <TableHead>Progression</TableHead>
-                        <TableHead>Suivi par</TableHead>
-                        <TableHead>Date d'inscription</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {paginatedMembres.map((membre) => (
-                        <TableRow key={membre.id} className={`hover:bg-gray-50 hover:text-black ${selectedMembres.includes(membre.id) ? 'bg-blue-50' : ''}`}>
-                          <TableCell className="hover:text-black">
-                            <Checkbox
-                              checked={selectedMembres.includes(membre.id)}
-                              onCheckedChange={() => toggleSelectMembre(membre.id)}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Avatar className="w-10 h-10">
-                              <AvatarImage src={membre.avatar_url} alt={`${membre.first_name} ${membre.last_name}`} />
-                              <AvatarFallback className="bg-purple-100 text-purple-600">
-                                {membre.first_name?.charAt(0) || ''}{membre.last_name?.charAt(0) || ''}
-                              </AvatarFallback>
-                            </Avatar>
-                          </TableCell>
-                          <TableCell className="font-medium hover:text-black">
-                            <div 
-                              className="flex items-center gap-2 cursor-pointer hover:text-purple-600 transition-colors"
-                              onClick={() => navigate(`/disciples/${membre.id}`)}
-                            >
-                              <span className="text-gray-900">{membre.first_name} {membre.last_name}</span>
-                              <Eye className="h-4 w-4 text-gray-400 hover:text-purple-600" />
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-gray-600 hover:text-black">
-                            {membre.email || '-'}
-                          </TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant={membre.statut_spirituel === 'inactif' ? 'destructive' : 'default'}
-                              className={
-                                membre.statut_spirituel === 'inactif' 
-                                  ? 'bg-red-100 text-red-800' 
-                                  : 'bg-green-100 text-green-800'
-                              }
-                            >
-                              {membre.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center hover:text-black">
-                            <button
-                              onClick={() => {
-                                fetchDisciplesOfMembre(membre.id, `${membre.first_name} ${membre.last_name}`);
-                              }}
-                              className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 hover:border-blue-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-                            >
-                              {membre.nombreDisciples || 0}
-                            </button>
-                          </TableCell>
-                          <TableCell className="text-gray-600 hover:text-black">
-                            {membresProgression[membre.id] ? (
-                              <div className="flex flex-col gap-1">
-                                <div className="text-xs">
-                                  <span className="font-semibold text-purple-600">{membresProgression[membre.id].formations}</span> formations
-                                </div>
-                                <div className="text-xs">
-                                  <span className="font-semibold text-red-600">{membresProgression[membre.id].videos}</span> vidéos
-                                </div>
-                                <div className="text-xs font-medium text-gray-900">
-                                  Total: {membresProgression[membre.id].total}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-gray-600 hover:text-black">
-                            {membresSuiviPar[membre.id] ? (
-                              <span className="text-sm font-medium text-gray-900">
-                                {membresSuiviPar[membre.id].name}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-gray-600 hover:text-black">
-                            {membre.created_at ? format(new Date(membre.created_at), 'dd/MM/yyyy', { locale: fr }) : '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">
-                  {searchTerm || statusFilter !== 'tous' || dateFilter || progressionFilter !== 'tous'
-                    ? 'Aucun membre ne correspond à vos critères de recherche.'
-                    : 'Aucun membre dans cette famille pour le moment.'}
-                </p>
-              </div>
-            )}
+        <TableauDetailleDisciples
+          loading={loadingDisciplesDetaille}
+          disciples={disciplesDetaille}
+          onNavigate={navigate}
+        />
 
-            {/* Pagination et affichage détaillé - Toujours visible */}
-            <div className="flex items-center justify-between mt-6 pt-4 border-t-2 border-purple-200 bg-purple-50 rounded-lg p-4">
-              <div className="text-sm font-medium text-gray-900">
-                {filteredMembres.length > 0 ? (
-                  <>
-                    <span className="text-purple-600 font-bold">Page {currentPage}</span> sur <span className="text-purple-600 font-bold">{totalPages}</span> - 
-                    Affichage de <span className="text-blue-600 font-bold">{((currentPage - 1) * itemsPerPage) + 1}</span> à <span className="text-blue-600 font-bold">{Math.min(currentPage * itemsPerPage, filteredMembres.length)}</span> sur <span className="text-purple-600 font-bold text-lg">{filteredMembres.length}</span> membre{filteredMembres.length > 1 ? 's' : ''}
-                  </>
-                ) : (
-                  <span className="text-gray-600">Aucun membre trouvé</span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (selectedMembres.length === 0) {
-                      toast({
-                        title: 'Aucune sélection',
-                        description: 'Veuillez sélectionner au moins un membre.',
-                        variant: 'destructive'
-                      });
-                      return;
-                    }
-                    if (selectedMembres.length === 1) {
-                      // Si un seul membre sélectionné, ouvrir sa fiche de détail
-                      const selectedId = selectedMembres[0];
-                      navigate(`/disciples/${selectedId}`);
-                    } else {
-                      // Si plusieurs membres sélectionnés, ouvrir le modal
-                      setShowSelectedModal(true);
-                    }
-                  }}
-                  className="bg-white border-gray-300 text-gray-900 hover:bg-blue-600 hover:text-white hover:border-blue-600"
-                >
-                  <Eye className="h-4 w-4 mr-1" />
-                  Ouvrir
-                </Button>
-                {totalPages > 1 && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                      className="bg-white border-gray-300 text-gray-900 hover:bg-purple-100 hover:border-purple-400 hover:text-purple-700"
-                    >
-                      Précédent
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                      disabled={currentPage === totalPages}
-                      className="bg-white border-gray-300 text-gray-900 hover:bg-purple-100 hover:border-purple-400 hover:text-purple-700"
-                    >
-                      Suivant
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <TableauMentorsPiliers
+          loading={loadingMentorsConsolides}
+          mentors={mentorsConsolides}
+        />
 
-        {/* Tableau détaillé des disciples (10 colonnes) */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-semibold text-gray-900">Tableau Détaillé des Disciples</CardTitle>
-                <CardDescription>
-                  Vue détaillée de tous les disciples avec leurs informations de suivi
-                </CardDescription>
-              </div>
-              {loadingDisciplesDetaille && (
-                <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loadingDisciplesDetaille ? (
-              <div className="text-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-purple-600 mx-auto mb-4" />
-                <p className="text-gray-500">Chargement des données détaillées...</p>
-              </div>
-            ) : disciplesDetaille.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun disciple trouvé dans votre famille.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-purple-200 hover:bg-purple-300">
-                      <TableHead className="font-semibold text-gray-900">Prénom Pilier</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Nom Pilier</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Prénom Disciple</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Nom Disciple</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Statut</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Date d'ajout</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Date Dernière Présence</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Niveau d'Engagement</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Statut (Actif/Inactif)</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Présence Dernier Culte</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {disciplesDetaille.map((disciple) => (
-                      <TableRow key={disciple.disciple_id} className="hover:bg-gray-50 hover:text-black">
-                        <TableCell className="font-semibold text-gray-900">{disciple.mentor_prenom || '-'}</TableCell>
-                        <TableCell className="font-semibold text-gray-900">{disciple.mentor_nom || '-'}</TableCell>
-                        <TableCell 
-                          className="font-semibold text-gray-900 cursor-pointer hover:text-purple-600"
-                          onClick={() => navigate(`/disciples/${disciple.disciple_id}`)}
-                        >
-                          {disciple.disciple_prenom}
-                        </TableCell>
-                        <TableCell 
-                          className="font-semibold text-gray-900 cursor-pointer hover:text-purple-600"
-                          onClick={() => navigate(`/disciples/${disciple.disciple_id}`)}
-                        >
-                          {disciple.disciple_nom}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="border-purple-200 text-purple-700">
-                            {disciple.statut_spirituel}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-gray-700">{disciple.date_ajout}</TableCell>
-                        <TableCell className="text-gray-700">{disciple.date_derniere_presence}</TableCell>
-                        <TableCell>
-                          <Badge 
-                            variant="outline" 
-                            className={
-                              disciple.niveau_engagement === 'Élevé' 
-                                ? 'border-green-200 text-green-700 bg-green-50'
-                                : disciple.niveau_engagement === 'Moyen'
-                                ? 'border-amber-200 text-amber-700 bg-amber-50'
-                                : 'border-red-200 text-red-700 bg-red-50'
-                            }
-                          >
-                            {disciple.niveau_engagement}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge 
-                            variant={disciple.statut_actif ? 'default' : 'secondary'}
-                            className={disciple.statut_actif ? 'bg-green-500 text-white' : 'bg-gray-400 text-white'}
-                          >
-                            {disciple.statut_actif ? 'Actif' : 'Inactif'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {disciple.presence_dernier_culte ? (
-                            <Badge className="bg-green-500 text-white">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Oui
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="border-red-200 text-red-700">
-                              <X className="h-3 w-3 mr-1" />
-                              Non
-                            </Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <ChartsSupplementaires
+          formationVideoChartData={formationVideoChartData}
+          formationVideoRef={formationVideoRef}
+          chartData={chartData}
+          chartDataPreviousYear={chartDataPreviousYear}
+          statutsSpirituelsData={statutsSpirituelsData}
+          statutsSpirituelsRef={statutsSpirituelsRef}
+        />
 
-        {/* Tableau consolidé des mentors (piliers) */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-semibold text-gray-900">Tableau Consolidé des Mentors (Piliers)</CardTitle>
-                <CardDescription>
-                  Vue d'ensemble de tous les mentors (piliers) avec leurs statistiques de progression
-                </CardDescription>
-              </div>
-              {loadingMentorsConsolides && (
-                <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loadingMentorsConsolides ? (
-              <div className="text-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-purple-600 mx-auto mb-4" />
-                <p className="text-gray-500">Chargement des données des mentors...</p>
-              </div>
-            ) : mentorsConsolides.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun mentor trouvé dans votre famille.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-purple-200 hover:bg-purple-300">
-                      <TableHead className="font-semibold text-gray-900">Nom</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Prénom</TableHead>
-                      <TableHead className="font-semibold text-gray-900">Église</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900">Nombre de Disciples</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900">Avancement (%)</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900">Disciples Présents</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900">Taux Participation Semaine (%)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mentorsConsolides.map((mentor) => (
-                      <TableRow key={mentor.mentor_id} className="hover:bg-gray-50 hover:text-black">
-                        <TableCell className="font-semibold text-gray-900">{mentor.nom}</TableCell>
-                        <TableCell className="font-semibold text-gray-900">{mentor.prenom}</TableCell>
-                        <TableCell className="text-gray-700">{mentor.eglise}</TableCell>
-                        <TableCell className="text-center">
-                          <span className="font-semibold text-gray-900">{mentor.nombre_disciples}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="w-24 bg-gray-200 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full ${
-                                  mentor.avancement_pourcentage >= 100
-                                    ? 'bg-green-500'
-                                    : mentor.avancement_pourcentage >= 50
-                                    ? 'bg-purple-600'
-                                    : 'bg-amber-500'
-                                }`}
-                                style={{ width: `${Math.min(mentor.avancement_pourcentage, 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-sm font-medium text-gray-700 w-12 text-left">
-                              {mentor.avancement_pourcentage}%
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="font-semibold text-gray-900">{mentor.disciples_presents}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className={`font-semibold ${
-                            mentor.taux_participation_semaine >= 70
-                              ? 'text-green-600'
-                              : mentor.taux_participation_semaine >= 50
-                              ? 'text-amber-600'
-                              : 'text-red-600'
-                          }`}>
-                            {mentor.taux_participation_semaine}%
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Graphiques supplémentaires : Évolution formations/vidéos */}
-        <Card ref={formationVideoRef} className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-purple-600" />
-              Évolution des Formations et Vidéos (12 derniers mois)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {formationVideoChartData.length > 0 ? (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="h-[400px] w-full"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart 
-                    data={formationVideoChartData} 
-                    margin={{ top: 10, right: 30, left: 0, bottom: 80 }}
-                  >
-                    <XAxis 
-                      dataKey="name" 
-                      stroke="#888888" 
-                      fontSize={12} 
-                      tickLine={false} 
-                      axisLine={false}
-                      angle={-45}
-                      textAnchor="end"
-                      height={80}
-                    />
-                    <YAxis 
-                      stroke="#888888" 
-                      fontSize={12} 
-                      tickLine={false} 
-                      axisLine={false}
-                    />
-                    <CartesianGrid 
-                      strokeDasharray="3 3" 
-                      vertical={false} 
-                      stroke="#e5e7eb"
-                      opacity={0.5}
-                    />
-                    <Tooltip 
-                      contentStyle={{
-                        backgroundColor: 'white',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-                      }}
-                      cursor={{ stroke: '#8b5cf6', strokeWidth: 1, strokeDasharray: '5 5' }}
-                    />
-                    <Legend 
-                      wrapperStyle={{ paddingTop: '20px' }}
-                      iconType="line"
-                    />
-                    <Brush 
-                      dataKey="name" 
-                      height={30}
-                      stroke="#8b5cf6"
-                      tickFormatter={() => ''}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="formations" 
-                      name="Formations Terminées" 
-                      stroke="#8b5cf6" 
-                      strokeWidth={3} 
-                      dot={{ r: 5, fill: '#8b5cf6' }}
-                      activeDot={{ r: 8, fill: '#7c3aed' }}
-                      animationDuration={1000}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="videos" 
-                      name="Vidéos Terminées" 
-                      stroke="#ef4444" 
-                      strokeWidth={3} 
-                      dot={{ r: 5, fill: '#ef4444' }}
-                      activeDot={{ r: 8, fill: '#dc2626' }}
-                      animationDuration={1000}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </motion.div>
-            ) : (
-              <div className="h-[300px] w-full flex items-center justify-center text-gray-500">
-                <p>Aucune donnée disponible pour le moment</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Graphique : Comparaison année en cours vs année précédente */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-purple-600" />
-              Comparaison Annuelle : {new Date().getFullYear()} vs {new Date().getFullYear() - 1}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {chartData.length > 0 && chartDataPreviousYear.length > 0 ? (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, delay: 0.1 }}
-                className="h-[400px] w-full"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart 
-                    data={[
-                      { 
-                        name: 'Année en cours', 
-                        value: chartData.reduce((sum, d) => sum + d.culteDimancheMatin, 0),
-                        fill: '#8b5cf6'
-                      },
-                      { 
-                        name: 'Année précédente', 
-                        value: chartDataPreviousYear.reduce((sum, d) => sum + d.culteDimancheMatin, 0),
-                        fill: '#a78bfa'
-                      }
-                    ]} 
-                    margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                  >
-                    <XAxis 
-                      dataKey="name" 
-                      stroke="#888888" 
-                      fontSize={12} 
-                      tickLine={false} 
-                      axisLine={false}
-                    />
-                    <YAxis 
-                      stroke="#888888" 
-                      fontSize={12} 
-                      tickLine={false} 
-                      axisLine={false}
-                    />
-                    <CartesianGrid 
-                      strokeDasharray="3 3" 
-                      vertical={false} 
-                      stroke="#e5e7eb"
-                      opacity={0.5}
-                    />
-                    <Tooltip 
-                      contentStyle={{
-                        backgroundColor: 'white',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-                      }}
-                      cursor={{ fill: 'rgba(139, 92, 246, 0.1)' }}
-                    />
-                    <ReferenceLine y={0} stroke="#888888" />
-                    <Bar 
-                      dataKey="value" 
-                      radius={[8, 8, 0, 0]}
-                      animationDuration={1000}
-                    >
-                      {[
-                        { name: 'Année en cours', value: chartData.reduce((sum, d) => sum + d.culteDimancheMatin, 0), fill: '#8b5cf6' },
-                        { name: 'Année précédente', value: chartDataPreviousYear.reduce((sum, d) => sum + d.culteDimancheMatin, 0), fill: '#a78bfa' }
-                      ].map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={entry.fill} 
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </motion.div>
-            ) : (
-              <div className="h-[300px] w-full flex items-center justify-center text-gray-500">
-                <p>Données insuffisantes pour la comparaison (besoin de données sur 2 années)</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Graphique en camembert : Répartition des statuts spirituels */}
-        <Card ref={statutsSpirituelsRef} className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Users className="h-5 w-5 text-purple-600" />
-              Répartition des Statuts Spirituels
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {statutsSpirituelsData.length > 0 ? (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="h-[400px] w-full"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={statutsSpirituelsData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent, value }) => 
-                        `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
-                      }
-                      outerRadius={120}
-                      innerRadius={60}
-                      fill="#8884d8"
-                      dataKey="value"
-                      paddingAngle={3}
-                      animationDuration={1000}
-                    >
-                      {statutsSpirituelsData.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={entry.color}
-                          stroke="#fff"
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{
-                        backgroundColor: 'white',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-                      }}
-                      formatter={(value, name, props) => [
-                        `${value} (${((value / statutsSpirituelsData.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%)`,
-                        props.payload.name
-                      ]}
-                    />
-                    <Legend 
-                      verticalAlign="bottom"
-                      height={36}
-                      iconType="circle"
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </motion.div>
-            ) : (
-              <div className="h-[300px] w-full flex items-center justify-center text-gray-500">
-                <p>Aucune donnée de statut disponible</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Modal Liste des Disciples */}
-        <Dialog open={selectedMembreForDisciples !== null} onOpenChange={(open) => {
-          if (!open) {
-            setSelectedMembreForDisciples(null);
-            setDisciplesList([]);
-          }
-        }}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 border-gray-200">
-          <DialogHeader>
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <DialogTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-purple-600" />
-                  Disciples de {selectedMembreForDisciples?.name}
-                </DialogTitle>
-                <DialogDescription>
-                  Liste des disciples suivis par ce membre ({disciplesList.length})
-                </DialogDescription>
-              </div>
-              {disciplesList.length > 0 && (
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleExportDisciplesList('excel')}
-                    className="bg-white border-gray-200 text-gray-900 hover:bg-green-600 hover:text-white"
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    Excel
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleExportDisciplesList('pdf')}
-                    className="bg-white border-gray-200 text-gray-900 hover:bg-red-600 hover:text-white"
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    PDF
-                  </Button>
-                </div>
-              )}
-            </div>
-          </DialogHeader>
-            
-            <div className="space-y-4 mt-4">
-              {loadingDisciplesList ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-                </div>
-              ) : disciplesList.length === 0 ? (
-                <div className="text-center py-12">
-                  <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">Aucun disciple suivi par ce membre.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {disciplesList.map((disciple) => (
-                    <div
-                      key={disciple.id}
-                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                      onClick={() => {
-                        navigate(`/disciples/${disciple.id}`);
-                        setSelectedMembreForDisciples(null);
-                      }}
-                    >
-                      <Avatar className="w-10 h-10">
-                        <AvatarImage src={disciple.avatar_url} />
-                        <AvatarFallback className="bg-purple-100 text-purple-600">
-                          {disciple.first_name?.charAt(0)}{disciple.last_name?.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          {disciple.first_name} {disciple.last_name}
-                        </p>
-                        {disciple.email && (
-                          <p className="text-xs text-gray-600 truncate">{disciple.email}</p>
-                        )}
-                        <div className="flex items-center gap-2 mt-1">
-                          {disciple.circle_type && (
-                            <Badge variant="outline" className="text-xs">
-                              {disciple.circle_type}
-                            </Badge>
-                          )}
-                          {disciple.disciplesSuivis !== undefined && (
-                            <span className="text-xs text-gray-600 flex items-center gap-1">
-                              <Users className="h-3 w-3 text-purple-600" />
-                              {disciple.disciplesSuivis > 0 ? (
-                                <span>{disciple.disciplesSuivis} Disciple{disciple.disciplesSuivis > 1 ? 's' : ''}</span>
-                              ) : (
-                                <span>0 Disciple</span>
-                              )}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <Eye className="h-4 w-4 text-gray-400 hover:text-purple-600" />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSelectedMembreForDisciples(null);
-                  setDisciplesList([]);
-                }}
-                className="bg-white border-gray-200 text-gray-900 hover:bg-purple-600 hover:text-white hover:border-purple-600"
-              >
-                Fermer
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Modal Membres Sélectionnés */}
-        <Dialog open={showSelectedModal} onOpenChange={setShowSelectedModal}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 border-gray-200">
-            <DialogHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <DialogTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5 text-purple-600" />
-                    Membres Sélectionnés ({selectedMembres.length})
-                  </DialogTitle>
-                  <DialogDescription>
-                    Liste des membres sélectionnés avec leurs détails
-                  </DialogDescription>
-                </div>
-                {selectedMembres.length > 0 && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const selectedData = filteredMembres.filter(m => selectedMembres.includes(m.id));
-                        const exportData = selectedData.map(membre => ({
-                          'Prénom': membre.first_name || '',
-                          'Nom': membre.last_name || '',
-                          'Email': membre.email || '',
-                          'Statut': membre.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
-                          'Nombre de Disciples': membre.nombreDisciples || 0,
-                          'Formations terminées': membresProgression[membre.id]?.formations || 0,
-                          'Vidéos terminées': membresProgression[membre.id]?.videos || 0,
-                          'Total progression': membresProgression[membre.id]?.total || 0,
-                          'Date d\'inscription': membre.created_at ? format(new Date(membre.created_at), 'dd/MM/yyyy', { locale: fr }) : ''
-                        }));
-                        const filename = `membres_selectionnes_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
-                        exportToExcel(exportData, filename);
-                        toast({
-                          title: 'Export réussi',
-                          description: `${selectedMembres.length} membre(s) exporté(s) en Excel`,
-                        });
-                      }}
-                      className="bg-white border-gray-200 text-gray-900 hover:bg-green-600 hover:text-white"
-                    >
-                      <Download className="h-4 w-4 mr-1" />
-                      Excel
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const selectedData = filteredMembres.filter(m => selectedMembres.includes(m.id));
-                          const tempDiv = document.createElement('div');
-                          const uniqueId = `pdf-export-${Date.now()}`;
-                          tempDiv.id = uniqueId;
-                          tempDiv.style.position = 'absolute';
-                          tempDiv.style.left = '-9999px';
-                          tempDiv.style.width = '800px';
-                          tempDiv.style.padding = '20px';
-                          tempDiv.style.backgroundColor = '#ffffff';
-                          tempDiv.innerHTML = `
-                            <div style="font-family: Arial, sans-serif;">
-                              <h2 style="color: #9333ea; margin-bottom: 10px;">Membres Sélectionnés - ${famille?.nom || 'Famille'}</h2>
-                              <p style="color: #666; margin-bottom: 5px;">Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p>
-                              <p style="color: #666; margin-bottom: 20px;">Total: ${selectedData.length} membre(s)</p>
-                              <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
-                                <thead>
-                                  <tr style="background-color: #f3f4f6;">
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Prénom</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Nom</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Email</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Statut</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Disciples</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Progression</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; color: #111;">Date</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  ${selectedData.map(m => `
-                                    <tr>
-                                      <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.first_name || ''}</td>
-                                      <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.last_name || ''}</td>
-                                      <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.email || '-'}</td>
-                                      <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif'}</td>
-                                      <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.nombreDisciples || 0}</td>
-                                      <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${membresProgression[m.id]?.total || 0}</td>
-                                      <td style="padding: 8px; border: 1px solid #ddd; color: #111;">${m.created_at ? format(new Date(m.created_at), 'dd/MM/yyyy', { locale: fr }) : '-'}</td>
-                                    </tr>
-                                  `).join('')}
-                                </tbody>
-                              </table>
-                            </div>
-                          `;
-                          document.body.appendChild(tempDiv);
-                          const filename = `membres_selectionnes_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}.pdf`;
-                          await exportElementToPDF(uniqueId, filename);
-                          document.body.removeChild(tempDiv);
-                          toast({
-                            title: 'Export réussi',
-                            description: `${selectedMembres.length} membre(s) exporté(s) en PDF`,
-                          });
-                        } catch (error) {
-                          console.error('Erreur export PDF:', error);
-                          toast({
-                            variant: 'destructive',
-                            title: 'Erreur',
-                            description: 'Impossible d\'exporter en PDF. Veuillez réessayer.',
-                          });
-                        }
-                      }}
-                      className="bg-white border-gray-200 text-gray-900 hover:bg-red-600 hover:text-white"
-                    >
-                      <Download className="h-4 w-4 mr-1" />
-                      PDF
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </DialogHeader>
-            
-            <div className="space-y-4 mt-4">
-              {selectedMembres.length === 0 ? (
-                <div className="text-center py-12">
-                  <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">Aucun membre sélectionné.</p>
-                </div>
-              ) : (
-                <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                  {filteredMembres
-                    .filter(m => selectedMembres.includes(m.id))
-                    .map((membre) => (
-                      <div
-                        key={membre.id}
-                        className="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
-                      >
-                        <div className="flex items-start gap-3 mb-3">
-                          <Avatar className="w-14 h-14">
-                            <AvatarImage src={membre.avatar_url} />
-                            <AvatarFallback className="bg-purple-100 text-purple-600 text-lg">
-                              {membre.first_name?.charAt(0)}{membre.last_name?.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h3 className="text-base font-bold text-gray-900">
-                                {membre.first_name} {membre.last_name}
-                              </h3>
-                              <Badge 
-                                variant={membre.statut_spirituel === 'inactif' ? 'destructive' : 'default'}
-                                className={
-                                  membre.statut_spirituel === 'inactif' 
-                                    ? 'bg-red-100 text-red-800' 
-                                    : 'bg-green-100 text-green-800'
-                                }
-                              >
-                                {membre.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif'}
-                              </Badge>
-                            </div>
-                            {membre.email && (
-                              <p className="text-sm text-gray-600 mb-2">{membre.email}</p>
-                            )}
-                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-2">
-                              <div className="flex items-center gap-1">
-                                <Users className="h-3 w-3 text-blue-600" />
-                                <span className="font-semibold text-blue-700">{membre.nombreDisciples || 0}</span> Disciple{membre.nombreDisciples !== 1 ? 's' : ''}
-                              </div>
-                              {membre.created_at && (
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="h-3 w-3 text-gray-500" />
-                                  <span>Inscrit le {format(new Date(membre.created_at), 'dd/MM/yyyy', { locale: fr })}</span>
-                                </div>
-                              )}
-                            </div>
-                            {membresProgression[membre.id] && (
-                              <div className="flex items-center gap-3 text-xs mb-2">
-                                <span className="flex items-center gap-1">
-                                  <span className="font-semibold text-purple-600">{membresProgression[membre.id].formations}</span> formations
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <span className="font-semibold text-red-600">{membresProgression[membre.id].videos}</span> vidéos
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <span className="font-semibold text-gray-900">Total: {membresProgression[membre.id].total}</span>
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            {membre.nombreDisciples > 0 && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={async () => {
-                                  // Fermer le modal des membres sélectionnés d'abord
-                                  setShowSelectedModal(false);
-                                  // Attendre un peu pour que le modal se ferme
-                                  await new Promise(resolve => setTimeout(resolve, 100));
-                                  // Puis récupérer et afficher les disciples
-                                  await fetchDisciplesOfMembre(membre.id, `${membre.first_name} ${membre.last_name}`);
-                                }}
-                                className="bg-blue-600 text-white border-blue-600 hover:bg-purple-600 hover:border-purple-600 hover:text-white"
-                              >
-                                <Users className="h-4 w-4 mr-1" />
-                                Voir disciples
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                navigate(`/disciples/${membre.id}`);
-                                setShowSelectedModal(false);
-                              }}
-                              className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              Détails
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-            
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setShowSelectedModal(false)}
-                className="bg-white border-gray-200 text-gray-900 hover:bg-purple-600 hover:text-white hover:border-purple-600"
-              >
-                Fermer
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Modal Historique des rapports */}
-        <Dialog open={showHistory} onOpenChange={setShowHistory}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 border-gray-200">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <History className="h-5 w-5 text-purple-600" />
-                Historique des rapports
-              </DialogTitle>
-              <DialogDescription>
-                Consultez vos rapports précédents
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="space-y-4 mt-4">
-              {rapports.length === 0 ? (
-                <p className="text-center text-gray-600 py-8">Aucun rapport envoyé pour le moment.</p>
-              ) : (
-                <div className="space-y-3">
-                  {rapports.slice(0, 10).map((report) => {
-                    const stats = report.statistics_snapshot || {};
-                    const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-                    const reportPeriod = report.report_type === 'hebdomadaire' 
-                      ? `Semaine ${report.week_number} ${report.year}`
-                      : report.report_type === 'trimestriel'
-                      ? `Trimestre ${report.quarter} ${report.year}`
-                      : report.report_type === 'annuel'
-                      ? `Année ${report.year}`
-                      : `${months[report.month]} ${report.year}`;
-                    
-                    return (
-                      <Card key={report.id} className="bg-white border-gray-200 shadow-sm">
-                        <CardContent className="pt-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Badge variant={report.status === 'submitted' ? 'default' : 'secondary'} className="bg-purple-100 text-purple-800">
-                                  {report.report_type}
-                                </Badge>
-                                <span className="text-sm text-gray-600">{reportPeriod}</span>
-                                <span className="text-xs text-gray-500">
-                                  {format(new Date(report.created_at), "dd/MM/yyyy à HH:mm", { locale: fr })}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-3 gap-2 text-sm mt-2">
-                                <p><span className="text-gray-600">Disciples:</span> <span className="font-bold text-purple-600">{stats.disciples || 0}</span></p>
-                                <p><span className="text-gray-600">Présences:</span> <span className="font-bold text-blue-600">{stats.sunday_attendance_count || 0}</span></p>
-                                <p><span className="text-gray-600">Évangélisations:</span> <span className="font-bold text-orange-600">{stats.evangelization || 0}</span></p>
-                              </div>
-                              {report.content && (
-                                <p className="text-sm text-gray-600 mt-2 line-clamp-2">{report.content}</p>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setShowHistory(false)}
-                className="bg-white border-gray-200 text-gray-900 hover:bg-purple-600 hover:text-white hover:border-purple-600"
-              >
-                Fermer
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Modal Fiche Superviseur */}
-        <Dialog open={selectedSuperviseur !== null} onOpenChange={(open) => {
-          if (!open) setSelectedSuperviseur(null);
-        }}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 border-gray-200">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <User className="h-5 w-5 text-purple-600" />
-                Fiche Superviseur
-              </DialogTitle>
-              <DialogDescription>
-                Informations détaillées du superviseur
-              </DialogDescription>
-            </DialogHeader>
-            
-            {selectedSuperviseur && (
-              <div className="space-y-4 mt-4">
-                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <Avatar className="h-20 w-20 border-2 border-purple-200">
-                    <AvatarImage src={selectedSuperviseur.avatar_url} alt={`${selectedSuperviseur.first_name} ${selectedSuperviseur.last_name}`} />
-                    <AvatarFallback className="bg-purple-100 text-purple-600 text-lg">
-                      {selectedSuperviseur.first_name?.charAt(0) || ''}{selectedSuperviseur.last_name?.charAt(0) || ''}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900">
-                      {selectedSuperviseur.first_name} {selectedSuperviseur.last_name}
-                    </h3>
-                    {selectedSuperviseur.titre && (
-                      <p className="text-sm text-gray-600 mt-1">{selectedSuperviseur.titre}</p>
-                    )}
-                    {selectedSuperviseur.email && (
-                      <p className="text-sm text-gray-600 mt-1">{selectedSuperviseur.email}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Card className="bg-white border-gray-200 shadow-sm">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                        <Users className="h-4 w-4 text-purple-600" />
-                        Membres de la famille
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-purple-600">
-                        {nombreMembresParSuperviseur[selectedSuperviseur.id] || 0}
-                      </div>
-                      <p className="text-xs text-gray-600 mt-1">
-                        membre{nombreMembresParSuperviseur[selectedSuperviseur.id] !== 1 ? 's' : ''} au total
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            )}
-            
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setSelectedSuperviseur(null)}
-                className="bg-white border-gray-200 text-gray-900 hover:bg-purple-600 hover:text-white hover:border-purple-600"
-              >
-                Fermer
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <SuperviseurModals
+          selectedMembreForDisciples={selectedMembreForDisciples}
+          setSelectedMembreForDisciples={setSelectedMembreForDisciples}
+          disciplesList={disciplesList}
+          setDisciplesList={setDisciplesList}
+          loadingDisciplesList={loadingDisciplesList}
+          onExportDisciplesList={handleExportDisciplesList}
+          onNavigate={navigate}
+          showSelectedModal={showSelectedModal}
+          setShowSelectedModal={setShowSelectedModal}
+          selectedMembres={selectedMembres}
+          filteredMembres={filteredMembres}
+          membresProgression={membresProgression}
+          famille={famille}
+          onExportSelectedExcel={handleExportSelectedExcel}
+          onExportSelectedPdf={handleExportSelectedPdf}
+          onFetchDisciples={fetchDisciplesOfMembre}
+          showHistory={showHistory}
+          setShowHistory={setShowHistory}
+          rapports={rapports}
+          selectedSuperviseur={selectedSuperviseur}
+          setSelectedSuperviseur={setSelectedSuperviseur}
+          nombreMembresParSuperviseur={nombreMembresParSuperviseur}
+        />
       </div>
     </>
   );
