@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Download, Eye, History, User, Calendar } from 'lucide-react';
+import { Users, Download, Eye, History, User, Calendar, ArrowLeft } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -53,11 +53,21 @@ export function SuperviseurModals({
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 border-gray-200">
           <DialogHeader>
             <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <DialogTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-purple-600" />
-                  Disciples de {selectedMembreForDisciples?.name}
-                </DialogTitle>
+              <div className="flex-1 flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 h-9 w-9 rounded-full text-gray-600 hover:text-purple-600 hover:bg-purple-50"
+                  onClick={() => { setSelectedMembreForDisciples?.(null); setDisciplesList?.([]); }}
+                  aria-label="Retour"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
+                <div>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-purple-600" />
+                    Disciples de {selectedMembreForDisciples?.name}
+                  </DialogTitle>
                 <DialogDescription>
                   Liste des disciples suivis par ce membre ({disciplesList?.length ?? 0})
                 </DialogDescription>
@@ -72,6 +82,7 @@ export function SuperviseurModals({
                   </Button>
                 </div>
               )}
+            </div>
             </div>
           </DialogHeader>
           <div className="space-y-4 mt-4">

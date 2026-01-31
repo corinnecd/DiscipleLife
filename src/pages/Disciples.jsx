@@ -67,6 +67,8 @@ const getStatusColor = (status) => {
   return 'text-gray-400';
 };
 
+const getDisplayName = (d) => (d?.name ?? `${d?.first_name ?? ''} ${d?.last_name ?? ''}`.trim()) || 'Sans nom';
+
 const Disciples = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -194,7 +196,7 @@ const Disciples = () => {
           // Trier par nom et supprimer les doublons
           const uniqueMembers = Array.from(
             new Map(allMembers.map(m => [m.id, m])).values()
-          ).sort((a, b) => a.name.localeCompare(b.name));
+          ).sort((a, b) => (a?.name ?? '').localeCompare(b?.name ?? ''));
 
           setAllMembers(uniqueMembers);
       } catch (error) {
@@ -321,9 +323,9 @@ const Disciples = () => {
     }
   };
 
-  const filteredDisciples = disciples.filter(d => 
-    d.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredDisciples = disciples
+    .filter(d => d != null)
+    .filter(d => getDisplayName(d).toLowerCase().includes(searchTerm.toLowerCase()));
 
   // Grouper les disciples par niveau spirituel
   const groupDisciplesByStatus = (disciplesList) => {
@@ -443,17 +445,17 @@ const Disciples = () => {
                         {disciple.avatar_url ? (
                           <Avatar className="h-12 w-12 border border-gray-200">
                             <AvatarImage src={disciple.avatar_url} objectFit="cover" />
-                            <AvatarFallback className={`${getAvatarColor(disciple.name)} text-white`}>
-                              {getInitials(disciple.name)}
+                            <AvatarFallback className={`${getAvatarColor(getDisplayName(disciple))} text-white`}>
+                              {getInitials(getDisplayName(disciple))}
                             </AvatarFallback>
                           </Avatar>
                         ) : (
-                          <div className={`w-12 h-12 rounded-full ${getAvatarColor(disciple.name)} flex items-center justify-center text-white font-bold shadow-lg`}>
-                            {getInitials(disciple.name)}
+                          <div className={`w-12 h-12 rounded-full ${getAvatarColor(getDisplayName(disciple))} flex items-center justify-center text-white font-bold shadow-lg`}>
+                            {getInitials(getDisplayName(disciple))}
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-gray-900 font-bold truncate pr-6 group-hover:text-purple-600 transition-colors">{disciple.name}</h3>
+                          <h3 className="text-gray-900 font-bold truncate pr-6 group-hover:text-purple-600 transition-colors">{getDisplayName(disciple)}</h3>
                           <p className={`text-xs uppercase tracking-wider font-semibold ${getStatusColor(disciple.circle_type)} whitespace-nowrap`}>
                             {getStatusLabel(disciple.circle_type).toUpperCase()}
                           </p>

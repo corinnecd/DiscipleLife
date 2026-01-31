@@ -24,7 +24,7 @@ DECLARE
   v_suivi_profils JSONB;
   v_superviseur_nom TEXT := '';
   v_nombre_membres INT := 0;
-  v_membre_ids UUID[];
+  v_membre_ids UUID[]; 
   v_formation_term INT := 0;
   v_formation_encours INT := 0;
   v_videos_term INT := 0;

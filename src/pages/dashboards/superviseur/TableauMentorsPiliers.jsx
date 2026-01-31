@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Loader2, FileText } from 'lucide-react';
+import { Users, Loader2, FileText, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,12 +13,14 @@ import {
 
 /**
  * Tableau consolidé des mentors (piliers) – 8 colonnes, aligné Dashboard Pasteur.
- * Familles, Présence Culte Samedi, Présence Culte Dimanche.
+ * Clic sur Nom / Prénom → ouvre la fiche détail du disciple/mentor.
  */
 export function TableauMentorsPiliers({
   loading = false,
   mentors = [],
   onExportExcel,
+  onNavigate,
+  onRefresh,
 }) {
   return (
     <Card className="bg-white border-gray-200 shadow-sm">
@@ -32,6 +34,18 @@ export function TableauMentorsPiliers({
           </div>
           <div className="flex items-center gap-2">
             {loading && <Loader2 className="h-5 w-5 animate-spin text-purple-600" />}
+            {onRefresh && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onRefresh}
+                disabled={loading}
+                className="shrink-0"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Rafraîchir
+              </Button>
+            )}
             {onExportExcel && mentors.length > 0 && (
               <Button
                 variant="outline"
@@ -65,22 +79,35 @@ export function TableauMentorsPiliers({
                 <TableRow className="bg-purple-200 hover:bg-purple-300">
                   <TableHead className="font-semibold text-gray-900">Nom</TableHead>
                   <TableHead className="font-semibold text-gray-900">Prénom</TableHead>
-                  <TableHead className="font-semibold text-gray-900">Familles</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Suivi par</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Famille</TableHead>
                   <TableHead className="font-semibold text-center text-gray-900">Nombre de disciples</TableHead>
                   <TableHead className="font-semibold text-center text-gray-900">Avancement % (objectif 70)</TableHead>
                   <TableHead className="font-semibold text-center text-gray-900">Présence Culte Samedi</TableHead>
                   <TableHead className="font-semibold text-center text-gray-900">Présence Culte Dimanche</TableHead>
                   <TableHead className="font-semibold text-center text-gray-900">Taux participation semaine</TableHead>
+                  <TableHead className="font-semibold text-center text-gray-900">Statut</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {mentors.map((mentor) => (
                   <TableRow key={mentor.mentor_id} className="hover:bg-gray-50 hover:text-black">
-                    <TableCell className="font-semibold text-gray-900">{mentor.nom}</TableCell>
-                    <TableCell className="font-semibold text-gray-900">{mentor.prenom}</TableCell>
-                    <TableCell className="text-gray-700">{mentor.eglise}</TableCell>
+                    <TableCell
+                      className={`font-semibold text-gray-900 ${onNavigate ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''}`}
+                      onClick={onNavigate ? () => onNavigate(`/disciples/${mentor.mentor_id}`) : undefined}
+                    >
+                      {mentor.nom}
+                    </TableCell>
+                    <TableCell
+                      className={`font-semibold text-gray-900 ${onNavigate ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''}`}
+                      onClick={onNavigate ? () => onNavigate(`/disciples/${mentor.mentor_id}`) : undefined}
+                    >
+                      {mentor.prenom}
+                    </TableCell>
+                    <TableCell className="text-gray-700">{mentor.suivi_par ?? '—'}</TableCell>
+                    <TableCell className="font-semibold text-gray-900">{mentor.eglise}</TableCell>
                     <TableCell className="text-center">
-                      <span className="font-semibold text-gray-900">{mentor.nombre_disciples ?? 0}</span>
+                      <span className="font-semibold text-blue-600">{mentor.nombre_disciples ?? 0}</span>
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -96,7 +123,7 @@ export function TableauMentorsPiliers({
                             style={{ width: `${Math.min(mentor.avancement_pourcentage ?? 0, 100)}%` }}
                           />
                         </div>
-                        <span className="text-sm font-medium text-gray-700 w-12 text-left">
+                        <span className="text-sm font-semibold text-gray-900 w-12 text-left">
                           {mentor.avancement_pourcentage ?? 0}%
                         </span>
                       </div>
@@ -118,6 +145,7 @@ export function TableauMentorsPiliers({
                         {mentor.taux_participation_semaine ?? 0}%
                       </span>
                     </TableCell>
+                    <TableCell className="text-center text-gray-700">{(mentor.nombre_disciples ?? 0) === 0 ? 'Disciple' : (mentor.statut ?? 'Disciple')}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

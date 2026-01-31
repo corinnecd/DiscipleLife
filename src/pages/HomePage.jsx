@@ -69,28 +69,28 @@ const HomePage = () => {
               className="flex flex-row justify-center gap-4 flex-nowrap"
             >
               <Button 
-                onClick={() => navigate('/signup/pasteur')}
+                onClick={() => navigate('/signup?role=pasteur')}
                 className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-purple-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
                 <Church className="mr-2" /> Pasteur Référent de Famille
               </Button>
               
               <Button 
-                onClick={() => navigate('/signup/superviseur')}
+                onClick={() => navigate('/signup?role=superviseur')}
                 className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-amber-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
                 <Building2 className="mr-2" /> Je suis Superviseur
               </Button>
               
               <Button 
-                onClick={() => navigate('/signup/mentor')}
+                onClick={() => navigate('/signup?role=mentor')}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-blue-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
                 <UserCheck className="mr-2" /> Je suis Mentor
               </Button>
               
               <Button 
-                onClick={() => navigate('/signup/disciple')}
+                onClick={() => navigate('/signup?role=disciple')}
                 className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-teal-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
                 <UserPlus className="mr-2" /> Je suis Disciple

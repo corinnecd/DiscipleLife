@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Mail, Phone, Calendar, MessageSquare, MapPin, Activity, X, Flame, Trash2, Loader2, TrendingUp, Users, UserCheck, Award, UserPlus } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, Calendar, MessageSquare, MapPin, Activity, X, Flame, Trash2, Loader2, TrendingUp, Users, UserCheck, Award, UserPlus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -83,6 +83,8 @@ const getNextLevel = (circleType) => {
 const DiscipleDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const displayNombreDisciples = location.state?.displayNombreDisciples;
   const { toast } = useToast();
   const { user } = useAuth();
   const [disciple, setDisciple] = useState(null);
@@ -97,6 +99,8 @@ const DiscipleDetail = () => {
   const [upgradeRoleType, setUpgradeRoleType] = useState(null);
   const [disciplesSuivis, setDisciplesSuivis] = useState([]);
   const [loadingDisciplesSuivis, setLoadingDisciplesSuivis] = useState(false);
+  const [suiviParNom, setSuiviParNom] = useState(null);
+  const discipleIdRef = useRef(null);
 
   // Modal Form State
   const [prayerRequest, setPrayerRequest] = useState('');
@@ -106,11 +110,21 @@ const DiscipleDetail = () => {
     fetchDiscipleDetails();
   }, [id]);
 
+  discipleIdRef.current = disciple?.id ?? null;
+
   useEffect(() => {
-    if (disciple && disciple.id) {
-      fetchDisciplesSuivis();
+    if (disciple && disciple.id && !disciple.is_demo) {
+      (async () => {
+        try {
+          const { clearCache } = await import('@/lib/CacheUtils');
+          clearCache(`disciple_suivis_${disciple.id}`);
+        } catch (_) {}
+        await fetchDisciplesSuivis(true);
+      })();
+    } else if (disciple?.is_demo) {
+      setDisciplesSuivis([]);
     }
-  }, [disciple]);
+  }, [disciple?.id]);
 
   const fetchDiscipleDetails = async () => {
     // Validate UUID format to prevent DB errors
@@ -160,12 +174,33 @@ const DiscipleDetail = () => {
         3 * 60 * 1000 // 3 minutes
       );
 
-      setDisciple(data);
+      if (!data) {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: "Profil introuvable."
+        });
+        navigate(-1);
+        return;
+      }
+
+      // profils a first_name/last_name, le composant attend aussi .name (ex. clic depuis tableau mentors)
+      const discipleWithName = {
+        ...data,
+        name: data.name || `${(data.first_name || '')} ${(data.last_name || '')}`.trim() || 'Sans nom'
+      };
+      setDisciple(discipleWithName);
       if (data?.famille_id) {
         const { data: fam } = await supabase.from('familles_disciples').select('superviseur_id').eq('id', data.famille_id).maybeSingle();
         setFamilySupervisorId(fam?.superviseur_id ?? null);
       } else {
         setFamilySupervisorId(null);
+      }
+      if (data?.mentor_id) {
+        const { data: mentorProfil } = await supabase.from('profils').select('first_name, last_name').eq('id', data.mentor_id).maybeSingle();
+        setSuiviParNom(mentorProfil ? [mentorProfil.first_name, mentorProfil.last_name].filter(Boolean).join(' ').trim() || null : null);
+      } else {
+        setSuiviParNom(null);
       }
     } catch (error) {
       console.error('Error fetching details:', error);
@@ -180,64 +215,78 @@ const DiscipleDetail = () => {
     }
   };
 
-  const fetchDisciplesSuivis = async () => {
+  const fetchDisciplesSuivis = async (forceRefresh = false) => {
     if (!disciple || !disciple.id || disciple.is_demo) return;
 
+    const fetchedForId = disciple.id;
     setLoadingDisciplesSuivis(true);
     try {
-      // OPTIMISATION: Utiliser le cache pour la liste des disciples suivis (TTL: 2 minutes)
-      const { getOrSetCache } = await import('@/lib/CacheUtils');
-      const cacheKey = `disciple_suivis_${disciple.id}`;
-      
-      const result = await getOrSetCache(
-        cacheKey,
-        async () => {
-          const { data: disciplesData, error: disciplesError } = await supabase
-            .from('profils')
-            .select('id, first_name, last_name, mentor_id')
-            .eq('mentor_id', disciple.id);
+      const doFetch = async () => {
+        const { data: disciplesData, error: disciplesError } = await supabase
+          .from('profils')
+          .select('id, first_name, last_name, mentor_id')
+          .eq('mentor_id', fetchedForId);
 
-          if (disciplesError) throw disciplesError;
+        if (disciplesError) throw disciplesError;
 
-          if (!disciplesData || disciplesData.length === 0) {
-            return [];
-          }
+        if (!disciplesData || disciplesData.length === 0) {
+          return [];
+        }
 
-          const disciplesIds = disciplesData.map(d => d.id);
-          const { data: sousDisciplesData, error: sousDisciplesError } = await supabase
-            .from('profils')
-            .select('mentor_id')
-            .in('mentor_id', disciplesIds);
+        const disciplesIds = disciplesData.map(d => d.id);
+        const { data: sousDisciplesData, error: sousDisciplesError } = await supabase
+          .from('profils')
+          .select('mentor_id')
+          .in('mentor_id', disciplesIds);
 
-          if (sousDisciplesError) throw sousDisciplesError;
+        if (sousDisciplesError) throw sousDisciplesError;
 
-          const disciplesSuivisMap = {};
-          if (sousDisciplesData) {
-            sousDisciplesData.forEach(sousDisciple => {
-              const parentId = sousDisciple.mentor_id;
-              if (parentId) disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
-            });
-          }
+        const disciplesSuivisMap = {};
+        if (sousDisciplesData) {
+          sousDisciplesData.forEach(sousDisciple => {
+            const parentId = sousDisciple.mentor_id;
+            if (parentId) disciplesSuivisMap[parentId] = (disciplesSuivisMap[parentId] || 0) + 1;
+          });
+        }
 
-          const disciplesAvecCompte = disciplesData.map(discipleItem => ({
-            id: discipleItem.id,
-            first_name: discipleItem.first_name || '',
-            last_name: discipleItem.last_name || '',
-            name: `${(discipleItem.first_name || '')} ${(discipleItem.last_name || '')}`.trim(),
-            disciplesSuivis: disciplesSuivisMap[discipleItem.id] || 0
-          }));
+        return disciplesData.map(discipleItem => ({
+          id: discipleItem.id,
+          first_name: discipleItem.first_name || '',
+          last_name: discipleItem.last_name || '',
+          name: `${(discipleItem.first_name || '')} ${(discipleItem.last_name || '')}`.trim(),
+          disciplesSuivis: disciplesSuivisMap[discipleItem.id] || 0
+        }));
+      };
 
-          return disciplesAvecCompte;
-        },
-        2 * 60 * 1000 // 2 minutes
-      );
+      let result;
+      const cacheKey = `disciple_suivis_${fetchedForId}`;
+      if (forceRefresh) {
+        try {
+          const { clearCache, setCache } = await import('@/lib/CacheUtils');
+          clearCache(cacheKey);
+        } catch (_) {}
+        result = await doFetch();
+        try {
+          const { setCache } = await import('@/lib/CacheUtils');
+          setCache(cacheKey, result, 2 * 60 * 1000);
+        } catch (_) {}
+      } else {
+        const { getOrSetCache } = await import('@/lib/CacheUtils');
+        result = await getOrSetCache(cacheKey, doFetch, 2 * 60 * 1000);
+      }
 
-      setDisciplesSuivis(result);
+      if (discipleIdRef.current === fetchedForId) {
+        setDisciplesSuivis(Array.isArray(result) ? result : []);
+      }
     } catch (error) {
       console.error('Erreur lors de la récupération des disciples suivis:', error);
-      setDisciplesSuivis([]);
+      if (discipleIdRef.current === fetchedForId) {
+        setDisciplesSuivis([]);
+      }
     } finally {
-      setLoadingDisciplesSuivis(false);
+      if (discipleIdRef.current === fetchedForId) {
+        setLoadingDisciplesSuivis(false);
+      }
     }
   };
 
@@ -429,6 +478,13 @@ const DiscipleDetail = () => {
   if (loading) return <div className="text-center text-white p-10">Chargement...</div>;
   if (!disciple) return null;
 
+  const displayName = disciple.name || `${(disciple.first_name || '')} ${(disciple.last_name || '')}`.trim() || 'Sans nom';
+  const initialLetter = (displayName && displayName.charAt(0)) ? displayName.charAt(0).toUpperCase() : '?';
+
+  // Toujours afficher uniquement les disciples réels (pas de lignes placeholder)
+  const rowsListeDisciples = disciplesSuivis;
+  const countDisciplesAffichage = disciplesSuivis.length;
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto relative">
       <Button 
@@ -453,11 +509,11 @@ const DiscipleDetail = () => {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-4xl font-bold text-white shadow-lg shadow-purple-500/20"
           >
-            {disciple.name.charAt(0).toUpperCase()}
+            {initialLetter}
           </motion.div>
           <div className="flex-1 text-center md:text-left space-y-2">
             <div className="flex items-center justify-between">
-              <h1 className="text-3xl font-bold text-gray-900">{disciple.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900">{displayName}</h1>
               <Button
                 size="sm"
                 className="bg-red-600 hover:bg-red-700 text-white text-sm ml-auto"
@@ -550,6 +606,12 @@ const DiscipleDetail = () => {
               <div className="p-2 bg-gray-100 rounded-lg"><MapPin size={18} className="text-gray-600" /></div>
               <span>Non renseigné</span>
             </div>
+            {suiviParNom && (
+              <div className="flex items-center gap-3 text-gray-600">
+                <div className="p-2 bg-gray-100 rounded-lg"><UserCheck size={18} className="text-gray-600" /></div>
+                <span><span className="font-medium text-gray-900">Suivi par :</span> {suiviParNom}</span>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -601,15 +663,31 @@ const DiscipleDetail = () => {
       >
       <Card className="bg-white border-gray-200 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
-            <UserCheck className="h-5 w-5 text-purple-600" />
-            Liste des Disciples de {disciple.name || `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() || 'ce disciple'}
-            {disciplesSuivis.length > 0 && (
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-purple-600" />
+              Liste des Disciples de {disciple.name || `${disciple.first_name || ''} ${disciple.last_name || ''}`.trim() || 'ce disciple'}
               <span className="text-sm font-normal text-gray-500">
-                ({disciplesSuivis.length} disciple{disciplesSuivis.length > 1 ? 's' : ''})
+                ({countDisciplesAffichage} disciple{countDisciplesAffichage !== 1 ? 's' : ''})
               </span>
-            )}
-          </CardTitle>
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={loadingDisciplesSuivis}
+              onClick={async () => {
+                try {
+                  await fetchDisciplesSuivis(true);
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            >
+              {loadingDisciplesSuivis ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <span className="ml-1">Rafraîchir</span>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loadingDisciplesSuivis ? (
@@ -617,7 +695,7 @@ const DiscipleDetail = () => {
               <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
               <span className="ml-2 text-gray-600">Chargement...</span>
             </div>
-          ) : disciplesSuivis.length === 0 ? (
+          ) : rowsListeDisciples.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
               <p>Aucun disciple suivi par ce disciple pour le moment.</p>
@@ -633,15 +711,15 @@ const DiscipleDetail = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {disciplesSuivis.map((discipleSuivi) => (
+                  {rowsListeDisciples.map((discipleSuivi) => (
                     <tr key={discipleSuivi.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td 
+                      <td
                         className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
                         onClick={() => navigate(`/disciples/${discipleSuivi.id}`)}
                       >
                         {discipleSuivi.first_name}
                       </td>
-                      <td 
+                      <td
                         className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
                         onClick={() => navigate(`/disciples/${discipleSuivi.id}`)}
                       >
@@ -704,9 +782,9 @@ const DiscipleDetail = () => {
                             <label className="text-sm font-medium text-gray-900">Je prie pour...</label>
                             <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200">
                                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-sm font-bold text-white">
-                                    {disciple.name.charAt(0).toUpperCase()}
+                                    {initialLetter}
                                 </div>
-                                <span className="text-gray-900 font-medium">{disciple.name}</span>
+                                <span className="text-gray-900 font-medium">{displayName}</span>
                             </div>
                         </div>
 
@@ -785,7 +863,7 @@ const DiscipleDetail = () => {
 
                     <div className="space-y-4">
                         <p className="text-gray-300">
-                            Êtes-vous sûr de vouloir supprimer <span className="font-semibold text-white">{disciple.name}</span> ? 
+                            Êtes-vous sûr de vouloir supprimer <span className="font-semibold text-white">{displayName}</span> ? 
                             Cette action est irréversible.
                         </p>
 
@@ -872,7 +950,7 @@ const DiscipleDetail = () => {
               <div className="space-y-4">
                 <div className="p-3 bg-white/5 rounded-lg border border-white/10">
                   <p className="text-sm text-gray-400 mb-1">Personne</p>
-                  <p className="text-white font-medium">{disciple.name}</p>
+                  <p className="text-white font-medium">{displayName}</p>
                 </div>
 
                 {upgradeRoleType ? (

@@ -8,6 +8,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import Layout from './components/Layout';
 import Auth from './pages/Auth';
 import UpdatePassword from './pages/UpdatePassword';
+import ForgotPassword from './pages/ForgotPassword';
 import { useToast } from '@/components/ui/use-toast';
 
 // Public Pages
@@ -138,11 +139,14 @@ function AppRoutes() {
       {/* Public Routes */}
       <Route path="/" element={!user ? <HomePage /> : <Navigate to="/home" replace />} />
       <Route path="/auth" element={<Auth />} />
-      <Route path="/signup/mentor" element={<SignupMentor />} />
-      <Route path="/signup/disciple" element={<SignupDisciple />} />
-      <Route path="/signup/superviseur" element={<SignupSuperviseur />} />
-      <Route path="/signup/pasteur" element={<SignupPasteur />} />
+      {/* Formulaire unique d'inscription : une route /signup, rôle pré-rempli via ?role= */}
+      <Route path="/signup" element={<SignupDisciple />} />
+      <Route path="/signup/disciple" element={<Navigate to="/signup?role=disciple" replace />} />
+      <Route path="/signup/mentor" element={<Navigate to="/signup?role=mentor" replace />} />
+      <Route path="/signup/superviseur" element={<Navigate to="/signup?role=superviseur" replace />} />
+      <Route path="/signup/pasteur" element={<Navigate to="/signup?role=pasteur" replace />} />
       <Route path="/update-password" element={<UpdatePassword />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       
       {/* Protected Routes */}
       <Route path="/" element={

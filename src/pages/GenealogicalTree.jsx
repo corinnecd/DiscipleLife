@@ -1,25 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  GitFork, 
-  Search, 
-  ZoomIn, 
-  ZoomOut, 
-  Maximize, 
-  ChevronRight, 
-  ChevronLeft,
+import { useSearchParams } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import {
+  GitFork,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  ChevronRight,
   User,
   Users,
-  MapPin,
-  Home
+  Home,
 } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getAvatarColor, getInitials } from '@/lib/utils';
 import { Helmet } from 'react-helmet';
 
@@ -255,12 +254,47 @@ const MobileTreeView = ({ data }) => {
 };
 
 
+// --- Build tree from get_arbre_4_niveaux flat list (filtered by family) ---
+function buildTreeFromArbreRows(rows) {
+  if (!rows?.length) return null;
+  const byId = {};
+  rows.forEach((r) => {
+    byId[r.id] = {
+      id: r.id,
+      name: [r.prenom, r.nom].filter(Boolean).join(' ').trim() || r.nom || '—',
+      role: r.role_niveau || 'Disciple',
+      nb_disciples: r.nb_disciples ?? 0,
+      parent_id: r.parent_id,
+      children: [],
+    };
+  });
+  let root = null;
+  rows.forEach((r) => {
+    const node = byId[r.id];
+    if (!node) return;
+    if (r.parent_id == null) root = node;
+    else if (byId[r.parent_id]) byId[r.parent_id].children.push(node);
+  });
+  return root;
+}
+
 // --- Main Page Component ---
 const GenealogicalTree = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const urlFamilyId = searchParams.get('family');
+  const urlPasteurId = searchParams.get('pasteur');
   const [treeData, setTreeData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [familles, setFamilles] = useState([]);
+  const [loadingFamilies, setLoadingFamilies] = useState(true);
+  const [selectedFamilleId, setSelectedFamilleId] = useState('');
+
+  // Initialiser la sélection depuis l'URL (?family= ou ?pasteur=)
+  useEffect(() => {
+    if (urlFamilyId && familles.length > 0) setSelectedFamilleId(urlFamilyId);
+  }, [urlFamilyId, familles.length]);
 
   // Resize listener
   useEffect(() => {
@@ -269,66 +303,156 @@ const GenealogicalTree = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Fetch Tree Data
+  // Fetch families list (for filter)
+  useEffect(() => {
+    const fetchFamilies = async () => {
+      setLoadingFamilies(true);
+      try {
+        const { data, error } = await supabase
+          .from('familles_disciples')
+          .select('id, nom, pasteur_id, superviseur_id')
+          .order('nom');
+        if (!error) setFamilles(data || []);
+      } catch (_) {}
+      setLoadingFamilies(false);
+    };
+    fetchFamilies();
+  }, []);
+
+  // Fetch Tree Data: "Ma lignée" | "Par famille" | "DR mode" (?pasteur=)
   useEffect(() => {
     const fetchTree = async () => {
-      if (!user) return;
+      const hasPasteurUrl = urlPasteurId && urlPasteurId.length > 0;
+      if (!user && !selectedFamilleId && !hasPasteurUrl) return;
       setLoading(true);
+      setTreeData(null);
 
       try {
-        // Fetch current user details as root
-        const { data: userData, error: userError } = await supabase
+        // --- Mode "DR mode" (pasteur) : arbre de toutes les familles du pasteur (lien depuis dashboard pasteur) ---
+        if (hasPasteurUrl) {
+          const { data: arbreRows, error: rpcError } = await supabase.rpc('get_arbre_4_niveaux', {
+            p_pasteur_id: urlPasteurId,
+          });
+          if (rpcError) throw rpcError;
+          const root = buildTreeFromArbreRows(arbreRows || []);
+          setTreeData(root);
+          setLoading(false);
+          return;
+        }
+
+        // --- Mode "Par famille" : RPC get_arbre_4_niveaux + filtre par famille ---
+        if (selectedFamilleId) {
+          const family = familles.find((f) => f.id === selectedFamilleId);
+          if (!family) {
+            setLoading(false);
+            return;
+          }
+          const familyNom = (family.nom || '').trim();
+
+          if (family.pasteur_id) {
+            const { data: arbreRows, error: rpcError } = await supabase.rpc('get_arbre_4_niveaux', {
+              p_pasteur_id: family.pasteur_id,
+            });
+            if (rpcError) throw rpcError;
+            const filtered =
+              (arbreRows || []).filter(
+                (r) =>
+                  r.niveau === 1 ||
+                  (r.famille_nom && String(r.famille_nom).trim() === familyNom)
+              ) || [];
+            const root = buildTreeFromArbreRows(filtered);
+            setTreeData(root);
+            setLoading(false);
+            return;
+          }
+
+          // Fallback: famille sans pasteur_id → arbre à partir du superviseur (profils + mentor_id)
+          const superviseurId = family.superviseur_id;
+          if (!superviseurId) {
+            setLoading(false);
+            return;
+          }
+          const { data: superviseurData } = await supabase
             .from('profils')
             .select('id, first_name, last_name, avatar_url, role')
-            .eq('id', user.id)
+            .eq('id', superviseurId)
             .single();
-
-        if (userError) throw userError;
-
-        // Fetch all disciples recursively (simulated with flat fetch for now + simple reconstruction)
-        // In a real optimized app, this might be a recursive CTE in SQL
-        const { data: disciplesData, error: disciplesError } = await supabase
+          const { data: membresData } = await supabase
             .from('profils')
             .select('id, first_name, last_name, avatar_url, mentor_id')
-            .not('mentor_id', 'is', null)
-            .order('first_name');
-            
-        if (disciplesError) throw disciplesError;
-
-        const root = {
-            id: user.id,
-            name: `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.email,
-            avatar_url: userData.avatar_url,
-            role: userData.role,
-            children: []
-        };
-
-        const dataList = disciplesData || [];
-        const buildHierarchy = (parentId) => {
-             return dataList
-                .filter(d => d.mentor_id === parentId)
-                .map(d => ({
-                    id: d.id,
-                    name: `${(d.first_name || '')} ${(d.last_name || '')}`.trim() || 'Sans nom',
-                    avatar_url: d.avatar_url,
-                    role: 'Disciple',
-                    children: buildHierarchy(d.id)
-                }));
-        };
-
-        const topLevelDisciples = dataList
-            .filter(d => d.mentor_id === user.id)
-            .map(d => ({
+            .eq('famille_id', family.id);
+          const dataList = membresData || [];
+          const buildHierarchy = (parentId) =>
+            dataList
+              .filter((d) => d.mentor_id === parentId)
+              .map((d) => ({
                 id: d.id,
-                name: `${(d.first_name || '')} ${(d.last_name || '')}`.trim() || 'Sans nom',
+                name: [d.first_name, d.last_name].filter(Boolean).join(' ').trim() || 'Sans nom',
                 avatar_url: d.avatar_url,
                 role: 'Disciple',
-                children: buildHierarchy(d.id)
+                children: buildHierarchy(d.id),
+              }));
+          const root = {
+            id: superviseurId,
+            name:
+              [superviseurData?.first_name, superviseurData?.last_name].filter(Boolean).join(' ').trim() ||
+              'Superviseur',
+            avatar_url: superviseurData?.avatar_url,
+            role: superviseurData?.role || 'Superviseur',
+            children: buildHierarchy(superviseurId),
+          };
+          setTreeData(root);
+          setLoading(false);
+          return;
+        }
+
+        // --- Mode "Ma lignée" : racine = utilisateur courant ---
+        if (!user) {
+          setLoading(false);
+          return;
+        }
+        const { data: userData, error: userError } = await supabase
+          .from('profils')
+          .select('id, first_name, last_name, avatar_url, role')
+          .eq('id', user.id)
+          .single();
+        if (userError) throw userError;
+
+        const { data: disciplesData, error: disciplesError } = await supabase
+          .from('profils')
+          .select('id, first_name, last_name, avatar_url, mentor_id')
+          .not('mentor_id', 'is', null)
+          .order('first_name');
+        if (disciplesError) throw disciplesError;
+
+        const dataList = disciplesData || [];
+        const buildHierarchy = (parentId) =>
+          dataList
+            .filter((d) => d.mentor_id === parentId)
+            .map((d) => ({
+              id: d.id,
+              name: [d.first_name, d.last_name].filter(Boolean).join(' ').trim() || 'Sans nom',
+              avatar_url: d.avatar_url,
+              role: 'Disciple',
+              children: buildHierarchy(d.id),
             }));
 
-        root.children = topLevelDisciples;
+        const root = {
+          id: user.id,
+          name: [userData.first_name, userData.last_name].filter(Boolean).join(' ').trim() || userData.email,
+          avatar_url: userData.avatar_url,
+          role: userData.role,
+          children: dataList
+            .filter((d) => d.mentor_id === user.id)
+            .map((d) => ({
+              id: d.id,
+              name: [d.first_name, d.last_name].filter(Boolean).join(' ').trim() || 'Sans nom',
+              avatar_url: d.avatar_url,
+              role: 'Disciple',
+              children: buildHierarchy(d.id),
+            })),
+        };
         setTreeData(root);
-
       } catch (error) {
         console.error('Error building tree:', error);
       } finally {
@@ -337,8 +461,7 @@ const GenealogicalTree = () => {
     };
 
     fetchTree();
-  }, [user]);
-
+  }, [user, selectedFamilleId, familles, urlPasteurId]);
 
   return (
     <>
@@ -354,23 +477,60 @@ const GenealogicalTree = () => {
               Arbre Généalogique
             </h1>
             <p className="text-slate-500 dark:text-slate-400">
-              Visualisez votre descendance spirituelle et l'impact de votre ministère.
+              {urlPasteurId
+                ? 'Vue : toutes les familles (DR mode) – Pasteur → Superviseurs → Mentors → Disciples.'
+                : 'Visualisez la lignée spirituelle : votre descendance ou celle d\'une famille.'}
             </p>
           </div>
+          {!urlPasteurId && (
+          <div className="flex items-center gap-3">
+            <Label htmlFor="famille-select" className="text-sm font-medium text-slate-700 whitespace-nowrap">
+              Vue
+            </Label>
+            <Select
+              value={selectedFamilleId || 'me'}
+              onValueChange={(v) => setSelectedFamilleId(v === 'me' ? '' : v)}
+              disabled={loadingFamilies}
+            >
+              <SelectTrigger id="famille-select" className="w-[220px] bg-white">
+                <SelectValue placeholder="Choisir une famille" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="me">Ma lignée</SelectItem>
+                {(familles || []).map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.nom || f.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          )}
         </div>
 
         {loading ? (
-            <div className="flex-1 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            </div>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          </div>
         ) : (
-            <div className="flex-1 min-h-[500px]">
-                {isMobile ? (
-                    <MobileTreeView data={treeData} />
-                ) : (
-                    <DesktopTreeView data={treeData} />
-                )}
-            </div>
+          <div className="flex-1 min-h-[500px]">
+            {treeData ? (
+              isMobile ? (
+                <MobileTreeView data={treeData} />
+              ) : (
+                <DesktopTreeView data={treeData} />
+              )
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                <Users className="h-12 w-12 mb-4 opacity-50" />
+                <p>
+                  {selectedFamilleId
+                    ? 'Aucune donnée pour cette famille.'
+                    : 'Connectez-vous pour voir votre lignée.'}
+                </p>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </>

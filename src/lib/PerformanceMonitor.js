@@ -39,7 +39,11 @@ class PerformanceMonitor {
   endPageLoad(pageName) {
     if (this.metrics.pageLoads[pageName]) {
       const endTime = performance.now();
-      this.metrics.pageLoads[pageName].loadTime = endTime - this.metrics.pageLoads[pageName].startTime;
+      const prev = this.metrics.pageLoads[pageName];
+      this.metrics.pageLoads[pageName] = {
+        ...prev,
+        loadTime: endTime - (prev.startTime || endTime)
+      };
       this.saveToStorage();
     }
   }
@@ -56,17 +60,23 @@ class PerformanceMonitor {
       fromCache
     };
 
-    this.metrics.apiCalls.push(apiCall);
-    
+    this.metrics.apiCalls = [...(this.metrics.apiCalls || []), apiCall];
+
     if (fromCache) {
-      this.metrics.cacheHits++;
-      if (this.metrics.pageLoads[Object.keys(this.metrics.pageLoads).slice(-1)[0]]) {
-        this.metrics.pageLoads[Object.keys(this.metrics.pageLoads).slice(-1)[0]].cacheHitCount++;
+      this.metrics.cacheHits = (this.metrics.cacheHits || 0) + 1;
+      const pageKeys = Object.keys(this.metrics.pageLoads || {});
+      const lastKey = pageKeys[pageKeys.length - 1];
+      if (lastKey && this.metrics.pageLoads[lastKey]) {
+        const prev = this.metrics.pageLoads[lastKey];
+        this.metrics.pageLoads[lastKey] = { ...prev, cacheHitCount: (prev.cacheHitCount || 0) + 1 };
       }
     } else {
-      this.metrics.cacheMisses++;
-      if (this.metrics.pageLoads[Object.keys(this.metrics.pageLoads).slice(-1)[0]]) {
-        this.metrics.pageLoads[Object.keys(this.metrics.pageLoads).slice(-1)[0]].cacheMissCount++;
+      this.metrics.cacheMisses = (this.metrics.cacheMisses || 0) + 1;
+      const pageKeys = Object.keys(this.metrics.pageLoads || {});
+      const lastKey = pageKeys[pageKeys.length - 1];
+      if (lastKey && this.metrics.pageLoads[lastKey]) {
+        const prev = this.metrics.pageLoads[lastKey];
+        this.metrics.pageLoads[lastKey] = { ...prev, cacheMissCount: (prev.cacheMissCount || 0) + 1 };
       }
     }
 
@@ -85,18 +95,11 @@ class PerformanceMonitor {
     const startTime = performance.now();
     const result = renderFn();
     const endTime = performance.now();
-    
-    if (!this.metrics.renderTimes[componentName]) {
-      this.metrics.renderTimes[componentName] = [];
-    }
-    
-    this.metrics.renderTimes[componentName].push(endTime - startTime);
-    
-    // Garder seulement les 50 dernières mesures
-    if (this.metrics.renderTimes[componentName].length > 50) {
-      this.metrics.renderTimes[componentName] = this.metrics.renderTimes[componentName].slice(-50);
-    }
-    
+
+    const prevTimes = this.metrics.renderTimes[componentName] || [];
+    const nextTimes = [...prevTimes, endTime - startTime].slice(-50);
+    this.metrics.renderTimes = { ...this.metrics.renderTimes, [componentName]: nextTimes };
+
     this.saveToStorage();
     return result;
   }

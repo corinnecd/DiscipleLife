@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, Mail, Lock, User, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Loader2, Mail, Lock, User, ArrowRight, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/customSupabaseClient';
 
@@ -28,6 +28,8 @@ const Auth = () => {
     firstName: '',
     lastName: ''
   });
+  const [showPasswordLogin, setShowPasswordLogin] = useState(false);
+  const [showPasswordRegister, setShowPasswordRegister] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -88,7 +90,7 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      // Métadonnées alignées sur la table profils (champs de base ; pour famille/date, utiliser /signup/disciple)
+      // Métadonnées alignées sur la table profils (champs de base ; pour famille/date/rôle, utiliser /signup)
       const { error } = await signUp(formData.email, formData.password, {
         data: {
             first_name: formData.firstName,
@@ -192,20 +194,34 @@ const Auth = () => {
                         <Input 
                             id="password" 
                             name="password" 
-                            type="password" 
+                            type={showPasswordLogin ? 'text' : 'password'} 
                             placeholder="••••••••"
-                            className="pl-9 bg-black/20 border-white/10 focus:border-purple-500 transition-all"
+                            className="pl-9 pr-10 bg-black/20 border-white/10 focus:border-purple-500 transition-all"
                             value={formData.password}
                             onChange={handleInputChange}
                             required
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswordLogin(!showPasswordLogin)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                          aria-label={showPasswordLogin ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                        >
+                          {showPasswordLogin ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="flex flex-col gap-2">
                     <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 transition-colors" disabled={loading}>
                       {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Se connecter"} {!loading && <ArrowRight className="ml-2 h-4 w-4" />}
                     </Button>
+                    <p className="text-sm text-center text-slate-400">
+                      <Link to="/forgot-password" className="text-purple-400 hover:underline font-medium">Mot de passe oublié ?</Link>
+                    </p>
+                    <p className="text-sm text-center text-slate-400">
+                      Pas encore inscrit ? <Link to="/signup" className="text-purple-400 hover:underline font-medium">S'inscrire</Link>
+                    </p>
                   </CardFooter>
                 </form>
               </Card>
@@ -268,21 +284,32 @@ const Auth = () => {
                         <Input 
                             id="password" 
                             name="password" 
-                            type="password" 
+                            type={showPasswordRegister ? 'text' : 'password'} 
                             placeholder="••••••••"
-                            className="pl-9 bg-black/20 border-white/10 focus:border-purple-500 transition-all"
+                            className="pl-9 pr-10 bg-black/20 border-white/10 focus:border-purple-500 transition-all"
                             value={formData.password}
                             onChange={handleInputChange}
                             required
                             minLength={6}
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswordRegister(!showPasswordRegister)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                          aria-label={showPasswordRegister ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                        >
+                          {showPasswordRegister ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="flex flex-col gap-2">
                     <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 transition-colors" disabled={loading}>
                       {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "S'inscrire gratuitement"}
                     </Button>
+                    <p className="text-sm text-center text-slate-400">
+                      Rôle, famille, statut spirituel… <Link to="/signup" className="text-purple-400 hover:underline font-medium">Formulaire complet</Link>
+                    </p>
                   </CardFooter>
                 </form>
               </Card>

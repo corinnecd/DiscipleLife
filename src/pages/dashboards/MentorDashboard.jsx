@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
+import { ArbreGenealogiqueEmbed } from '@/components/ArbreGenealogiqueEmbed';
 import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
@@ -36,6 +37,20 @@ const MentorDashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [reportReminder, setReportReminder] = useState(null); // { daysLeft: number, showReminder: boolean }
+  const [famille, setFamille] = useState(null); // Famille du mentor (pour arbre généalogique)
+
+  // Récupérer la famille du mentor (famille_id du profil)
+  useEffect(() => {
+    if (!user?.id) return;
+    const abort = { current: false };
+    (async () => {
+      const { data: profil } = await supabase.from('profils').select('famille_id').eq('id', user.id).maybeSingle();
+      if (abort.current || !profil?.famille_id) return;
+      const { data: fam } = await supabase.from('familles_disciples').select('id, nom, pasteur_id, superviseur_id').eq('id', profil.famille_id).maybeSingle();
+      if (!abort.current && fam) setFamille(fam);
+    })();
+    return () => { abort.current = true; };
+  }, [user?.id]);
 
   // Fonction pour vérifier le rappel de rapport (5 jours avant la fin du mois)
   const checkReportReminder = () => {
@@ -303,6 +318,17 @@ const MentorDashboard = () => {
           Ajouter un disciple
         </Button>
       </div>
+
+      {/* Arbre généalogique de ma famille */}
+      {famille?.id && (
+        <ArbreGenealogiqueEmbed
+          mode="family"
+          famille={famille}
+          title={`Arbre généalogique - ${famille.nom || 'Ma famille'}`}
+          description="Lignée spirituelle de votre famille (Pasteur → Superviseur → Mentors → Disciples)."
+          compactHeight={380}
+        />
+      )}
 
       {/* Alerte de rappel pour le rapport mensuel (5 jours avant la fin du mois) */}
       {reportReminder && reportReminder.showReminder && (

@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, ArrowLeft, UserPlus } from 'lucide-react';
+import { Loader2, ArrowLeft, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 
 const SignupDisciple = () => {
@@ -37,9 +36,20 @@ const SignupDisciple = () => {
 
   const [familles, setFamilles] = useState([]);
   const [mentors, setMentors] = useState([]);
+  const [searchParams] = useSearchParams();
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Rôle pré-rempli depuis l'URL (/signup?role=disciple, /signup?role=mentor, etc.)
+  useEffect(() => {
+    const roleFromUrl = searchParams.get('role');
+    if (roleFromUrl && ['disciple', 'mentor', 'superviseur', 'pasteur'].includes(roleFromUrl)) {
+      setFormData(prev => ({ ...prev, role: roleFromUrl }));
+    }
+  }, [searchParams]);
 
   const SPIRITUAL_STAGES = [
-    { value: '', label: 'Non renseigné' },
+    { value: '__non_renseigne__', label: 'Non renseigné' },
     { value: 'Non-croyant', label: 'Non-croyant' },
     { value: 'Nouveau converti', label: 'Nouveau converti' },
     { value: 'Disciple affermi', label: 'Disciple affermi' },
@@ -117,7 +127,7 @@ const SignupDisciple = () => {
   };
 
   const handleSpiritualStageChange = (value) => {
-    setFormData(prev => ({ ...prev, spiritualStage: value }));
+    setFormData(prev => ({ ...prev, spiritualStage: value === '__non_renseigne__' ? '' : value }));
   };
 
   const handleSubmit = async (e) => {
@@ -218,8 +228,8 @@ const SignupDisciple = () => {
            <div className="w-12 h-12 bg-teal-500/10 rounded-lg flex items-center justify-center text-teal-400 mb-4">
                <UserPlus size={24} />
            </div>
-           <CardTitle className="text-2xl">Inscription membre</CardTitle>
-           <CardDescription className="text-gray-400">Rôle, famille, date d'entrée, suivi par, statut spirituel, formations PCNC, nombre de disciples, téléphone, ville de résidence.</CardDescription>
+           <CardTitle className="text-2xl">Inscription</CardTitle>
+           <CardDescription className="text-gray-400">Formulaire unique : choisissez votre rôle (Pasteur, Superviseur, Mentor, Disciple), puis remplissez les champs ci-dessous. Famille, date d'entrée, suivi par, statut spirituel, formations PCNC, téléphone, ville de résidence.</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
@@ -263,7 +273,7 @@ const SignupDisciple = () => {
                     </SelectTrigger>
                     <SelectContent className="bg-[#1a0b2e] border-white/10">
                       {familles.length === 0 ? (
-                        <SelectItem value="" disabled>
+                        <SelectItem value="__none__" disabled>
                           Aucune famille disponible
                         </SelectItem>
                       ) : (
@@ -314,12 +324,12 @@ const SignupDisciple = () => {
              </div>
              <div className="space-y-2">
                 <Label>Suivi par (mentor / superviseur)</Label>
-                <Select value={formData.mentorId} onValueChange={handleMentorChange}>
+                <Select value={formData.mentorId || '__aucun__'} onValueChange={(v) => setFormData(prev => ({ ...prev, mentorId: v === '__aucun__' ? '' : v }))}>
                   <SelectTrigger className="bg-black/20 border-white/10 text-white">
                     <SelectValue placeholder="Optionnel : sélectionnez qui vous suit" />
                   </SelectTrigger>
                   <SelectContent className="bg-[#1a0b2e] border-white/10">
-                    <SelectItem value="" className="text-white focus:bg-teal-500/20">Aucun</SelectItem>
+                    <SelectItem value="__aucun__" className="text-white focus:bg-teal-500/20">Aucun</SelectItem>
                     {mentors.map((m) => (
                       <SelectItem key={m.id} value={m.id} className="text-white focus:bg-teal-500/20">
                         {[m.first_name, m.last_name].filter(Boolean).join(' ')} ({m.role})
@@ -330,13 +340,13 @@ const SignupDisciple = () => {
              </div>
              <div className="space-y-2">
                 <Label>Statut spirituel</Label>
-                <Select value={formData.spiritualStage} onValueChange={handleSpiritualStageChange}>
+                <Select value={formData.spiritualStage || '__non_renseigne__'} onValueChange={handleSpiritualStageChange}>
                   <SelectTrigger className="bg-black/20 border-white/10 text-white">
                     <SelectValue placeholder="Sélectionnez un statut" />
                   </SelectTrigger>
                   <SelectContent className="bg-[#1a0b2e] border-white/10">
                     {SPIRITUAL_STAGES.map((s) => (
-                      <SelectItem key={s.value || 'none'} value={s.value} className="text-white focus:bg-teal-500/20">
+                      <SelectItem key={s.value} value={s.value} className="text-white focus:bg-teal-500/20">
                         {s.label}
                       </SelectItem>
                     ))}
@@ -402,26 +412,46 @@ const SignupDisciple = () => {
              </div>
              <div className="space-y-2">
                 <Label>Mot de passe</Label>
-                <Input 
-                  type="password" 
-                  name="password" 
-                  value={formData.password} 
-                  onChange={handleInputChange} 
-                  required 
-                  minLength={6}
-                  className="bg-black/20 border-white/10 text-white" 
-                />
+                <div className="relative">
+                  <Input 
+                    type={showPassword ? 'text' : 'password'} 
+                    name="password" 
+                    value={formData.password} 
+                    onChange={handleInputChange} 
+                    required 
+                    minLength={6}
+                    className="bg-black/20 border-white/10 text-white pr-10" 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                    aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
              </div>
              <div className="space-y-2">
                 <Label>Confirmer le mot de passe</Label>
-                <Input 
-                  type="password" 
-                  name="confirmPassword" 
-                  value={formData.confirmPassword} 
-                  onChange={handleInputChange} 
-                  required 
-                  className="bg-black/20 border-white/10 text-white" 
-                />
+                <div className="relative">
+                  <Input 
+                    type={showConfirmPassword ? 'text' : 'password'} 
+                    name="confirmPassword" 
+                    value={formData.confirmPassword} 
+                    onChange={handleInputChange} 
+                    required 
+                    className="bg-black/20 border-white/10 text-white pr-10" 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                    aria-label={showConfirmPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                  >
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
              </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">

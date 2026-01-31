@@ -27,6 +27,7 @@ import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { ArbreGenealogiqueEmbed } from '@/components/ArbreGenealogiqueEmbed';
 
 const DiscipleDashboard = ({ targetDiscipleId = null }) => {
   const { user } = useAuth();
@@ -43,6 +44,20 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
     nextPrayer: null
   });
   const [loading, setLoading] = useState(true);
+  const [famille, setFamille] = useState(null); // Famille du disciple (pour arbre généalogique)
+
+  // Récupérer la famille du disciple (famille_id du profil)
+  useEffect(() => {
+    if (!user?.id) return;
+    const abort = { current: false };
+    (async () => {
+      const { data: profil } = await supabase.from('profils').select('famille_id').eq('id', user.id).maybeSingle();
+      if (abort.current || !profil?.famille_id) return;
+      const { data: fam } = await supabase.from('familles_disciples').select('id, nom, pasteur_id, superviseur_id').eq('id', profil.famille_id).maybeSingle();
+      if (!abort.current && fam) setFamille(fam);
+    })();
+    return () => { abort.current = true; };
+  }, [user?.id]);
 
   // Upgrade to Mentor State
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
@@ -290,6 +305,19 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Arbre généalogique de ma famille */}
+      {famille?.id && (
+        <div className="mt-6">
+          <ArbreGenealogiqueEmbed
+            mode="family"
+            famille={famille}
+            title={`Arbre généalogique - ${famille.nom || 'Ma famille'}`}
+            description="Lignée spirituelle de votre famille (Pasteur → Superviseur → Mentors → Disciples)."
+            compactHeight={380}
+          />
+        </div>
+      )}
 
       {/* Feature Links Grid */}
       <h2 className="text-xl font-bold text-white mt-8">Accès Rapide</h2>

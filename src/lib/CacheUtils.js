@@ -77,7 +77,13 @@ export const getCache = (key) => {
       return null;
     }
 
-    return data;
+    // Retourner une copie pour éviter "Attempted to assign to readonly property"
+    // (les données en cache peuvent être partagées ou considérées en lecture seule)
+    try {
+      return JSON.parse(JSON.stringify(data));
+    } catch (e) {
+      return data;
+    }
   } catch (error) {
     console.warn('Cache get error:', error);
     return null;
@@ -238,14 +244,19 @@ export const getOrSetCache = async (key, asyncFn, ttl = DEFAULT_TTL) => {
   try {
     const data = await asyncFn();
     const duration = typeof performance !== 'undefined' ? performance.now() - startTime : Date.now() - startTime;
-    
+
     // Enregistrer un cache miss
     if (typeof window !== 'undefined' && window.performanceMonitor) {
       window.performanceMonitor.recordApiCall(key, 'GET', duration, false);
     }
-    
+
     setCache(key, data, ttl);
-    return data;
+    // Retourner une copie pour éviter que l'appelant ne mute un objet partagé/readonly
+    try {
+      return JSON.parse(JSON.stringify(data));
+    } catch (e) {
+      return data;
+    }
   } catch (error) {
     console.error(`Cache async function error for ${key}:`, error);
     throw error;

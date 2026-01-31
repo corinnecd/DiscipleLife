@@ -10,6 +10,7 @@ const UpdatePassword = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
@@ -93,15 +94,23 @@ const UpdatePassword = () => {
                     </button>
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 relative">
                     <Input 
-                        type={showPassword ? "text" : "password"} 
+                        type={showConfirmPassword ? "text" : "password"} 
                         placeholder="Confirmer le mot de passe" 
-                        className="bg-black/20 border-white/10 text-white h-12 rounded-xl focus:ring-teal-500 focus:border-teal-500 placeholder:text-gray-500"
+                        className="bg-black/20 border-white/10 text-white h-12 rounded-xl focus:ring-teal-500 focus:border-teal-500 placeholder:text-gray-500 pr-12"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         required
                     />
+                    <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                        aria-label={showConfirmPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                    >
+                        {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
                 </div>
 
                 {error && (
