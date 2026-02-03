@@ -122,7 +122,12 @@ const NotificationCenter = () => {
           });
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR' && err) {
+          if (err?.message?.includes('JWT') || err?.message?.includes('exp')) return;
+          console.warn('Realtime notifications:', err?.message || err);
+        }
+      });
   };
 
   const getIcon = (type) => {

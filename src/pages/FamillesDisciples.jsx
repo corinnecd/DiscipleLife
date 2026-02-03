@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { handleError } from '@/lib/ErrorHandler';
-import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft, Mail, Calendar, Building2, Search, X, RefreshCw } from 'lucide-react';
+import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft, Mail, Calendar, Building2, Search, X, RefreshCw, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
@@ -1010,7 +1010,7 @@ const FamillesDisciples = () => {
         <title>Familles de Disciples - DiscipleLife</title>
       </Helmet>
 
-      <div className="max-w-7xl mx-auto space-y-6 pb-20 px-4 sm:px-6">
+      <div className="w-full max-w-7xl mx-auto space-y-6 pb-20">
         {/* Bouton retour */}
         <Button
           variant="ghost"
@@ -1986,8 +1986,8 @@ const FamillesDisciples = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {disciplesDirects.map((membre) => (
-                          <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-200 transition-colors">
+                      {disciplesDirects.map((membre, idx) => (
+                          <tr key={`${membre.id}-direct-${idx}`} className="border-b border-gray-100 hover:bg-gray-200 transition-colors">
                             <td 
                               className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
                               onClick={() => navigate(`/disciples/${membre.id}`)}
@@ -2050,8 +2050,8 @@ const FamillesDisciples = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {autresMembres.map((membre) => (
-                          <tr key={membre.id} className="border-b border-gray-100 hover:bg-gray-200 transition-colors">
+                      {autresMembres.map((membre, idx) => (
+                          <tr key={`${membre.id}-autre-${idx}`} className="border-b border-gray-100 hover:bg-gray-200 transition-colors">
                             <td 
                               className="py-3 px-4 text-sm text-gray-900 font-bold cursor-pointer hover:text-blue-600"
                               onClick={() => navigate(`/disciples/${membre.id}`)}
@@ -2167,9 +2167,9 @@ const FamillesDisciples = () => {
               </div>
             ) : (
               <div className="space-y-2">
-                {disciplesList.map((disciple) => (
+                {disciplesList.map((disciple, idx) => (
                   <div
-                    key={disciple.id}
+                    key={`${disciple.id}-${idx}`}
                     className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                     onClick={() => {
                       navigate(`/disciples/${disciple.id}`);

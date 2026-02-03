@@ -32,14 +32,10 @@ export function FamillePasteurCards({
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.4 }}
-      >
+      <div>
         <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-start justify-between">
-            <div className="flex-1">
+            <div className="flex-1 min-h-[3rem]">
               <CardTitle className="flex items-center gap-2 text-gray-900">
                 <Users className="h-5 w-5 text-purple-600" />
                 {(() => {
@@ -137,16 +133,12 @@ export function FamillePasteurCards({
             )}
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-      >
+      <div>
         <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-start justify-between">
-            <div className="flex-1">
+            <div className="flex-1 min-h-[3rem]">
               <CardTitle className="flex items-center gap-2 text-gray-900">
                 <Church className="h-5 w-5 text-purple-600" />
                 {pasteur ? `${pasteur.first_name} ${pasteur.last_name}` : 'Pasteur de tutelle'}
@@ -225,7 +217,7 @@ export function FamillePasteurCards({
             )}
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
     </div>
   );
 }

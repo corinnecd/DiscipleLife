@@ -223,10 +223,10 @@ const Layout = () => {
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 min-w-0 pt-20 lg:pt-0 bg-gray-50">
+      {/* Main Content - scrollable pour éviter que le bas du dashboard soit tronqué */}
+      <main className="flex-1 min-w-0 min-h-0 flex flex-col pt-20 lg:pt-0 bg-gray-50 dark:bg-gray-50">
         {/* Top Header (Desktop only) */}
-        <header className="hidden lg:flex h-20 items-center justify-between px-8 border-b border-gray-200 bg-white/80 backdrop-blur sticky top-0 z-40">
+        <header className="hidden lg:flex shrink-0 h-20 items-center justify-between px-8 border-b border-gray-200 bg-white/80 backdrop-blur sticky top-0 z-40">
            <div className="flex items-center text-gray-500 text-sm">
               <span className="opacity-60">Application</span>
               <span className="mx-2 text-gray-300">/</span>
@@ -260,7 +260,7 @@ const Layout = () => {
           </div>
         )}
 
-        <div className="p-4 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500 bg-gray-50 dark:bg-gray-50 pb-24">
           <Outlet />
         </div>
       </main>

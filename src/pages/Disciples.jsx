@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/context/AuthContext';
+import { useRole } from '@/context/RoleContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { getAvatarColor, getInitials } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
@@ -71,6 +72,7 @@ const getDisplayName = (d) => (d?.name ?? `${d?.first_name ?? ''} ${d?.last_name
 
 const Disciples = () => {
   const { user } = useAuth();
+  const { role } = useRole();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [disciples, setDisciples] = useState([]);
@@ -104,20 +106,43 @@ const Disciples = () => {
         fetchDisciples();
         fetchAllPotentialParents();
     }
-  }, [user]);
+  }, [user, role]);
 
   const fetchDisciples = async () => {
+    if (!user?.id) return;
     try {
-      const { data, error } = await supabase
-        .from('profils')
-        .select('*')
-        .eq('mentor_id', user.id)
-        .order('first_name');
-      
-      if (error) throw error;
-      setDisciples(data || []);
+      setLoading(true);
+      if (role === 'superviseur') {
+        const { data: familleData, error: famError } = await supabase
+          .from('familles_disciples')
+          .select('id')
+          .eq('superviseur_id', user.id)
+          .maybeSingle();
+        if (famError) throw famError;
+        if (familleData?.id) {
+          const { data, error } = await supabase
+            .from('profils')
+            .select('*')
+            .eq('famille_id', familleData.id)
+            .neq('id', user.id)
+            .order('first_name');
+          if (error) throw error;
+          setDisciples(data || []);
+        } else {
+          setDisciples([]);
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('profils')
+          .select('*')
+          .eq('mentor_id', user.id)
+          .order('first_name');
+        if (error) throw error;
+        setDisciples(data || []);
+      }
     } catch (error) {
       console.error(error);
+      setDisciples([]);
     } finally {
       setLoading(false);
     }

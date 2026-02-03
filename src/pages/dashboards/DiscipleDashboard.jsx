@@ -13,7 +13,8 @@ import {
   Award,
   Loader2,
   CheckCircle,
-  XCircle
+  XCircle,
+  GitBranch
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,9 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { ArbreGenealogiqueEmbed } from '@/components/ArbreGenealogiqueEmbed';
+import { MembersTableCard } from '@/components/MembersTableCard';
+import { useMembersTable } from '@/hooks/useMembersTable';
+import { exportToExcel, exportElementToPDF } from '@/lib/ExportUtils';
 
 const DiscipleDashboard = ({ targetDiscipleId = null }) => {
   const { user } = useAuth();
@@ -45,6 +49,12 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
   });
   const [loading, setLoading] = useState(true);
   const [famille, setFamille] = useState(null); // Famille du disciple (pour arbre généalogique)
+  const [discipleFamilyMembers, setDiscipleFamilyMembers] = useState([]);
+  const discipleFamilyTable = useMembersTable(discipleFamilyMembers, {
+    membresProgression: {},
+    membresDisciplesCount: {},
+    membresSuiviPar: {},
+  });
 
   // Récupérer la famille du disciple (famille_id du profil)
   useEffect(() => {
@@ -58,6 +68,30 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
     })();
     return () => { abort.current = true; };
   }, [user?.id]);
+
+  // Charger les membres de la famille du disciple pour le tableau « Membres de ma famille »
+  useEffect(() => {
+    if (!user?.id || !famille?.id) {
+      setDiscipleFamilyMembers([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, email, avatar_url, created_at, role, mentor_id, spiritual_stage')
+        .eq('famille_id', famille.id)
+        .neq('id', user.id)
+        .order('created_at', { ascending: false });
+      if (error || cancelled) return;
+      const members = (data || []).map((p) => ({
+        ...p,
+        statut_spirituel: (p.spiritual_stage === 'inactif' || p.spiritual_stage === 'inactive') ? 'inactif' : 'actif',
+      }));
+      if (!cancelled) setDiscipleFamilyMembers(members);
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, famille?.id]);
 
   // Upgrade to Mentor State
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
@@ -205,6 +239,33 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
     }
   };
 
+  const handleExportDiscipleFamilyMembers = (formatExport) => {
+    const list = discipleFamilyTable.filteredMembres || [];
+    if (!list.length) {
+      toast({ title: 'Aucune donnée', description: 'Aucun membre ne correspond aux filtres.', variant: 'destructive' });
+      return;
+    }
+    const exportData = list.map((m) => ({
+      'Prénom': m.first_name || '',
+      'Nom': m.last_name || '',
+      'Email': m.email || '',
+      'Statut': m.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
+      "Date d'inscription": m.created_at ? format(new Date(m.created_at), 'dd/MM/yyyy', { locale: fr }) : '',
+    }));
+    const filename = `membres_famille_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
+    if (formatExport === 'pdf') {
+      const uniqueId = `pdf-disciple-family-${Date.now()}`;
+      const tempDiv = document.createElement('div');
+      tempDiv.id = uniqueId;
+      tempDiv.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+      tempDiv.innerHTML = `<div style="font-family:Arial"><h2>Membres de ma famille</h2><p>Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p><p>Total: ${list.length} membre(s)</p><table style="width:100%;border-collapse:collapse;border:1px solid #ddd"><thead><tr style="background:#f3f4f6"><th style="padding:10px;border:1px solid #ddd">Prénom</th><th style="padding:10px;border:1px solid #ddd">Nom</th><th style="padding:10px;border:1px solid #ddd">Email</th><th style="padding:10px;border:1px solid #ddd">Statut</th><th style="padding:10px;border:1px solid #ddd">Date</th></tr></thead><tbody>${list.map(m=>`<tr><td style="padding:8px;border:1px solid #ddd">${m.first_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.last_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.email||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.statut_spirituel==='inactif'?'Inactif':'Actif'}</td><td style="padding:8px;border:1px solid #ddd">${m.created_at?format(new Date(m.created_at),'dd/MM/yyyy',{locale:fr}):'-'}</td></tr>`).join('')}</tbody></table></div>`;
+      document.body.appendChild(tempDiv);
+      exportElementToPDF(uniqueId, `${filename}.pdf`, { title: 'Membres de ma famille', subtitle: 'Disciple', showHeader: true, showFooter: true }).finally(() => { try { document.getElementById(uniqueId)?.remove(); } catch (_) {} });
+    } else {
+      exportToExcel(exportData, filename, { title: 'Membres de ma famille', description: 'Disciple', additionalInfo: { 'Nombre': list.length.toString() } });
+    }
+  };
+
   const container = {
     hidden: { opacity: 0 },
     show: { opacity: 1, transition: { staggerChildren: 0.1 } }
@@ -214,10 +275,10 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
     <div className="space-y-6 pb-20 relative">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">
+          <h1 className="text-3xl font-bold text-gray-900">
             {isViewingSelf ? "Mon Espace Disciple" : "Espace Disciple"}
           </h1>
-          <p className="text-gray-400">
+          <p className="text-gray-600">
             {isViewingSelf 
               ? "Bienvenue dans votre espace de croissance spirituelle." 
               : "Suivi et accompagnement du disciple."}
@@ -232,76 +293,76 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
       >
         {/* Next RDV Card */}
-        <Card className="bg-gradient-to-br from-indigo-900/40 to-indigo-800/20 border-indigo-500/30 cursor-pointer hover:border-indigo-400/50 transition-all" onClick={() => navigate('/my-appointments')}>
+        <Card className="bg-gradient-to-br from-indigo-50 to-white border-indigo-200 cursor-pointer hover:border-indigo-400 transition-all shadow-sm" onClick={() => navigate('/my-appointments')}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-indigo-300">Prochain RDV</CardTitle>
-            <Calendar className="h-4 w-4 text-indigo-400" />
+            <CardTitle className="text-sm font-medium text-indigo-700">Prochain RDV</CardTitle>
+            <Calendar className="h-4 w-4 text-indigo-600" />
           </CardHeader>
           <CardContent>
             {stats.nextRdv ? (
               <div className="space-y-1">
-                <div className="text-2xl font-bold text-white">
+                <div className="text-2xl font-bold text-gray-900">
                   {format(new Date(stats.nextRdv.scheduled_date), 'dd MMM', { locale: fr })}
                 </div>
-                <p className="text-xs text-indigo-200">
+                <p className="text-xs text-indigo-600">
                   {format(new Date(stats.nextRdv.scheduled_date), 'HH:mm')}
                 </p>
               </div>
             ) : (
-              <div className="text-sm text-gray-400 py-2">Aucun rendez-vous</div>
+              <div className="text-sm text-gray-500 py-2">Aucun rendez-vous</div>
             )}
-            <p className="text-[10px] text-indigo-300 mt-2 flex items-center gap-1">
+            <p className="text-[10px] text-indigo-600 mt-2 flex items-center gap-1">
                 Voir tout <TrendingUp size={10} />
             </p>
           </CardContent>
         </Card>
 
         {/* Next Prayer Card */}
-        <Card className="bg-gradient-to-br from-pink-900/40 to-pink-800/20 border-pink-500/30 cursor-pointer hover:border-pink-400/50 transition-all" onClick={() => navigate('/my-prayers')}>
+        <Card className="bg-gradient-to-br from-pink-50 to-white border-pink-200 cursor-pointer hover:border-pink-400 transition-all shadow-sm" onClick={() => navigate('/my-prayers')}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-pink-300">Prière à venir</CardTitle>
-            <Heart className="h-4 w-4 text-pink-400" />
+            <CardTitle className="text-sm font-medium text-pink-700">Prière à venir</CardTitle>
+            <Heart className="h-4 w-4 text-pink-600" />
           </CardHeader>
           <CardContent>
             {stats.nextPrayer ? (
               <div className="space-y-1">
-                <div className="text-2xl font-bold text-white">
+                <div className="text-2xl font-bold text-gray-900">
                   {format(new Date(stats.nextPrayer.scheduled_date), 'dd MMM', { locale: fr })}
                 </div>
-                <p className="text-xs text-pink-200 line-clamp-1">
+                <p className="text-xs text-pink-600 line-clamp-1">
                    {stats.nextPrayer.prayer_topic}
                 </p>
               </div>
             ) : (
-              <div className="text-sm text-gray-400 py-2">Aucune prière prévue</div>
+              <div className="text-sm text-gray-500 py-2">Aucune prière prévue</div>
             )}
-            <p className="text-[10px] text-pink-300 mt-2 flex items-center gap-1">
+            <p className="text-[10px] text-pink-600 mt-2 flex items-center gap-1">
                 Voir tout <TrendingUp size={10} />
             </p>
           </CardContent>
         </Card>
 
         {/* Resources Shortcut */}
-        <Card className="bg-card/40 border-white/10 hover:bg-card/60 transition-all cursor-pointer" onClick={() => navigate('/ebooks')}>
+        <Card className="bg-gradient-to-br from-emerald-50 to-white border-emerald-200 hover:border-emerald-400 transition-all cursor-pointer shadow-sm" onClick={() => navigate('/ebooks')}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300">Mes Ressources</CardTitle>
-            <BookOpen className="h-4 w-4 text-emerald-400" />
+            <CardTitle className="text-sm font-medium text-emerald-700">Mes Ressources</CardTitle>
+            <BookOpen className="h-4 w-4 text-emerald-600" />
           </CardHeader>
           <CardContent>
-             <div className="text-2xl font-bold text-white">Bibliothèque</div>
-             <p className="text-xs text-gray-400">Accéder aux E-Books</p>
+             <div className="text-2xl font-bold text-gray-900">Bibliothèque</div>
+             <p className="text-xs text-gray-600">Accéder aux E-Books</p>
           </CardContent>
         </Card>
 
         {/* Video Shortcut */}
-        <Card className="bg-card/40 border-white/10 hover:bg-card/60 transition-all cursor-pointer" onClick={() => navigate('/teaching-videos')}>
+        <Card className="bg-gradient-to-br from-red-50 to-white border-red-200 hover:border-red-400 transition-all cursor-pointer shadow-sm" onClick={() => navigate('/teaching-videos')}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300">Enseignements</CardTitle>
-            <PlayCircle className="h-4 w-4 text-red-400" />
+            <CardTitle className="text-sm font-medium text-red-700">Enseignements</CardTitle>
+            <PlayCircle className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">Vidéos</div>
-            <p className="text-xs text-gray-400">Regarder maintenant</p>
+            <div className="text-2xl font-bold text-gray-900">Vidéos</div>
+            <p className="text-xs text-gray-600">Regarder maintenant</p>
           </CardContent>
         </Card>
       </motion.div>
@@ -320,29 +381,72 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
       )}
 
       {/* Feature Links Grid */}
-      <h2 className="text-xl font-bold text-white mt-8">Accès Rapide</h2>
+      <h2 className="text-xl font-bold text-gray-900 mt-8">Accès Rapide</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Button variant="outline" className="h-24 flex flex-col gap-2 border-white/10 bg-[#1a0b2e] hover:bg-white/5 hover:text-white" onClick={() => navigate('/my-appointments')}>
-              <Calendar className="text-indigo-400" size={24} />
+          <Button variant="outline" className="h-24 flex flex-col gap-2 border-gray-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 text-gray-700 shadow-sm" onClick={() => navigate('/my-appointments')}>
+              <Calendar className="text-indigo-600" size={24} />
               <span>Mes Rendez-vous</span>
           </Button>
-          <Button variant="outline" className="h-24 flex flex-col gap-2 border-white/10 bg-[#1a0b2e] hover:bg-white/5 hover:text-white" onClick={() => navigate('/my-prayers')}>
-              <Heart className="text-pink-400" size={24} />
+          <Button variant="outline" className="h-24 flex flex-col gap-2 border-gray-200 bg-white hover:bg-pink-50 hover:border-pink-300 text-gray-700 shadow-sm" onClick={() => navigate('/my-prayers')}>
+              <Heart className="text-pink-600" size={24} />
               <span>Mes Prières</span>
           </Button>
-          <Button variant="outline" className="h-24 flex flex-col gap-2 border-white/10 bg-[#1a0b2e] hover:bg-white/5 hover:text-white" onClick={() => navigate('/teaching-videos')}>
-              <Video className="text-red-400" size={24} />
+          <Button variant="outline" className="h-24 flex flex-col gap-2 border-gray-200 bg-white hover:bg-red-50 hover:border-red-300 text-gray-700 shadow-sm" onClick={() => navigate('/teaching-videos')}>
+              <Video className="text-red-600" size={24} />
               <span>Enseignements</span>
           </Button>
-          <Button variant="outline" className="h-24 flex flex-col gap-2 border-white/10 bg-[#1a0b2e] hover:bg-white/5 hover:text-white" onClick={() => navigate('/testimonial-videos')}>
-              <Quote className="text-teal-400" size={24} />
+          <Button variant="outline" className="h-24 flex flex-col gap-2 border-gray-200 bg-white hover:bg-teal-50 hover:border-teal-300 text-gray-700 shadow-sm" onClick={() => navigate('/testimonial-videos')}>
+              <Quote className="text-teal-600" size={24} />
               <span>Témoignages</span>
           </Button>
-          <Button variant="outline" className="h-24 flex flex-col gap-2 border-white/10 bg-[#1a0b2e] hover:bg-white/5 hover:text-white" onClick={() => navigate('/books-to-read')}>
-              <Library className="text-amber-400" size={24} />
+          <Button variant="outline" className="h-24 flex flex-col gap-2 border-gray-200 bg-white hover:bg-amber-50 hover:border-amber-300 text-gray-700 shadow-sm" onClick={() => navigate('/books-to-read')}>
+              <Library className="text-amber-600" size={24} />
               <span>Livres à Lire</span>
           </Button>
+          <Button variant="outline" className="h-24 flex flex-col gap-2 border-gray-200 bg-white hover:bg-purple-50 hover:border-purple-300 text-gray-700 shadow-sm" onClick={() => navigate('/arbre-genealogique')}>
+              <GitBranch className="text-purple-600" size={24} />
+              <span>Arbre généalogique</span>
+          </Button>
       </div>
+
+      {/* Tableau « Membres de ma famille » (même structure que superviseur) */}
+      {famille?.id && (
+        <div className="mt-8">
+          <MembersTableCard
+            title="Membres de ma famille"
+            description="Liste des membres de votre famille"
+            filteredMembres={discipleFamilyTable.filteredMembres}
+            paginatedMembres={discipleFamilyTable.paginatedMembres}
+            selectedMembres={discipleFamilyTable.selectedMembres}
+            searchTerm={discipleFamilyTable.searchTerm}
+            setSearchTerm={discipleFamilyTable.setSearchTerm}
+            statusFilter={discipleFamilyTable.statusFilter}
+            setStatusFilter={discipleFamilyTable.setStatusFilter}
+            dateFilter={discipleFamilyTable.dateFilter}
+            setDateFilter={discipleFamilyTable.setDateFilter}
+            progressionFilter={discipleFamilyTable.progressionFilter}
+            setProgressionFilter={discipleFamilyTable.setProgressionFilter}
+            itemsPerPage={discipleFamilyTable.itemsPerPage}
+            setItemsPerPage={discipleFamilyTable.setItemsPerPage}
+            currentPage={discipleFamilyTable.currentPage}
+            setCurrentPage={discipleFamilyTable.setCurrentPage}
+            totalPages={discipleFamilyTable.totalPages}
+            membresProgression={discipleFamilyTable.membresProgression}
+            membresSuiviPar={discipleFamilyTable.membresSuiviPar}
+            toggleSelectAll={discipleFamilyTable.toggleSelectAll}
+            toggleSelectMembre={discipleFamilyTable.toggleSelectMembre}
+            showExport={true}
+            showSelection={true}
+            showFetchDisciples={false}
+            showProgression={false}
+            showSuiviPar={false}
+            showNombreDisciples={false}
+            onNavigate={navigate}
+            onExportFilteredList={handleExportDiscipleFamilyMembers}
+            toast={toast}
+          />
+        </div>
+      )}
 
       {isViewingSelf && (
         <div className="flex justify-center mt-8">
@@ -358,38 +462,38 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
 
       {/* Mentor Upgrade Modal */}
       <Dialog open={isUpgradeModalOpen} onOpenChange={setIsUpgradeModalOpen}>
-        <DialogContent className="bg-[#1e1b4b] border-white/10 text-white max-w-md">
+        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md">
           <DialogHeader>
-            <div className="mx-auto bg-amber-500/20 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-              <Award className="text-amber-500" size={24} />
+            <div className="mx-auto bg-amber-100 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+              <Award className="text-amber-600" size={24} />
             </div>
             <DialogTitle className="text-center text-xl">Devenir Mentor</DialogTitle>
-            <DialogDescription className="text-center text-gray-400">
+            <DialogDescription className="text-center text-gray-600">
               Entrez le code d'activation fourni par un responsable pour passer au statut de Mentor.
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-6 space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Code d'activation</label>
-              <Input 
+              <label className="text-sm font-medium text-gray-700">Code d'activation</label>
+              <Input
                 value={mentorCode}
                 onChange={(e) => setMentorCode(e.target.value)}
                 placeholder="Ex: MENTOR-2024-XY"
-                className="bg-black/20 border-white/10 text-center uppercase tracking-widest"
+                className="bg-gray-50 border-gray-300 text-center uppercase tracking-widest"
               />
             </div>
           </div>
 
           <DialogFooter className="sm:justify-between gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setIsUpgradeModalOpen(false)}
-              className="w-full border-white/10 text-gray-300 hover:text-white hover:bg-white/5"
+              className="w-full border-gray-300 text-gray-700 hover:bg-gray-100"
             >
               Annuler
             </Button>
-            <Button 
+            <Button
               onClick={handleBecomeMentor}
               disabled={isVerifyingCode || !mentorCode}
               className="w-full bg-amber-600 hover:bg-amber-700 text-white"

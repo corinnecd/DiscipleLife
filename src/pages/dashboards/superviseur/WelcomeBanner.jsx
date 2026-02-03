@@ -1,8 +1,6 @@
 import React from 'react';
 import { Target, Trophy, Star, Zap, Sparkles, Download, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { motion } from 'framer-motion';
-
 /**
  * Bandeau de bienvenue du tableau de bord superviseur (famille + exports).
  */
@@ -20,13 +18,11 @@ export function WelcomeBanner({
       <div className="relative z-10">
         <div className="flex items-start justify-between gap-6 mb-4">
           <div className="flex-1 max-w-3xl">
-            <motion.h1
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-2xl md:text-4xl font-bold text-white mb-4"
+            <h1
+              className="text-2xl md:text-4xl font-bold text-white mb-4 min-h-[2.5rem] md:min-h-[3rem]"
             >
               BIENVENUE dans la Famille de {superviseurNom.titre === 'Pasteur' ? 'Pasteur ' : ''}{superviseurNom.first_name} {superviseurNom.last_name}
-            </motion.h1>
+            </h1>
             <p className="text-base md:text-xl text-white/90 mb-4 leading-relaxed">
               Ici, vous êtes chez vous.
             </p>
@@ -57,21 +53,13 @@ export function WelcomeBanner({
           </div>
         </div>
       </div>
-      <div className="mt-6 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="text-3xl md:text-4xl font-bold text-amber-400"
-        >
+      <div className="mt-6 relative z-10 min-h-[2.5rem] md:min-h-[3rem]">
+        <div className="text-3xl md:text-4xl font-bold text-amber-400">
           « {famille.nom} »
-        </motion.div>
+        </div>
       </div>
       <div className="absolute bottom-8 right-8 flex-shrink-0">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
+        <div
           className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30"
         >
           {famille.nom.toLowerCase().includes('déterminé') || famille.nom.toLowerCase().includes('determine') ? (
@@ -85,7 +73,7 @@ export function WelcomeBanner({
           ) : (
             <Sparkles className="w-12 h-12 md:w-14 md:h-14 text-white" strokeWidth={2.5} />
           )}
-        </motion.div>
+        </div>
       </div>
       <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
       <div className="absolute bottom-0 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />

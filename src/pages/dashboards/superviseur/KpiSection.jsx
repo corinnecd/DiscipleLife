@@ -188,27 +188,45 @@ export function KpiSection({
   );
 }
 
+const KPI_NUM_COLOR = {
+  indigo: 'text-indigo-700',
+  blue: 'text-blue-700',
+  cyan: 'text-cyan-700',
+  amber: 'text-amber-700',
+  pink: 'text-pink-700',
+  emerald: 'text-emerald-700',
+  rose: 'text-rose-700',
+  teal: 'text-teal-700',
+  purple: 'text-purple-700',
+  violet: 'text-violet-700',
+  orange: 'text-orange-700',
+  green: 'text-green-700',
+  yellow: 'text-yellow-700',
+  red: 'text-red-700',
+};
+
 function KpiTile({ value, label, Icon, colors }) {
   const colorMap = {
-    indigo: 'from-indigo-200 to-indigo-300 border-indigo-400 [--num:theme(colors.indigo.700)]',
-    blue: 'from-blue-200 to-blue-300 border-blue-400 [--num:theme(colors.blue.700)]',
-    cyan: 'from-cyan-200 to-cyan-300 border-cyan-400 [--num:theme(colors.cyan.700)]',
-    amber: 'from-amber-200 to-amber-300 border-amber-400 [--num:theme(colors.amber.700)]',
-    pink: 'from-pink-200 to-pink-300 border-pink-400 [--num:theme(colors.pink.700)]',
-    emerald: 'from-emerald-200 to-emerald-300 border-emerald-400 [--num:theme(colors.emerald.700)]',
-    rose: 'from-rose-200 to-rose-300 border-rose-400 [--num:theme(colors.rose.700)]',
-    teal: 'from-teal-200 to-teal-300 border-teal-400 [--num:theme(colors.teal.700)]',
-    purple: 'from-purple-200 to-purple-300 border-purple-400 [--num:theme(colors.purple.700)]',
-    violet: 'from-violet-200 to-violet-300 border-violet-400 [--num:theme(colors.violet.700)]',
-    orange: 'from-orange-200 to-orange-300 border-orange-400 [--num:theme(colors.orange.700)]',
-    green: 'from-green-200 to-green-300 border-green-400 [--num:theme(colors.green.700)]',
-    yellow: 'from-yellow-200 to-yellow-300 border-yellow-400 [--num:theme(colors.yellow.700)]',
-    red: 'from-red-200 to-red-300 border-red-400 [--num:theme(colors.red.700)]',
+    indigo: 'from-indigo-200 to-indigo-300 border-indigo-400',
+    blue: 'from-blue-200 to-blue-300 border-blue-400',
+    cyan: 'from-cyan-200 to-cyan-300 border-cyan-400',
+    amber: 'from-amber-200 to-amber-300 border-amber-400',
+    pink: 'from-pink-200 to-pink-300 border-pink-400',
+    emerald: 'from-emerald-200 to-emerald-300 border-emerald-400',
+    rose: 'from-rose-200 to-rose-300 border-rose-400',
+    teal: 'from-teal-200 to-teal-300 border-teal-400',
+    purple: 'from-purple-200 to-purple-300 border-purple-400',
+    violet: 'from-violet-200 to-violet-300 border-violet-400',
+    orange: 'from-orange-200 to-orange-300 border-orange-400',
+    green: 'from-green-200 to-green-300 border-green-400',
+    yellow: 'from-yellow-200 to-yellow-300 border-yellow-400',
+    red: 'from-red-200 to-red-300 border-red-400',
   };
   const c = colorMap[colors] || 'from-gray-200 to-gray-300 border-gray-400';
+  const numColor = KPI_NUM_COLOR[colors] || 'text-gray-800';
   return (
     <div className={`group text-center p-4 bg-gradient-to-br ${c} hover:bg-purple-600 rounded-lg border-2 hover:border-purple-600 transition-colors cursor-pointer`}>
-      <div className="text-4xl font-bold text-gray-900 group-hover:text-white transition-colors">
+      <div className={`text-2xl font-bold ${numColor} group-hover:text-white transition-colors`}>
         {value ?? 0}
       </div>
       <div className="text-sm text-gray-900 group-hover:text-white mt-1 font-medium uppercase transition-colors">{label}</div>

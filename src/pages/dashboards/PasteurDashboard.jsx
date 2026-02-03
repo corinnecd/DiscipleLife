@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
   Church, ChevronRight, ChevronDown, ChevronUp, Loader2, Search, Filter, Eye, BarChart3,
-  Mail, Phone, ArrowLeft, Building2, CheckCircle2, AlertCircle, Calendar,
+  Mail, Phone, ArrowLeft, Building2, CheckCircle2, AlertCircle, Calendar, GitBranch,
   Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, Plus, X, Download, FileText, RefreshCw
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -35,6 +35,8 @@ import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import { ArbreGenealogiqueEmbed } from '@/components/ArbreGenealogiqueEmbed';
+import { MembersTableCard } from '@/components/MembersTableCard';
+import { useMembersTable } from '@/hooks/useMembersTable';
 
 const devLog = (...args) => { if (import.meta.env.DEV) console.log(...args); };
 const devWarn = (...args) => { if (import.meta.env.DEV) console.warn(...args); };
@@ -83,6 +85,18 @@ const PasteurDashboard = () => {
     statut: 'actif',
     objectif_disciples: 70,
     superviseur_id: '',
+  });
+
+  // Tableau « Membres des familles » (même structure que superviseur)
+  const [pasteurMembers, setPasteurMembers] = useState([]);
+  const [pasteurMembersProgression, setPasteurMembersProgression] = useState({});
+  const [pasteurMembersDisciplesCount, setPasteurMembersDisciplesCount] = useState({});
+  const [pasteurMembersSuiviPar, setPasteurMembersSuiviPar] = useState({});
+  const [loadingPasteurMembers, setLoadingPasteurMembers] = useState(false);
+  const pasteurMembersTable = useMembersTable(pasteurMembers, {
+    membresProgression: pasteurMembersProgression,
+    membresDisciplesCount: pasteurMembersDisciplesCount,
+    membresSuiviPar: pasteurMembersSuiviPar,
   });
   
   // Filtres de période pour les KPI
@@ -218,6 +232,69 @@ const PasteurDashboard = () => {
     fetchDetails();
     return () => { cancelled = true; };
   }, [selectedFamille?.famille?.id, selectedFamille?.superviseur?.id]);
+
+  // Clé stable des familles pour éviter de recharger les membres quand seul le tableau familles change de référence (même ids)
+  const familleIdsKey = (familles || []).map((f) => f.famille?.id).filter(Boolean).slice().sort().join(',');
+
+  // Charger tous les membres des familles du pasteur pour le tableau « Membres des familles »
+  useEffect(() => {
+    const familleIds = (familles || []).map((f) => f.famille?.id).filter(Boolean);
+    if (!user?.id || familleIds.length === 0) {
+      setPasteurMembers([]);
+      setPasteurMembersProgression({});
+      setPasteurMembersDisciplesCount({});
+      setPasteurMembersSuiviPar({});
+      return;
+    }
+    let cancelled = false;
+    setLoadingPasteurMembers(true);
+    (async () => {
+      try {
+        const { data: profilsData, error } = await supabase
+          .from('profils')
+          .select('id, first_name, last_name, email, avatar_url, created_at, role, mentor_id, spiritual_stage')
+          .in('famille_id', familleIds)
+          .neq('id', user.id)
+          .in('role', ['disciple', 'mentor'])
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        const members = (profilsData || []).map((p) => ({
+          ...p,
+          statut_spirituel: (p.spiritual_stage === 'inactif' || p.spiritual_stage === 'inactive') ? 'inactif' : 'actif',
+        }));
+        if (cancelled) return;
+        setPasteurMembers(members);
+        const mentorIds = [...new Set((members || []).map((m) => m.mentor_id).filter(Boolean))];
+        if (mentorIds.length === 0) {
+          setPasteurMembersDisciplesCount({});
+          setPasteurMembersSuiviPar({});
+          setPasteurMembersProgression({});
+          return;
+        }
+        const [countRes, mentorsRes] = await Promise.all([
+          supabase.from('profils').select('mentor_id').in('mentor_id', mentorIds),
+          supabase.from('profils').select('id, first_name, last_name').in('id', mentorIds),
+        ]);
+        if (cancelled) return;
+        const countByMentor = {};
+        (countRes.data || []).forEach((r) => {
+          if (r.mentor_id) countByMentor[r.mentor_id] = (countByMentor[r.mentor_id] || 0) + 1;
+        });
+        const suiviByMentor = {};
+        (mentorsRes.data || []).forEach((m) => {
+          suiviByMentor[m.id] = { name: `${m.first_name || ''} ${m.last_name || ''}`.trim() || '—' };
+        });
+        setPasteurMembersDisciplesCount(countByMentor);
+        setPasteurMembersSuiviPar(suiviByMentor);
+        setPasteurMembersProgression({});
+      } catch (e) {
+        if (!cancelled) handleError(e, { context: 'fetchPasteurMembers' }, 'Impossible de charger les membres des familles.');
+      } finally {
+        if (!cancelled) setLoadingPasteurMembers(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, familleIdsKey]);
 
   const fetchPasteurData = async () => {
     try {
@@ -1263,6 +1340,38 @@ const PasteurDashboard = () => {
     }
   };
 
+  const handleExportPasteurMembers = (formatExport) => {
+    const list = pasteurMembersTable.filteredMembres || [];
+    if (!list.length) {
+      toast({ title: 'Aucune donnée', description: 'Aucun membre ne correspond aux filtres.', variant: 'destructive' });
+      return;
+    }
+    const exportData = list.map((m) => ({
+      'Prénom': m.first_name || '',
+      'Nom': m.last_name || '',
+      'Email': m.email || '',
+      'Statut': m.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
+      'Nombre de Disciples': m.nombreDisciples || 0,
+      'Formations terminées': pasteurMembersProgression[m.id]?.formations || 0,
+      'Vidéos terminées': pasteurMembersProgression[m.id]?.videos || 0,
+      'Total progression': pasteurMembersProgression[m.id]?.total || 0,
+      'Suivi par': pasteurMembersSuiviPar[m.id]?.name || '-',
+      "Date d'inscription": m.created_at ? format(new Date(m.created_at), 'dd/MM/yyyy', { locale: fr }) : '',
+    }));
+    const filename = `membres_familles_pasteur_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
+    if (formatExport === 'pdf') {
+      const uniqueId = `pdf-pasteur-members-${Date.now()}`;
+      const tempDiv = document.createElement('div');
+      tempDiv.id = uniqueId;
+      tempDiv.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+      tempDiv.innerHTML = `<div style="font-family:Arial"><h2>Membres des familles - Pasteur</h2><p>Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p><p>Total: ${list.length} membre(s)</p><table style="width:100%;border-collapse:collapse;border:1px solid #ddd"><thead><tr style="background:#f3f4f6">${['Prénom','Nom','Email','Statut','Disciples','Progression','Suivi par','Date'].map(h=>`<th style="padding:10px;border:1px solid #ddd">${h}</th>`).join('')}</tr></thead><tbody>${list.map(m=>`<tr><td style="padding:8px;border:1px solid #ddd">${m.first_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.last_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.email||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.statut_spirituel==='inactif'?'Inactif':'Actif'}</td><td style="padding:8px;border:1px solid #ddd">${m.nombreDisciples||0}</td><td style="padding:8px;border:1px solid #ddd">${pasteurMembersProgression[m.id]?.total||0}</td><td style="padding:8px;border:1px solid #ddd">${pasteurMembersSuiviPar[m.id]?.name||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.created_at?format(new Date(m.created_at),'dd/MM/yyyy',{locale:fr}):'-'}</td></tr>`).join('')}</tbody></table></div>`;
+      document.body.appendChild(tempDiv);
+      exportElementToPDF(uniqueId, `${filename}.pdf`, { title: 'Membres des familles', subtitle: 'Pasteur', showHeader: true, showFooter: true }).finally(() => { try { document.getElementById(uniqueId)?.remove(); } catch (_) {} });
+    } else {
+      exportToExcel(exportData, filename, { title: 'Membres des familles', description: 'Pasteur', additionalInfo: { 'Nombre de membres': list.length.toString() } });
+    }
+  };
+
   // Spinner pleine page uniquement au premier chargement (pas à chaque refetch KPI)
   if (loading && !hasInitiallyLoadedRef.current) {
     return (
@@ -1278,7 +1387,7 @@ const PasteurDashboard = () => {
         <title>Dashboard Pasteur - DiscipleLife</title>
       </Helmet>
       
-      <div id="pasteur-dashboard-content" className="space-y-6 p-6 bg-gray-50 min-h-screen">
+      <div id="pasteur-dashboard-content" className="w-full max-w-7xl mx-auto space-y-6 p-6 pb-24 bg-gray-50 dark:bg-gray-50 min-h-screen">
         {/* Bouton retour */}
         <Button
           variant="ghost"
@@ -2335,6 +2444,49 @@ const PasteurDashboard = () => {
           </CardContent>
         </Card>
 
+        {/* Tableau « Membres des familles » (même structure que superviseur) */}
+        {loadingPasteurMembers ? (
+          <Card className="bg-white border-gray-200 shadow-sm">
+            <CardContent className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+            </CardContent>
+          </Card>
+        ) : (
+          <MembersTableCard
+            title="Membres des familles"
+            description="Liste des disciples de toutes vos familles"
+            filteredMembres={pasteurMembersTable.filteredMembres}
+            paginatedMembres={pasteurMembersTable.paginatedMembres}
+            selectedMembres={pasteurMembersTable.selectedMembres}
+            searchTerm={pasteurMembersTable.searchTerm}
+            setSearchTerm={pasteurMembersTable.setSearchTerm}
+            statusFilter={pasteurMembersTable.statusFilter}
+            setStatusFilter={pasteurMembersTable.setStatusFilter}
+            dateFilter={pasteurMembersTable.dateFilter}
+            setDateFilter={pasteurMembersTable.setDateFilter}
+            progressionFilter={pasteurMembersTable.progressionFilter}
+            setProgressionFilter={pasteurMembersTable.setProgressionFilter}
+            itemsPerPage={pasteurMembersTable.itemsPerPage}
+            setItemsPerPage={pasteurMembersTable.setItemsPerPage}
+            currentPage={pasteurMembersTable.currentPage}
+            setCurrentPage={pasteurMembersTable.setCurrentPage}
+            totalPages={pasteurMembersTable.totalPages}
+            membresProgression={pasteurMembersTable.membresProgression}
+            membresSuiviPar={pasteurMembersTable.membresSuiviPar}
+            toggleSelectAll={pasteurMembersTable.toggleSelectAll}
+            toggleSelectMembre={pasteurMembersTable.toggleSelectMembre}
+            showExport={true}
+            showSelection={true}
+            showFetchDisciples={false}
+            showProgression={true}
+            showSuiviPar={true}
+            showNombreDisciples={true}
+            onNavigate={navigate}
+            onExportFilteredList={handleExportPasteurMembers}
+            toast={toast}
+          />
+        )}
+
         {/* Tableau consolidé des mentors (pilier) */}
         <Card className="bg-white border-gray-200 shadow-sm">
           <CardHeader>
@@ -2491,7 +2643,7 @@ const PasteurDashboard = () => {
         )}
 
         {/* Actions rapides */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => navigate('/statistics')}>
             <CardHeader>
@@ -2533,6 +2685,21 @@ const PasteurDashboard = () => {
             <CardContent>
               <p className="text-sm text-gray-600">
                 Gérez et assignez les familles aux superviseurs
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => navigate('/arbre-genealogique')}>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                <GitBranch className="h-5 w-5 text-amber-600" />
+                Arbre généalogique
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-600">
+                Vue complète des familles : Pasteur → Superviseurs → Mentors → Disciples
               </p>
             </CardContent>
           </Card>

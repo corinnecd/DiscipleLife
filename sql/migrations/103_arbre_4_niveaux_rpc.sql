@@ -26,11 +26,11 @@ SET search_path = public
 STABLE
 AS $$
 BEGIN
-  -- Niveau 1 : Pasteurs
+  -- Niveau 1 : Pasteurs (p.id qualifié pour éviter ambiguïté avec colonne de sortie id)
   RETURN QUERY
   SELECT
     1::SMALLINT AS niveau,
-    p.id,
+    (p.id)::UUID,
     UPPER(TRIM(COALESCE(p.last_name, '')))::TEXT AS nom,
     TRIM(COALESCE(p.first_name, ''))::TEXT AS prenom,
     NULL::UUID AS parent_id,
@@ -45,7 +45,7 @@ BEGIN
   RETURN QUERY
   SELECT
     2::SMALLINT AS niveau,
-    p.id,
+    (p.id)::UUID,
     UPPER(TRIM(COALESCE(p.last_name, '')))::TEXT AS nom,
     TRIM(COALESCE(p.first_name, ''))::TEXT AS prenom,
     COALESCE(p.pasteur_id, (SELECT f.pasteur_id FROM familles_disciples f WHERE f.superviseur_id = p.id LIMIT 1))::UUID AS parent_id,
@@ -61,7 +61,7 @@ BEGIN
   RETURN QUERY
   SELECT
     3::SMALLINT AS niveau,
-    p.id,
+    (p.id)::UUID,
     UPPER(TRIM(COALESCE(p.last_name, '')))::TEXT AS nom,
     TRIM(COALESCE(p.first_name, ''))::TEXT AS prenom,
     (SELECT f.superviseur_id FROM familles_disciples f WHERE f.id = p.famille_id LIMIT 1)::UUID AS parent_id,
@@ -74,14 +74,14 @@ BEGIN
     AND (p.role IN ('mentor', 'disciple', 'pilier') OR COALESCE(p.nb_disciples, 0) > 0)
     AND (p_pasteur_id IS NULL OR EXISTS (
       SELECT 1 FROM familles_disciples f
-      WHERE f.id = p.famille_id AND (f.pasteur_id = p_pasteur_id OR f.superviseur_id IN (SELECT id FROM profils WHERE pasteur_id = p_pasteur_id))
+      WHERE f.id = p.famille_id AND (f.pasteur_id = p_pasteur_id OR f.superviseur_id IN (SELECT pr.id FROM profils pr WHERE pr.pasteur_id = p_pasteur_id))
     ));
 
   -- Niveau 4 : Disciples (parent = mentor_id)
   RETURN QUERY
   SELECT
     4::SMALLINT AS niveau,
-    p.id,
+    (p.id)::UUID,
     UPPER(TRIM(COALESCE(p.last_name, '')))::TEXT AS nom,
     TRIM(COALESCE(p.first_name, ''))::TEXT AS prenom,
     p.mentor_id::UUID AS parent_id,
@@ -94,7 +94,7 @@ BEGIN
       SELECT 1 FROM profils mentor
       JOIN familles_disciples f ON f.id = mentor.famille_id
       WHERE mentor.id = p.mentor_id
-        AND (f.pasteur_id = p_pasteur_id OR f.superviseur_id IN (SELECT id FROM profils WHERE pasteur_id = p_pasteur_id))
+        AND (f.pasteur_id = p_pasteur_id OR f.superviseur_id IN (SELECT pr.id FROM profils pr WHERE pr.pasteur_id = p_pasteur_id))
     ));
 END;
 $$;

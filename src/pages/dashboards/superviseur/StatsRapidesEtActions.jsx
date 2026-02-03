@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Activity, TrendingUp, History } from 'lucide-react';
+import { Eye, Activity, TrendingUp, History, GitBranch } from 'lucide-react';
 
 /**
  * Statistiques rapides (3 cartes) + Actions rapides.
@@ -89,6 +89,14 @@ export function StatsRapidesEtActions({ stats, onNavigate, onShowHistory }) {
             >
               <History className="h-4 w-4 mr-2 text-purple-600 group-hover:text-white transition-colors" />
               Voir l'historique
+            </Button>
+            <Button
+              variant="outline"
+              className="group justify-start bg-white border-gray-200 hover:bg-amber-500 hover:border-amber-500 text-gray-900 hover:text-white transition-colors"
+              onClick={() => onNavigate?.('/arbre-genealogique')}
+            >
+              <GitBranch className="h-4 w-4 mr-2 text-amber-600 group-hover:text-white transition-colors" />
+              Arbre généalogique
             </Button>
           </div>
         </CardContent>

@@ -14,12 +14,20 @@ import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { useToast } from '@/components/ui/use-toast';
+import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
+import { MembersTableCard } from '@/components/MembersTableCard';
+import { useMembersTable } from '@/hooks/useMembersTable';
+import { GitBranch } from 'lucide-react';
 
 const MentorDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { handleError } = useErrorHandler();
+  const { toast } = useToast();
+  const [mentorAllDisciples, setMentorAllDisciples] = useState([]);
   const [stats, setStats] = useState({
     total: 0,
     nonCroyants: 0,
@@ -38,6 +46,13 @@ const MentorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [reportReminder, setReportReminder] = useState(null); // { daysLeft: number, showReminder: boolean }
   const [famille, setFamille] = useState(null); // Famille du mentor (pour arbre généalogique)
+
+  // Hook pour le tableau des disciples (filtres, pagination, sélection)
+  const mentorMembersTable = useMembersTable(mentorAllDisciples, {
+    membresProgression: {},
+    membresDisciplesCount: {},
+    membresSuiviPar: {},
+  });
 
   // Récupérer la famille du mentor (famille_id du profil)
   useEffect(() => {
@@ -156,6 +171,15 @@ const MentorDashboard = () => {
       // Fetch disciples with prayer requests or appointments
       const disciplesWithActivity = await fetchDisciplesWithActivity(allDisciples);
 
+      const membersForTable = (allDisciples || []).map((d) => ({
+        ...d,
+        first_name: d.first_name || '',
+        last_name: d.last_name || '',
+        name: `${d.first_name || ''} ${d.last_name || ''}`.trim(),
+        statut_spirituel: (d.spiritual_stage === 'inactif' || d.spiritual_stage === 'inactive') ? 'inactif' : 'actif',
+      }));
+      setMentorAllDisciples(membersForTable);
+
       setStats({
         total,
         nonCroyants,
@@ -246,6 +270,33 @@ const MentorDashboard = () => {
     return Math.min(100, Math.round((val / target) * 100));
   };
 
+  const handleExportMentorMembers = (formatExport) => {
+    const list = mentorMembersTable.filteredMembres || [];
+    if (!list.length) {
+      toast({ title: 'Aucune donnée', description: 'Aucun disciple ne correspond aux filtres.', variant: 'destructive' });
+      return;
+    }
+    const exportData = list.map((m) => ({
+      'Prénom': m.first_name || '',
+      'Nom': m.last_name || '',
+      'Email': m.email || '',
+      'Statut': m.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
+      "Date d'inscription": m.created_at ? format(new Date(m.created_at), 'dd/MM/yyyy', { locale: fr }) : '',
+    }));
+    const filename = `mes_disciples_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
+    if (formatExport === 'pdf') {
+      const uniqueId = `pdf-mentor-members-${Date.now()}`;
+      const tempDiv = document.createElement('div');
+      tempDiv.id = uniqueId;
+      tempDiv.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+      tempDiv.innerHTML = `<div style="font-family:Arial"><h2>Mes disciples - Mentor</h2><p>Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p><p>Total: ${list.length} disciple(s)</p><table style="width:100%;border-collapse:collapse;border:1px solid #ddd"><thead><tr style="background:#f3f4f6"><th style="padding:10px;border:1px solid #ddd">Prénom</th><th style="padding:10px;border:1px solid #ddd">Nom</th><th style="padding:10px;border:1px solid #ddd">Email</th><th style="padding:10px;border:1px solid #ddd">Statut</th><th style="padding:10px;border:1px solid #ddd">Date</th></tr></thead><tbody>${list.map(m=>`<tr><td style="padding:8px;border:1px solid #ddd">${m.first_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.last_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.email||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.statut_spirituel==='inactif'?'Inactif':'Actif'}</td><td style="padding:8px;border:1px solid #ddd">${m.created_at?format(new Date(m.created_at),'dd/MM/yyyy',{locale:fr}):'-'}</td></tr>`).join('')}</tbody></table></div>`;
+      document.body.appendChild(tempDiv);
+      exportElementToPDF(uniqueId, `${filename}.pdf`, { title: 'Mes disciples', subtitle: 'Mentor', showHeader: true, showFooter: true }).finally(() => { try { document.getElementById(uniqueId)?.remove(); } catch (_) {} });
+    } else {
+      exportToExcel(exportData, filename, { title: 'Mes disciples', description: 'Mentor', additionalInfo: { 'Nombre': list.length.toString() } });
+    }
+  };
+
   const statusCards = [
     { 
       title: "NON CROYANTS", 
@@ -309,14 +360,24 @@ const MentorDashboard = () => {
           </p>
         </div>
         
-        {/* 2. Action Button */}
-        <Button 
-          onClick={() => navigate('/circles')}
-          className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-6 px-6 rounded-lg w-full sm:w-auto transition-all flex items-center gap-2"
-        >
-          <UserPlus size={20} />
-          Ajouter un disciple
-        </Button>
+        {/* 2. Action Buttons */}
+        <div className="flex flex-wrap gap-3">
+          <Button 
+            onClick={() => navigate('/circles')}
+            className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-6 px-6 rounded-lg transition-all flex items-center gap-2"
+          >
+            <UserPlus size={20} />
+            Ajouter un disciple
+          </Button>
+          <Button 
+            onClick={() => navigate('/arbre-genealogique')}
+            variant="outline"
+            className="border-amber-500 text-amber-700 hover:bg-amber-500 hover:text-white font-semibold py-6 px-6 rounded-lg transition-all flex items-center gap-2"
+          >
+            <GitBranch size={20} />
+            Arbre généalogique
+          </Button>
+        </div>
       </div>
 
       {/* Arbre généalogique de ma famille */}
@@ -329,6 +390,41 @@ const MentorDashboard = () => {
           compactHeight={380}
         />
       )}
+
+      {/* Tableau « Mes disciples » (même structure que superviseur) */}
+      <MembersTableCard
+        title="Mes disciples"
+        description="Liste de vos disciples"
+        filteredMembres={mentorMembersTable.filteredMembres}
+        paginatedMembres={mentorMembersTable.paginatedMembres}
+        selectedMembres={mentorMembersTable.selectedMembres}
+        searchTerm={mentorMembersTable.searchTerm}
+        setSearchTerm={mentorMembersTable.setSearchTerm}
+        statusFilter={mentorMembersTable.statusFilter}
+        setStatusFilter={mentorMembersTable.setStatusFilter}
+        dateFilter={mentorMembersTable.dateFilter}
+        setDateFilter={mentorMembersTable.setDateFilter}
+        progressionFilter={mentorMembersTable.progressionFilter}
+        setProgressionFilter={mentorMembersTable.setProgressionFilter}
+        itemsPerPage={mentorMembersTable.itemsPerPage}
+        setItemsPerPage={mentorMembersTable.setItemsPerPage}
+        currentPage={mentorMembersTable.currentPage}
+        setCurrentPage={mentorMembersTable.setCurrentPage}
+        totalPages={mentorMembersTable.totalPages}
+        membresProgression={mentorMembersTable.membresProgression}
+        membresSuiviPar={mentorMembersTable.membresSuiviPar}
+        toggleSelectAll={mentorMembersTable.toggleSelectAll}
+        toggleSelectMembre={mentorMembersTable.toggleSelectMembre}
+        showExport={true}
+        showSelection={true}
+        showFetchDisciples={false}
+        showProgression={false}
+        showSuiviPar={false}
+        showNombreDisciples={false}
+        onNavigate={navigate}
+        onExportFilteredList={handleExportMentorMembers}
+        toast={toast}
+      />
 
       {/* Alerte de rappel pour le rapport mensuel (5 jours avant la fin du mois) */}
       {reportReminder && reportReminder.showReminder && (

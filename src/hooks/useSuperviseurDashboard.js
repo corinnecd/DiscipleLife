@@ -280,7 +280,7 @@ export function useSuperviseurDashboard(user) {
     if (extraPayload?.superviseurs_famille) setSuperviseursFamille(Array.isArray(extraPayload.superviseurs_famille) ? extraPayload.superviseurs_famille : []);
     if (extraPayload?.nombre_membres_par_superviseur && typeof extraPayload.nombre_membres_par_superviseur === 'object') setNombreMembresParSuperviseur(extraPayload.nombre_membres_par_superviseur);
     setRapports(rapportsData || []);
-    try { await fetchAlertes(); } catch (_) {}
+    void fetchAlertes().catch(() => {});
     if (!extraPayload?.superviseurs_famille && superviseurData?.pasteur_id) {
       const { data: superviseursData, error: se } = await supabase.from('profils').select('id, first_name, last_name, email, avatar_url').eq('pasteur_id', superviseurData.pasteur_id).eq('role', 'superviseur').neq('id', user.id).order('first_name', { ascending: true });
       if (!se && superviseursData?.length > 0) {
@@ -301,29 +301,37 @@ export function useSuperviseurDashboard(user) {
   const fetchAlertes = async () => {
     if (!famille || !user) return;
     const dateLimite = new Date(); dateLimite.setDate(dateLimite.getDate() - 30);
-    const { data: membresInactifs } = await supabase.from('profils').select('id, first_name, last_name, last_activity, created_at').eq('famille_id', famille.id).or(`last_activity.lt.${dateLimite.toISOString()},last_activity.is.null`).order('created_at', { ascending: false });
-    const { data: tousMembres } = await supabase.from('profils').select('id, first_name, last_name').eq('famille_id', famille.id);
-    const allMemberIds = (tousMembres || []).map(m => m.id);
-    const membresSansProgression = [];
-    for (const memberId of allMemberIds) {
-      const { data: memberProgressions } = await supabase.from('user_parcours_progression').select('id').eq('user_id', memberId);
-      const memberProgressionIds = memberProgressions?.map(p => p.id) || [];
-      let formations = 0;
-      if (memberProgressionIds.length > 0) {
-        const { count } = await supabase.from('user_module_progression').select('id', { count: 'exact', head: true }).in('progression_id', memberProgressionIds).eq('est_complete', true);
-        formations = count || 0;
-      }
-      const { count: videos } = await supabase.from('video_progress').select('id', { count: 'exact', head: true }).eq('disciple_id', memberId).gt('progress_percentage', 0);
-      if ((formations || 0) === 0 && (videos || 0) === 0) {
-        const membre = tousMembres?.find(m => m.id === memberId);
-        if (membre) membresSansProgression.push(membre);
-      }
+    const [inactifsRes, tousRes] = await Promise.all([
+      supabase.from('profils').select('id, first_name, last_name, updated_at, created_at').eq('famille_id', famille.id).or(`updated_at.lt.${dateLimite.toISOString()},updated_at.is.null`).order('created_at', { ascending: false }),
+      supabase.from('profils').select('id, first_name, last_name').eq('famille_id', famille.id)
+    ]);
+    const tousMembres = tousRes?.data || [];
+    const allMemberIds = tousMembres.map(m => m.id);
+    if (allMemberIds.length === 0) {
+      setAlertes({ disciplesInactifs: inactifsRes?.data || [], membresSansProgression: [] });
+      return;
     }
-    setAlertes({ disciplesInactifs: membresInactifs || [], membresSansProgression: membresSansProgression.slice(0, 10) });
+    const { data: progressionsData } = await supabase.from('user_parcours_progression').select('id, user_id').in('user_id', allMemberIds);
+    const progressionIds = (progressionsData || []).map(p => p.id);
+    const userByProgression = {}; (progressionsData || []).forEach(p => { userByProgression[p.id] = p.user_id; });
+    const [formationsRes, videosRes] = await Promise.all([
+      progressionIds.length > 0 ? supabase.from('user_module_progression').select('progression_id').in('progression_id', progressionIds).eq('est_complete', true) : { data: [] },
+      supabase.from('video_progress').select('disciple_id').in('disciple_id', allMemberIds).gt('progress_percentage', 0)
+    ]);
+    const formationsByUser = {}; (formationsRes?.data || []).forEach(f => { const uid = userByProgression[f.progression_id]; if (uid) formationsByUser[uid] = (formationsByUser[uid] || 0) + 1; });
+    const videosByUser = {}; (videosRes?.data || []).forEach(v => { if (v.disciple_id) videosByUser[v.disciple_id] = (videosByUser[v.disciple_id] || 0) + 1; });
+    const membresSansProgression = tousMembres.filter(m => ((formationsByUser[m.id] || 0) === 0 && (videosByUser[m.id] || 0) === 0)).slice(0, 10);
+    setAlertes({ disciplesInactifs: inactifsRes?.data || [], membresSansProgression });
   };
 
   useEffect(() => {
-    if (!user?.id || phase1Loading || !famille?.id) return;
+    if (!user?.id || phase1Loading) return;
+    // Phase 1 terminée mais pas de famille : arrêter le chargement pour afficher le message "Aucune famille assignée"
+    if (!famille?.id) {
+      setLoading(false);
+      hasInitiallyLoadedRef.current = true;
+      return;
+    }
     const phase2Key = `${user.id}-${famille.id}`;
     if (lastPhase2KeyRef.current === phase2Key && hasInitiallyLoadedRef.current) return;
     if (fetchSuperviseurInProgressRef.current) return;
@@ -411,7 +419,7 @@ export function useSuperviseurDashboard(user) {
     setLoadingDisciplesDetaille(true);
     try {
       const data = await getOrSetCache(`superviseur_${user.id}_disciples_detaille`, async () => {
-        const { data: disciplesProfils, error: e1 } = await supabase.from('profils').select('id, first_name, last_name, spiritual_status, created_at, famille_id, mentor_id').eq('famille_id', famille.id).eq('role', 'disciple');
+        const { data: disciplesProfils, error: e1 } = await supabase.from('profils').select('id, first_name, last_name, spiritual_stage, created_at, famille_id, mentor_id').eq('famille_id', famille.id).eq('role', 'disciple');
         if (e1) throw e1;
         if (!disciplesProfils?.length) return [];
         const out = await Promise.all(disciplesProfils.map(async (d) => {
@@ -439,7 +447,7 @@ export function useSuperviseurDashboard(user) {
           const today = new Date(); const lastSunday = new Date(today); lastSunday.setDate(today.getDate() - today.getDay());
           const lastSundayStr = format(lastSunday, 'yyyy-MM-dd');
           const { data: presenceDernierCulte } = await supabase.from('attendance_tracking').select('*', { count: 'exact', head: true }).eq('disciple_id', d.id).eq('attendance_type', 'sunday_worship').eq('status', 'present').eq('attendance_date', lastSundayStr);
-          return { mentor_prenom: mentorInfo.prenom, mentor_nom: mentorInfo.nom, disciple_prenom: d.first_name || '', disciple_nom: d.last_name || '', statut_spirituel: d.spiritual_status || 'Non-croyant', date_ajout: d.created_at ? format(new Date(d.created_at), 'dd/MM/yyyy', { locale: fr }) : 'N/A', date_derniere_presence: dateDernierePresence, niveau_engagement: niveauEngagement, statut_actif: isActif, presence_dernier_culte: (presenceDernierCulte?.count || 0) > 0, disciple_id: d.id };
+          return { mentor_prenom: mentorInfo.prenom, mentor_nom: mentorInfo.nom, disciple_prenom: d.first_name || '', disciple_nom: d.last_name || '', statut_spirituel: d.spiritual_stage || 'Non-croyant', date_ajout: d.created_at ? format(new Date(d.created_at), 'dd/MM/yyyy', { locale: fr }) : 'N/A', date_derniere_presence: dateDernierePresence, niveau_engagement: niveauEngagement, statut_actif: isActif, presence_dernier_culte: (presenceDernierCulte?.count || 0) > 0, disciple_id: d.id };
         }));
         return out;
       }, 2 * 60 * 1000);

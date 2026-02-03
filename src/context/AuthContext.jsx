@@ -5,6 +5,21 @@ import { useToast } from '@/components/ui/use-toast';
 
 const AuthContext = createContext(undefined);
 
+/** Vérifie si le JWT est expiré (payload.exp) pour éviter d'utiliser un token invalide. */
+function isTokenExpired(accessToken) {
+  if (!accessToken || typeof accessToken !== 'string') return true;
+  try {
+    const parts = accessToken.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const exp = payload?.exp;
+    if (typeof exp !== 'number') return true;
+    return exp * 1000 < Date.now() + 5000;
+  } catch {
+    return true;
+  }
+}
+
 export const AuthProvider = ({ children }) => {
   const { toast } = useToast();
   const [user, setUser] = useState(null);
@@ -43,12 +58,32 @@ export const AuthProvider = ({ children }) => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) throw error;
+        if (session?.access_token && isTokenExpired(session.access_token)) {
+          await supabase.auth.signOut();
+          handleSession(null);
+          return;
+        }
+        if (session?.access_token) {
+          const { data: { session: refreshed }, error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError && refreshed) {
+            handleSession(refreshed);
+            return;
+          }
+          if (refreshError && (refreshError.message?.includes('JWT') || refreshError.message?.includes('exp'))) {
+            await supabase.auth.signOut();
+            handleSession(null);
+            setLoading(false);
+            return;
+          }
+        }
         handleSession(session);
       } catch (error) {
         console.error("Auth session error:", error);
-        // Even if getSession fails (e.g. network error), we must stop loading
-        // so the user isn't stuck on a blank screen.
-        // If session is null, ProtectedRoute will redirect to login.
+        if (error?.message?.includes('JWT') || error?.message?.includes('exp')) {
+          setSession(null);
+          setUser(null);
+          setIsAdmin(false);
+        }
         setLoading(false);
       }
     };
@@ -65,6 +100,25 @@ export const AuthProvider = ({ children }) => {
       subscription?.unsubscribe();
     };
   }, [handleSession]);
+
+  // Intercepter les rejets de promesse JWT (realtime, etc.) pour déconnecter proprement
+  useEffect(() => {
+    const handler = (event) => {
+      const r = event?.reason;
+      const name = r?.name ?? '';
+      const msg = r?.message ?? r ?? '';
+      const str = typeof msg === 'string' ? msg : String(msg);
+      const isJwtError = name === 'InvalidJWTToken' || str.includes('InvalidJWTToken') || (str.includes('JWT') && str.includes('exp')) || str.includes('Invalid value for JWT claim');
+      if (isJwtError) {
+        event.preventDefault?.();
+        setUser(null);
+        setSession(null);
+        setIsAdmin(false);
+      }
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, []);
 
   const signUp = useCallback(async (email, password, options) => {
     const { data, error } = await supabase.auth.signUp({
