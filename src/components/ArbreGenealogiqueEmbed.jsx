@@ -13,9 +13,18 @@ import { Badge } from '@/components/ui/badge';
 import { getAvatarColor, getInitials } from '@/lib/utils';
 import { useGenealogicalTreeData } from '@/hooks/useGenealogicalTreeData';
 
+/** Profondeur max pour éviter récursion infinie ou stack overflow (données circulaires / arbre très profond) */
+const TREE_EMBED_MAX_DEPTH = 12;
+
 const TreeNodeEmbed = ({ node, level = 0 }) => {
-  const hasChildren = node.children && node.children.length > 0;
-  const avatarColor = getAvatarColor(node.name);
+  if (!node || typeof node !== 'object') return null;
+  if (level >= TREE_EMBED_MAX_DEPTH) return null;
+
+  const children = Array.isArray(node.children) ? node.children : [];
+  const hasChildren = children.length > 0;
+  const avatarColor = getAvatarColor(node.name || '');
+  const nodeId = node.id ?? `node-${level}-${(node.name || '').slice(0, 8)}`;
+
   return (
     <div className="flex flex-col items-center">
       <motion.div
@@ -29,13 +38,13 @@ const TreeNodeEmbed = ({ node, level = 0 }) => {
       >
         <Avatar className={`h-10 w-10 mb-1 border-2 ${level === 0 ? 'border-primary' : 'border-white'}`}>
           <AvatarImage src={node.avatar_url} />
-          <AvatarFallback className={`${avatarColor} text-white text-xs`}>{getInitials(node.name)}</AvatarFallback>
+          <AvatarFallback className={`${avatarColor} text-white text-xs`}>{getInitials(node.name || '')}</AvatarFallback>
         </Avatar>
-        <h4 className="font-semibold text-xs text-slate-900 truncate w-full px-1">{node.name}</h4>
+        <h4 className="font-semibold text-xs text-slate-900 truncate w-full px-1">{node.name || '—'}</h4>
         <p className="text-[10px] text-slate-500 truncate">{node.role || 'Disciple'}</p>
         {hasChildren && (
           <Badge variant="secondary" className="mt-1 text-[10px] h-4 px-1 bg-slate-100 text-slate-600">
-            {node.children.length} disciple{node.children.length > 1 ? 's' : ''}
+            {children.length} disciple{children.length > 1 ? 's' : ''}
           </Badge>
         )}
       </motion.div>
@@ -43,8 +52,8 @@ const TreeNodeEmbed = ({ node, level = 0 }) => {
         <div className="flex flex-col items-center mt-2">
           <div className="w-px h-4 bg-slate-300" />
           <div className="flex gap-4 pt-2">
-            {node.children.map((child) => (
-              <div key={child.id} className="flex flex-col items-center">
+            {children.map((child, index) => (
+              <div key={`${nodeId}-${level}-${index}-${child?.id ?? index}`} className="flex flex-col items-center">
                 <div className="w-px h-3 bg-slate-300 self-center" />
                 <TreeNodeEmbed node={child} level={level + 1} />
               </div>
@@ -106,12 +115,16 @@ export function ArbreGenealogiqueEmbed({ mode, famille, pasteurId, title, descri
             <Users className="h-12 w-12 mb-4 opacity-50" />
             <p className="text-sm">Aucune donnée pour afficher l'arbre.</p>
           </div>
-        ) : (
+        ) : treeData && typeof treeData === 'object' ? (
           <div
             className="overflow-auto rounded-lg border border-slate-200 bg-slate-50/50 p-4 flex justify-center"
             style={{ maxHeight: compactHeight }}
           >
             <TreeNodeEmbed node={treeData} />
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 text-gray-500" style={{ minHeight: compactHeight }}>
+            <p className="text-sm">Données d&apos;arbre invalides.</p>
           </div>
         )}
       </CardContent>

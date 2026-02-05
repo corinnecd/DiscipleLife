@@ -81,8 +81,23 @@ function extractRoutes(appJsxPath) {
   }
 }
 
+const PAGE_EXTENSIONS = new Set(['.jsx', '.tsx']);
+
 function findReactFiles(dir) {
-  return fs.readdirSync(dir).map(item => path.join(dir, item));
+  const results = [];
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+    return results;
+  }
+  for (const item of fs.readdirSync(dir)) {
+    const fullPath = path.join(dir, item);
+    const stat = fs.statSync(fullPath);
+    if (stat.isDirectory()) {
+      results.push(...findReactFiles(fullPath));
+    } else if (PAGE_EXTENSIONS.has(path.extname(item))) {
+      results.push(fullPath);
+    }
+  }
+  return results;
 }
 
 function extractHelmetData(content, filePath, routes) {

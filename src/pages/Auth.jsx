@@ -39,42 +39,39 @@ const Auth = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
+    const timeoutMs = 20000; // 20 s pour éviter que le bouton reste bloqué (ex. Supabase injoignable)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('La connexion a expiré. Vérifiez votre connexion et réessayez.')), timeoutMs)
+    );
     try {
-      const { error } = await signIn(formData.email, formData.password);
-      if (error) throw error;
-      
-      // Attendre un peu pour que le rôle soit chargé
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Récupérer le rôle depuis la base de données
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profileData } = await supabase
-          .from('profils')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-        
-        const userRole = profileData?.role || 'disciple';
-        
-        // Redirection intelligente selon le rôle
-        const redirectPaths = {
-          'super_admin': '/space/pasteur',
-          'admin': '/space/pasteur',
-          'pasteur': '/space/pasteur',
-          'superviseur': '/space/superviseur',
-          'mentor': '/space/mentor',
-          'disciple': '/space/disciple'
-        };
-        
-        const redirectPath = redirectPaths[userRole] || location.state?.from?.pathname || '/home';
-        navigate(redirectPath, { replace: true });
-      } else {
-        // Fallback si pas d'utilisateur
-        const from = location.state?.from?.pathname || '/home';
-        navigate(from, { replace: true });
-      }
-      
+      const signInPromise = (async () => {
+        const { error } = await signIn(formData.email, formData.password);
+        if (error) throw error;
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profileData } = await supabase
+            .from('profils')
+            .select('role')
+            .eq('id', user.id)
+            .maybeSingle();
+          const userRole = profileData?.role || 'disciple';
+          const redirectPaths = {
+            'super_admin': '/space/pasteur',
+            'admin': '/space/pasteur',
+            'pasteur': '/space/pasteur',
+            'superviseur': '/space/superviseur',
+            'mentor': '/space/mentor',
+            'disciple': '/space/disciple'
+          };
+          const redirectPath = redirectPaths[userRole] || location.state?.from?.pathname || '/home';
+          navigate(redirectPath, { replace: true });
+        } else {
+          const from = location.state?.from?.pathname || '/home';
+          navigate(from, { replace: true });
+        }
+      })();
+      await Promise.race([signInPromise, timeoutPromise]);
     } catch (error) {
       toast({
         variant: "destructive",
