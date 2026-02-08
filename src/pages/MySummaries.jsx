@@ -45,7 +45,7 @@ const MySummaries = () => {
         <title>Mes Résumés | DiscipleLife</title>
       </Helmet>
 
-      <div className="container mx-auto max-w-5xl py-8 space-y-8">
+      <div className="w-full max-w-[1800px] mx-auto py-8 space-y-8">
         <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">Mes Résumés</h1>
             <p className="text-slate-500">Partagez votre progression et vos réflexions avec votre mentor et votre groupe.</p>

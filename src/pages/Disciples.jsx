@@ -416,7 +416,7 @@ const Disciples = () => {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-20 px-4 sm:px-6">
+    <div className="w-full max-w-[1800px] mx-auto space-y-6 pb-20">
       <div className="flex flex-col md:flex-row justify-between gap-4 items-start md:items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">Mes Disciples</h1>

@@ -234,7 +234,7 @@ const PrayerList = () => {
   const filteredDisciplePrayers = selectedDisciple ? prayers.filter(p => p.disciple_name === selectedDisciple) : [];
 
   return (
-    <div className="max-w-xl mx-auto space-y-8 pb-20 p-4 md:p-0 px-4 sm:px-6">
+    <div className="w-full max-w-[1800px] mx-auto space-y-8 pb-20">
       
       {/* Header */}
       <div className="space-y-4">

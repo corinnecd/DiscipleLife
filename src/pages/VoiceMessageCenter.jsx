@@ -86,7 +86,7 @@ const VoiceMessageCenter = () => {
   };
 
   return (
-    <div className="container max-w-2xl mx-auto py-8 space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto py-8 space-y-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
             <Users className="text-primary" /> Centre de Messagerie Vocale
         </h1>

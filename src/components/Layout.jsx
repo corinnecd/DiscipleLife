@@ -260,7 +260,7 @@ const Layout = () => {
           </div>
         )}
 
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 md:p-8 max-w-7xl mx-auto animate-in fade-in duration-500 bg-gray-50 dark:bg-gray-50 pb-24">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-8 md:px-12 w-full max-w-7xl mx-auto animate-in fade-in duration-500 bg-gray-50 dark:bg-gray-50 py-4 md:py-6 pb-24">
           <Outlet />
         </div>
       </main>

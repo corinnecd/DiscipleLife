@@ -33,9 +33,15 @@ import { Helmet } from 'react-helmet';
 import { exportElementToPDF } from '@/lib/ExportUtils';
 import { useToast } from '@/components/ui/use-toast';
 
+const TREE_MAX_DEPTH = 20; // Évite stack overflow si cycle ou arbre très profond
+
 // --- Recursive Tree Node for Desktop (onNodeClick = sélection au clic pour Ascendants/Descendants) ---
-const TreeNode = ({ node, level = 0, onNodeClick, selectedNodeId }) => {
-  const hasChildren = node.children && node.children.length > 0;
+const TreeNode = ({ node, level = 0, onNodeClick, selectedNodeId, visitedIds = new Set() }) => {
+  if (!node || level >= TREE_MAX_DEPTH) return null;
+  const seen = level === 0 ? new Set() : new Set(visitedIds);
+  if (seen.has(node.id)) return null;
+  seen.add(node.id);
+  const hasChildren = node.children && node.children.length > 0 && level < TREE_MAX_DEPTH - 1;
   const avatarColor = getAvatarColor(node.name);
   const isSelected = selectedNodeId && node?.id === selectedNodeId;
 
@@ -100,7 +106,7 @@ const TreeNode = ({ node, level = 0, onNodeClick, selectedNodeId }) => {
                      `}
                    ></div>
 
-                  <TreeNode node={child} level={level + 1} onNodeClick={onNodeClick} selectedNodeId={selectedNodeId} />
+                  <TreeNode node={child} level={level + 1} onNodeClick={onNodeClick} selectedNodeId={selectedNodeId} visitedIds={new Set(seen)} />
                </div>
              ))}
           </div>
@@ -300,56 +306,63 @@ function buildTreeFromArbreRows(rows) {
     const node = byId[r.id];
     if (!node) return;
     if (r.parent_id == null) root = node;
-    else if (byId[r.parent_id]) byId[r.parent_id].children.push(node);
+    else if (r.parent_id !== r.id && byId[r.parent_id]) byId[r.parent_id].children.push(node);
   });
   return root;
 }
 
-// --- Flatten tree to list (root first, then descendants depth-first) ---
+// --- Flatten tree to list (root first, then descendants depth-first). Protège contre les cycles. ---
 function flattenTree(node) {
   if (!node) return [];
   const out = [];
-  function walk(n) {
+  const visited = new Set();
+  function walk(n, depth) {
+    if (!n || depth > TREE_MAX_DEPTH || visited.has(n.id)) return;
+    visited.add(n.id);
     out.push(n);
-    (n.children || []).forEach(walk);
+    (n.children || []).forEach((c) => walk(c, depth + 1));
   }
-  walk(node);
+  walk(node, 0);
   return out;
 }
 
-// --- Build map id -> node from tree (for ancestors) ---
+// --- Build map id -> node from tree (for ancestors). Protège contre les cycles. ---
 function treeToById(root) {
   const byId = {};
-  function walk(n) {
-    if (!n) return;
+  const visited = new Set();
+  function walk(n, depth) {
+    if (!n || depth > TREE_MAX_DEPTH || visited.has(n.id)) return;
+    visited.add(n.id);
     byId[n.id] = n;
-    (n.children || []).forEach(walk);
+    (n.children || []).forEach((c) => walk(c, depth + 1));
   }
-  walk(root);
+  walk(root, 0);
   return byId;
 }
 
-// --- Ancestors of node (from node up to root) ---
+// --- Ancestors of node (from node up to root). Limite pour éviter boucle si cycle. ---
 function getAncestors(node, byId) {
   const list = [];
   let cur = node;
-  while (cur?.parent_id && byId[cur.parent_id]) {
+  let steps = 0;
+  while (cur?.parent_id && byId[cur.parent_id] && steps < TREE_MAX_DEPTH) {
     cur = byId[cur.parent_id];
     list.push(cur);
+    steps += 1;
   }
   return list.reverse();
 }
 
-// --- Extract subtree with given node as root ---
-function subtreeAsRoot(node) {
-  if (!node) return null;
+// --- Extract subtree with given node as root (limite profondeur pour éviter stack overflow) ---
+function subtreeAsRoot(node, depth = 0) {
+  if (!node || depth > TREE_MAX_DEPTH) return null;
   return {
     id: node.id,
     name: node.name,
     role: node.role,
     nb_disciples: node.nb_disciples,
     avatar_url: node.avatar_url,
-    children: (node.children || []).map(subtreeAsRoot),
+    children: (node.children || []).map((c) => subtreeAsRoot(c, depth + 1)).filter(Boolean),
   };
 }
 
@@ -517,19 +530,20 @@ const GenealogicalTree = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Fetch Tree Data : par famille (selectedFamilleId) ou DR mode (?pasteur=). Pas de "Ma lignée".
+  // Fetch Tree Data : par famille (selectedFamilleId) ou DR mode (?pasteur= ou pasteur connecté sans filtre).
   useEffect(() => {
     const fetchTree = async () => {
       const hasPasteurUrl = urlPasteurId && urlPasteurId.length > 0;
-      if (!selectedFamilleId && !hasPasteurUrl) return;
+      const pasteurFullTreeId = hasPasteurUrl ? urlPasteurId : (userProfile?.role === 'pasteur' && user?.id && !urlFamilyId ? user.id : null);
+      if (!selectedFamilleId && !pasteurFullTreeId) return;
       setLoading(true);
       setTreeData(null);
 
       try {
-        // --- Mode DR (lien dashboard pasteur) : arbre de toutes les familles du pasteur ---
-        if (hasPasteurUrl) {
+        // --- Arbre complet du pasteur (URL ?pasteur= ou pasteur connecté sans ?family=) : tous les superviseurs ---
+        if (pasteurFullTreeId) {
           const { data: arbreRows, error: rpcError } = await supabase.rpc('get_arbre_4_niveaux', {
-            p_pasteur_id: urlPasteurId,
+            p_pasteur_id: pasteurFullTreeId,
           });
           if (rpcError) throw rpcError;
           const root = buildTreeFromArbreRows(arbreRows || []);
@@ -607,7 +621,7 @@ const GenealogicalTree = () => {
     };
 
     fetchTree();
-  }, [selectedFamilleId, familles, urlPasteurId]);
+  }, [selectedFamilleId, familles, urlPasteurId, urlFamilyId, userProfile?.role, user?.id]);
 
   return (
     <>
@@ -615,7 +629,7 @@ const GenealogicalTree = () => {
         <title>Arbre Généalogique | DiscipleLife</title>
       </Helmet>
 
-      <div className="w-full max-w-7xl mx-auto h-full flex flex-col space-y-4">
+      <div className="w-full max-w-[1800px] mx-auto h-full flex flex-col space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-black dark:text-slate-900 flex items-center gap-2">

@@ -262,7 +262,7 @@ const Statistics = () => {
 
   if (!isMentorView) {
     return (
-      <div className="max-w-6xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
+      <div className="w-full max-w-[1800px] mx-auto space-y-8 pb-20">
         {/* Bouton retour */}
         <Button
           variant="ghost"
@@ -281,7 +281,7 @@ const Statistics = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
+    <div className="w-full max-w-[1800px] mx-auto space-y-8 pb-20">
       {/* Bouton retour */}
       <Button
         variant="ghost"

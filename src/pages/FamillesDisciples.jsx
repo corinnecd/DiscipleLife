@@ -1010,7 +1010,7 @@ const FamillesDisciples = () => {
         <title>Familles de Disciples - DiscipleLife</title>
       </Helmet>
 
-      <div className="w-full max-w-7xl mx-auto space-y-6 pb-20">
+      <div className="w-full max-w-[1800px] mx-auto space-y-6 pb-20">
         {/* Bouton retour */}
         <Button
           variant="ghost"

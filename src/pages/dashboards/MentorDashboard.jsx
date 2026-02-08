@@ -349,7 +349,7 @@ const MentorDashboard = () => {
   };
 
   return (
-    <div className="space-y-6 pb-20 max-w-7xl mx-auto px-4 sm:px-6">
+    <div className="w-full max-w-[1800px] mx-auto space-y-6 pb-20">
       
       {/* 1. Header Section */}
       <div className="space-y-4">

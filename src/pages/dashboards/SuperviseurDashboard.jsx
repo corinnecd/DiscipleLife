@@ -121,6 +121,7 @@ const SuperviseurDashboard = () => {
     mentorsConsolides,
     loadingMentorsConsolides,
     handleRefreshMentorsConsolides,
+    refreshDashboard,
     chartsLoaded,
     setChartsLoaded,
     statsComparativesRequested,
@@ -164,9 +165,10 @@ const SuperviseurDashboard = () => {
     setActiviteRecente,
   } = dashboard;
 
-  // Hook pour détecter la visibilité d'un élément (IntersectionObserver) - Lazy loading des graphiques
+  // Lazy loading des graphiques : attacher les observers uniquement après le premier chargement,
+  // pour que les refs (formationVideoRef, etc.) soient bien attachés au DOM.
   useEffect(() => {
-    if (!user) return; // Ne pas observer si les données principales ne sont pas chargées
+    if (!user || initialLoading) return;
 
     const observers = [];
 
@@ -250,7 +252,7 @@ const SuperviseurDashboard = () => {
         if (element) observer.unobserve(element);
       });
     };
-  }, [user?.id]);
+  }, [user?.id, initialLoading]);
 
   // Spinner pleine page uniquement au premier chargement (pas à chaque refetch KPI)
   if (initialLoading) {
@@ -282,8 +284,8 @@ const SuperviseurDashboard = () => {
         <title>Tableau de bord Superviseur - DiscipleLife</title>
       </Helmet>
       
-      <div id="superviseur-dashboard-content" className="space-y-6 p-6 bg-gray-50 min-h-screen">
-        <SuperviseurDashboardHeader onBack={() => navigate(-1)} />
+      <div id="superviseur-dashboard-content" className="w-full max-w-[1800px] mx-auto space-y-6 bg-gray-50 min-h-screen">
+        <SuperviseurDashboardHeader onBack={() => navigate(-1)} onRefresh={refreshDashboard} refreshing={phase1Loading || loading} />
 
         <ReportReminderCard
           reportReminder={reportReminder}

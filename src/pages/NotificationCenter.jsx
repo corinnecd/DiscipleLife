@@ -220,7 +220,7 @@ const NotificationCenter = () => {
   };
 
   return (
-    <div className="container max-w-5xl mx-auto p-4 md:p-6 space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto space-y-6">
       <Helmet>
         <title>Notifications | DiscipleLife</title>
       </Helmet>

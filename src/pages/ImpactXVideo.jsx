@@ -141,7 +141,7 @@ const ImpactXVideo = () => {
         </Button>
       </div>
 
-      <div className="container max-w-6xl mx-auto flex-1 p-4 md:p-8 flex flex-col gap-6">
+      <div className="w-full max-w-[1800px] mx-auto flex-1 flex flex-col gap-6">
          {/* Video Player Container */}
          <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-800">
             {video.video_url.includes('youtube') || video.video_url.includes('vimeo') ? (

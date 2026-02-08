@@ -324,10 +324,12 @@ export function useSuperviseurDashboard(user) {
     setAlertes({ disciplesInactifs: inactifsRes?.data || [], membresSansProgression });
   };
 
+  // Phase 2 : une seule fois par (user, famille). Dépendances volontairement limitées à user?.id, phase1Loading, famille?.id
+  // pour éviter des re-fetches en boucle (ne pas ajouter superviseur/pasteur/famille objet).
   useEffect(() => {
     if (!user?.id || phase1Loading) return;
-    // Phase 1 terminée mais pas de famille : arrêter le chargement pour afficher le message "Aucune famille assignée"
     if (!famille?.id) {
+      lastPhase2KeyRef.current = null;
       setLoading(false);
       hasInitiallyLoadedRef.current = true;
       return;
@@ -555,6 +557,28 @@ export function useSuperviseurDashboard(user) {
     fetchMentorsConsolides().catch(() => {});
   };
 
+  /** Rafraîchit tout le dashboard : invalide le cache, reset les refs, relance phase1 puis phase2. */
+  const refreshDashboard = () => {
+    if (!user?.id) return;
+    const uid = user.id;
+    clearCache(`superviseur_${uid}_membres`);
+    clearCache(`superviseur_${uid}_famille`);
+    if (famille?.id) {
+      clearCache(`superviseur_${uid}_phase2_rpc_${famille.id}`);
+      clearCache(`superviseur_${uid}_phase2_membres_${famille.id}`);
+      clearCache(`superviseur_${uid}_mentors_consolides_${famille.id}`);
+      clearCache(`superviseur_${uid}_disciples_detaille`);
+    }
+    const pasteurId = superviseur?.pasteur_id ?? 'null';
+    clearCache(`superviseur_${uid}_phase2_extra_${pasteurId}`);
+    clearCache(`superviseur_${uid}_phase2_extra_null`);
+    lastPhase2KeyRef.current = null;
+    hasInitiallyLoadedRef.current = false;
+    disciplesDetailleLoadedForRef.current = null;
+    statsComparativesLoadedForFamilleIdRef.current = null;
+    refetchPhase1();
+  };
+
   useEffect(() => {
     if (!famille?.id || !user?.id) return;
     const key = `${user.id}-${famille.id}`;
@@ -630,15 +654,28 @@ export function useSuperviseurDashboard(user) {
     }
   };
 
+  // Stats comparatives : une seule requête par famille (gardes ref pour éviter doublons / boucles).
   useEffect(() => {
     if (!statsComparativesRequested || !famille?.id || !user?.id) return;
     if (fetchStatsComparativesInProgressRef.current) return;
     if (statsComparativesLoadedForFamilleIdRef.current === famille.id) { setStatsComparativesRequested(false); return; }
     if (chartsLoadedRef.current?.statsComparatives && statsComparativesLoadedForFamilleIdRef.current !== null) { setStatsComparativesRequested(false); return; }
     let cancelled = false;
+    const familleId = famille.id;
     fetchStatsComparativesInProgressRef.current = true;
     setLoadingStatsComparatives(true);
-    fetchStatsComparatives().then(() => { if (!cancelled) { statsComparativesLoadedForFamilleIdRef.current = famille.id; setChartsLoaded(prev => ({ ...prev, statsComparatives: true })); } }).finally(() => { fetchStatsComparativesInProgressRef.current = false; setLoadingStatsComparatives(false); if (!cancelled) setStatsComparativesRequested(false); });
+    fetchStatsComparatives()
+      .then(() => {
+        if (!cancelled) {
+          statsComparativesLoadedForFamilleIdRef.current = familleId;
+          setChartsLoaded(prev => ({ ...prev, statsComparatives: true }));
+        }
+      })
+      .finally(() => {
+        fetchStatsComparativesInProgressRef.current = false;
+        setLoadingStatsComparatives(false);
+        if (!cancelled) setStatsComparativesRequested(false);
+      });
     return () => { cancelled = true; };
   }, [statsComparativesRequested, famille?.id, user?.id]);
 
@@ -979,6 +1016,7 @@ export function useSuperviseurDashboard(user) {
     fetchDisciplesDetaille,
     fetchMentorsConsolides,
     handleRefreshMentorsConsolides,
+    refreshDashboard,
     generateFormationVideoChartData,
     calculateStatutsSpirituels,
     fetchActiviteRecente,

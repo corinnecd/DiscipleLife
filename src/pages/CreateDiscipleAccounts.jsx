@@ -217,7 +217,7 @@ const CreateDiscipleAccounts = () => {
 
   return (
     <div className="min-h-screen bg-[#0f0518] p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="w-full max-w-[1800px] mx-auto space-y-6">
         <Card className="bg-[#1a0b2e] border-white/10">
           <CardHeader>
             <CardTitle className="text-white text-2xl flex items-center gap-2">

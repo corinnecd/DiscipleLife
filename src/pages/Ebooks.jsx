@@ -161,8 +161,8 @@ const Ebooks = () => {
       </Helmet>
 
       {/* Header Section */}
-      <div className="bg-gradient-to-b from-[#1a0b2e] to-[#0f0518] pt-12 pb-8 px-4 md:px-8 border-b border-white/5">
-        <div className="max-w-7xl mx-auto">
+      <div className="bg-gradient-to-b from-[#1a0b2e] to-[#0f0518] pt-12 pb-8 border-b border-white/5">
+        <div className="w-full max-w-[1800px] mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div className="flex items-center gap-4">
                <div className="p-3 bg-teal-500/10 rounded-xl border border-teal-500/20">
@@ -195,7 +195,7 @@ const Ebooks = () => {
       </div>
 
       {/* Content Grid */}
-      <div className="max-w-7xl mx-auto px-4 md:px-8 py-8">
+      <div className="w-full max-w-[1800px] mx-auto py-8">
         {loading ? (
             <div className="flex justify-center items-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-teal-500" />

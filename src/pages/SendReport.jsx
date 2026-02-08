@@ -829,7 +829,7 @@ const SendReport = () => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-20 px-4 sm:px-6">
+    <div className="w-full max-w-[1800px] mx-auto space-y-8 pb-20">
       
       {/* Header */}
       <div className="space-y-4">

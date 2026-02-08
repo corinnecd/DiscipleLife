@@ -1,14 +1,9 @@
 -- ============================================
--- Migration 103 : Arbre généalogique 4 niveaux de parenté
--- Niveau 1 : Pasteur (qui suit/supervise)
--- Niveau 2 : Superviseur (qui suit le mentor)
--- Niveau 3 : Mentor (qui suit le disciple)
--- Niveau 4 : Disciple (suit par mentor_id)
--- Utilise profils.nb_disciples et profils.mentor_id ; Suivi par = nom du mentor.
+-- Migration 110 : Arbre – badge pasteur = nombre de superviseurs (disciples directs)
+-- Remplace le niveau 1 de get_arbre_4_niveaux pour que nb_disciples = COUNT(superviseurs).
+-- À exécuter après 103 (et après 109 pour les données).
 -- ============================================
 
--- RPC : retourne les nœuds de l'arbre 4 niveaux pour alimenter l'arbre généalogique
--- p_pasteur_id optionnel : si fourni, limite au périmètre de ce pasteur
 CREATE OR REPLACE FUNCTION get_arbre_4_niveaux(p_pasteur_id UUID DEFAULT NULL)
 RETURNS TABLE (
   niveau SMALLINT,
@@ -26,7 +21,7 @@ SET search_path = public
 STABLE
 AS $$
 BEGIN
-  -- Niveau 1 : Pasteurs. Les disciples directs du pasteur sont les SUPERVISEURS (pas mentor_id).
+  -- Niveau 1 : Pasteurs. Les disciples directs = les SUPERVISEURS (pas mentor_id).
   RETURN QUERY
   SELECT
     1::SMALLINT AS niveau,
@@ -45,7 +40,7 @@ BEGIN
   WHERE p.role = 'pasteur'
     AND (p_pasteur_id IS NULL OR p.id = p_pasteur_id);
 
-  -- Niveau 2 : Superviseurs (parent = pasteur via pasteur_id ou familles.pasteur_id)
+  -- Niveau 2 : Superviseurs (parent = pasteur)
   RETURN QUERY
   SELECT
     2::SMALLINT AS niveau,
@@ -104,4 +99,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION get_arbre_4_niveaux(UUID) IS
-'Arbre 4 niveaux : Pasteur → Superviseur → Mentor → Disciple. Utilise profils.nb_disciples et mentor_id. Migration 103.';
+'Arbre 4 niveaux : Pasteur (disciples directs = superviseurs) → Superviseur → Mentor → Disciple. Migration 110.';

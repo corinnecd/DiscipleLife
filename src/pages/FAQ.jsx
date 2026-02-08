@@ -53,7 +53,7 @@ const FAQ = () => {
   ];
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pt-4 pb-20">
+    <div className="w-full max-w-[1800px] mx-auto space-y-6 pt-4 pb-20">
       <div className="space-y-2 px-2">
         <h1 className="text-3xl font-bold text-white">Questions Fréquentes</h1>
         <p className="text-gray-400">Des réponses simples pour vous aider à avancer.</p>
