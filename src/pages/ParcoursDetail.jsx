@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Helmet } from 'react-helmet';
+import { logger } from '@/lib/logger';
 
 const ParcoursDetail = () => {
   const { parcoursId } = useParams();
@@ -133,11 +134,6 @@ const ParcoursDetail = () => {
         const shouldUpdate = !dbProgression || dbProgression.statut !== 'termine' || dbProgression.progression_pourcentage !== 100;
         
         if (shouldUpdate) {
-          console.log('✅ Tous les modules sont complétés, mise à jour du statut du parcours...');
-          console.log('📊 Modules complétés:', completedIds.length, '/', modulesToCheck.length);
-          console.log('📊 Statut actuel dans DB:', dbProgression?.statut || 'non trouvé');
-          console.log('📊 Progression actuelle dans DB:', dbProgression?.progression_pourcentage || 0, '%');
-          
           // Ne pas inclure date_fin_reelle si la colonne n'existe pas encore
           // Ne pas inclure modules_completes car cela cause une erreur "expected JSON array"
           const updateData = {
@@ -161,21 +157,14 @@ const ParcoursDetail = () => {
               hint: updateError.hint
             });
           } else {
-            console.log('✅ Statut du parcours mis à jour à "termine"');
-            console.log('📊 Résultat mise à jour:', updateResult);
             // Rafraîchir la progression
             const { data: updatedProg } = await supabase
               .from('user_parcours_progression')
               .select('*')
               .eq('id', progressionId)
               .single();
-            if (updatedProg) {
-              console.log('✅ Progression rafraîchie:', updatedProg);
-              setProgression(updatedProg);
-            }
+            if (updatedProg) setProgression(updatedProg);
           }
-        } else {
-          console.log('✅ Parcours déjà marqué comme terminé dans la DB');
         }
       }
 
@@ -198,8 +187,6 @@ const ParcoursDetail = () => {
 
   const createProgression = async () => {
     try {
-      console.log('➕ Création progression pour parcours:', parcoursId, 'user:', user?.id);
-      
       // Vérifier d'abord si une progression existe déjà (pour éviter les doublons et erreurs UNIQUE)
       const { data: existing, error: checkError } = await supabase
         .from('user_parcours_progression')
@@ -214,7 +201,6 @@ const ParcoursDetail = () => {
       }
       
       if (existing) {
-        console.log('✅ Progression existe déjà:', existing);
         setProgression(existing);
         return existing;
       }
@@ -244,7 +230,6 @@ const ParcoursDetail = () => {
         throw error;
       }
       
-      console.log('✅ Progression créée avec succès:', data);
       setProgression(data);
       return data;
     } catch (error) {
@@ -255,14 +240,10 @@ const ParcoursDetail = () => {
 
   const handleCompleteModule = async (moduleId) => {
     try {
-      console.log('🔄 Début handleCompleteModule pour module:', moduleId);
-      console.log('📊 Progression actuelle:', progression);
-      console.log('✅ Modules complétés:', modulesCompletes);
 
       // S'assurer que la progression existe AVANT de continuer
       let currentProgression = progression;
       if (!currentProgression) {
-        console.log('⚠️ Pas de progression, création en cours...');
         try {
           const newProgression = await createProgression();
           if (!newProgression) {
@@ -270,7 +251,6 @@ const ParcoursDetail = () => {
           }
           currentProgression = newProgression;
           setProgression(newProgression);
-          console.log('✅ Progression créée et récupérée:', currentProgression);
           
           // Attendre un peu pour s'assurer que la progression est bien enregistrée
           await new Promise(resolve => setTimeout(resolve, 200));
@@ -298,7 +278,6 @@ const ParcoursDetail = () => {
 
       // Vérifier que tous les modules précédents sont complétés
       const moduleIndex = modules.findIndex(m => m.id === moduleId);
-      console.log('📍 Index du module:', moduleIndex);
       
       if (moduleIndex > 0) {
         const previousModules = modules.slice(0, moduleIndex);
@@ -306,8 +285,6 @@ const ParcoursDetail = () => {
           modulesCompletes.includes(m.id)
         );
 
-        console.log('🔍 Modules précédents:', previousModules.map(m => m.titre));
-        console.log('✅ Tous complétés?', allPreviousCompleted);
 
         if (!allPreviousCompleted) {
           toast({
@@ -328,7 +305,6 @@ const ParcoursDetail = () => {
         return;
       }
 
-      console.log('💾 Insertion dans user_module_progression...');
       
       // Vérifier si l'enregistrement existe déjà
       const { data: existingModuleProgression, error: checkError } = await supabase
@@ -347,7 +323,6 @@ const ParcoursDetail = () => {
       let insertError;
       if (existingModuleProgression) {
         // Mettre à jour l'enregistrement existant
-        console.log('🔄 Mise à jour module progression existante:', existingModuleProgression.id);
         const { error } = await supabase
           .from('user_module_progression')
           .update({
@@ -359,7 +334,6 @@ const ParcoursDetail = () => {
         insertError = error;
       } else {
         // Créer un nouvel enregistrement
-        console.log('➕ Création nouvelle progression module');
         const { error } = await supabase
           .from('user_module_progression')
           .insert([{
@@ -382,10 +356,7 @@ const ParcoursDetail = () => {
         throw insertError;
       }
 
-      console.log('✅ Module marqué comme complété dans la base');
-
       // Récupérer TOUS les modules complétés depuis la base de données pour être sûr d'avoir les bonnes données
-      console.log('🔄 Récupération des modules complétés depuis la DB...');
       const { data: allCompletedModules, error: fetchModulesError } = await supabase
         .from('user_module_progression')
         .select('module_id')
@@ -397,7 +368,6 @@ const ParcoursDetail = () => {
       }
 
       const completedIdsFromDB = (allCompletedModules || []).map(m => m.module_id);
-      console.log('📊 Modules complétés depuis la DB:', completedIdsFromDB.length, completedIdsFromDB);
       
       // Mettre à jour l'état local avec les données de la DB
       setModulesCompletes(completedIdsFromDB);
@@ -405,14 +375,6 @@ const ParcoursDetail = () => {
       const newPercentage = Math.round((completedIdsFromDB.length / modules.length) * 100);
       const newModulesCompletes = completedIdsFromDB.length;
       const isAllCompleted = completedIdsFromDB.length === modules.length;
-
-      console.log('📊 État actuel des modules:');
-      console.log('  - Modules complétés (depuis DB):', completedIdsFromDB.length, completedIdsFromDB);
-      console.log('  - Module actuel complété:', moduleId);
-      console.log('  - Nombre total de modules:', modules.length);
-      console.log('  - Modules dans le parcours:', modules.map(m => ({ id: m.id, titre: m.titre })));
-      console.log('📈 Nouvelle progression:', newPercentage, '% -', newModulesCompletes, 'modules');
-      console.log('🎯 Tous les modules complétés?', isAllCompleted, `(${completedIdsFromDB.length} === ${modules.length})`);
 
       // Préparer les données de mise à jour
       // Ne pas inclure modules_completes car cela cause une erreur "expected JSON array"
@@ -424,18 +386,10 @@ const ParcoursDetail = () => {
 
       // Si tous les modules sont complétés, finaliser le parcours
       if (isAllCompleted) {
-        console.log('🎉 Tous les modules sont complétés, finalisation du parcours...');
-        console.log('📊 Nombre total de modules:', modules.length);
-        console.log('📊 Modules complétés depuis DB:', completedIdsFromDB.length);
         updateData.statut = 'termine';
         updateData.progression_pourcentage = 100;
         // Note: modules_completes n'est pas inclus car cela cause une erreur "expected JSON array"
-        // Note: date_fin_reelle n'est pas ajoutée car la colonne n'existe pas encore dans la DB
-        console.log('📊 Données de mise à jour complètes:', updateData);
       }
-
-      console.log('📤 Mise à jour de la progression avec:', updateData);
-      console.log('🆔 ID de la progression à mettre à jour:', currentProgression.id);
 
       const { error: updateError, data: updateResult } = await supabase
         .from('user_parcours_progression')
@@ -454,15 +408,9 @@ const ParcoursDetail = () => {
         throw updateError;
       }
 
-      console.log('✅ Progression mise à jour avec succès');
-      console.log('📊 Résultat de la mise à jour:', updateResult);
       
       if (updateResult && updateResult.length > 0) {
         const updated = updateResult[0];
-        console.log('✅ Vérification des données mises à jour:');
-        console.log('  - Statut:', updated.statut);
-        console.log('  - Progression:', updated.progression_pourcentage, '%');
-        console.log('  - Modules complétés:', updated.modules_completes);
         
         // Vérifier que la mise à jour a bien fonctionné
         if (isAllCompleted && updated.statut !== 'termine') {
@@ -472,7 +420,7 @@ const ParcoursDetail = () => {
           console.error('❌ ERREUR: La progression devrait être 100% mais est:', updated.progression_pourcentage);
         }
       } else {
-        console.warn('⚠️ Aucun résultat retourné par la mise à jour');
+        logger.warn('⚠️ Aucun résultat retourné par la mise à jour');
       }
       
       // Attendre un peu pour s'assurer que la base de données a bien enregistré
@@ -480,12 +428,10 @@ const ParcoursDetail = () => {
 
       // Passer au module suivant si disponible
       if (moduleIndex < modules.length - 1 && !isAllCompleted) {
-        console.log('➡️ Passage au module suivant:', moduleIndex + 1);
         setCurrentModuleIndex(moduleIndex + 1);
       }
 
       // Rafraîchir la progression locale pour vérifier que la mise à jour a bien fonctionné
-      console.log('🔄 Vérification de la progression mise à jour...');
       const { data: updatedProgression, error: fetchError } = await supabase
         .from('user_parcours_progression')
         .select('*')
@@ -495,27 +441,20 @@ const ParcoursDetail = () => {
       if (fetchError) {
         console.error('❌ Erreur lors de la récupération de la progression mise à jour:', fetchError);
       } else if (updatedProgression) {
-        console.log('✅ Progression récupérée après mise à jour:');
-        console.log('  - Statut:', updatedProgression.statut);
-        console.log('  - Progression:', updatedProgression.progression_pourcentage, '%');
-        console.log('  - Modules complétés:', updatedProgression.modules_completes);
         setProgression(updatedProgression);
         
         // Vérifier une dernière fois que tout est correct
         if (isAllCompleted) {
           if (updatedProgression.statut !== 'termine') {
             console.error('❌ PROBLÈME: Le statut dans la DB est:', updatedProgression.statut, 'au lieu de "termine"');
-          } else {
-            console.log('✅ CONFIRMÉ: Le parcours est bien marqué comme "termine" dans la base de données');
           }
         }
       } else {
-        console.warn('⚠️ Aucune progression trouvée après mise à jour');
+        logger.warn('⚠️ Aucune progression trouvée après mise à jour');
       }
 
       if (isAllCompleted) {
         // Vérifier une dernière fois que la mise à jour a bien fonctionné en relisant depuis la DB
-        console.log('🔍 Vérification finale avant redirection...');
         
         // Attendre un peu plus longtemps pour s'assurer que la DB est à jour
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -527,7 +466,6 @@ const ParcoursDetail = () => {
         
         while (attempts < maxAttempts && (!finalCheck || finalCheck.statut !== 'termine')) {
           attempts++;
-          console.log(`🔄 Tentative ${attempts}/${maxAttempts} de vérification du statut...`);
           
           const { data: checkData, error: checkError } = await supabase
             .from('user_parcours_progression')
@@ -543,10 +481,9 @@ const ParcoursDetail = () => {
           finalCheck = checkData;
           
           if (finalCheck && finalCheck.statut === 'termine' && finalCheck.progression_pourcentage === 100) {
-            console.log('✅ CONFIRMÉ: Le parcours est bien terminé à 100% dans la base de données');
             break;
           } else if (finalCheck && finalCheck.progression_pourcentage === 100 && finalCheck.statut !== 'termine') {
-            console.warn(`⚠️ Progression à 100% mais statut="${finalCheck.statut}" au lieu de "termine". Tentative de correction...`);
+            logger.warn(`⚠️ Progression à 100% mais statut="${finalCheck.statut}" au lieu de "termine". Tentative de correction...`);
             
             // Essayer de corriger le statut
             const { error: fixError } = await supabase
@@ -561,7 +498,6 @@ const ParcoursDetail = () => {
             if (fixError) {
               console.error('❌ Erreur lors de la correction du statut:', fixError);
             } else {
-              console.log('✅ Statut corrigé avec succès');
               // Attendre un peu avant de revérifier
               await new Promise(resolve => setTimeout(resolve, 500));
             }
@@ -572,10 +508,6 @@ const ParcoursDetail = () => {
         }
         
         if (finalCheck) {
-          console.log('✅ Vérification finale - Données dans la DB:');
-          console.log('  - Statut:', finalCheck.statut);
-          console.log('  - Progression:', finalCheck.progression_pourcentage, '%');
-          console.log('  - Modules complétés:', finalCheck.modules_completes);
           
           if (finalCheck.statut !== 'termine' || finalCheck.progression_pourcentage !== 100) {
             console.error('❌ PROBLÈME: Les données ne sont pas correctes dans la DB après', maxAttempts, 'tentatives');
@@ -591,7 +523,6 @@ const ParcoursDetail = () => {
         
         // Rediriger vers Transformation pour rafraîchir les données
         // Utiliser un timestamp unique pour forcer le rafraîchissement
-        console.log('🔄 Redirection vers Transformation avec rafraîchissement...');
         const refreshTimestamp = Date.now();
         navigate(`/transformation?refresh=${refreshTimestamp}&tab=statistiques`);
       } else {
@@ -601,7 +532,6 @@ const ParcoursDetail = () => {
         });
       }
 
-      console.log('✅ handleCompleteModule terminé avec succès');
 
     } catch (error) {
       console.error('❌ Error completing module:', error);
@@ -670,7 +600,7 @@ const ParcoursDetail = () => {
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div className="w-full max-w-[1800px] mx-auto py-4">
+          <div className="w-full max-w-screen-2xl mx-auto px-4 md:px-8 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <Button
@@ -728,12 +658,17 @@ const ParcoursDetail = () => {
         </div>
 
         {/* Contenu principal */}
-        <div className="w-full max-w-[1800px] mx-auto py-8">
+        <div className="w-full max-w-screen-2xl mx-auto px-4 md:px-8 py-8">
           {modules.length === 0 ? (
-            <Card className="bg-white border-gray-300">
-              <CardContent className="py-12 text-center">
-                <BookOpen className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-600">Aucun module disponible pour ce parcours</p>
+            <Card className="bg-white border-gray-300 border-dashed">
+              <CardContent className="py-16 text-center">
+                <div className="flex justify-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                    <BookOpen className="w-8 h-8 text-purple-600" />
+                  </div>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-1">Aucun module disponible</h3>
+                <p className="text-gray-600 text-sm">Les modules de ce parcours seront bientôt disponibles.</p>
               </CardContent>
             </Card>
           ) : (

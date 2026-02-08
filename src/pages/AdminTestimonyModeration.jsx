@@ -104,7 +104,7 @@ const AdminTestimonyModeration = () => {
           // if (uploadError) throw uploadError;
 
           // Update record (simulated)
-          console.log("Compressed file ready for upload:", compressedFile);
+          if (import.meta.env.DEV) console.log("Compressed file ready for upload:", compressedFile);
           setUploadProgress(100);
           
           toast({ title: "Succès", description: "Vignette compressée et prête (Upload simulé)." });

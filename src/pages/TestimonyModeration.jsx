@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Check, X, Play, Pause, AlertCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-
 const TestimonyModeration = () => {
   const [pendingTestimonies, setPendingTestimonies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -67,8 +66,14 @@ const TestimonyModeration = () => {
       </h1>
 
       {pendingTestimonies.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border border-slate-200">
-              <p className="text-slate-500">Aucun témoignage en attente.</p>
+          <div className="text-center py-16 bg-white rounded-xl border border-slate-200 border-dashed">
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+                  <AlertCircle className="w-8 h-8 text-green-600" />
+                </div>
+              </div>
+              <h3 className="text-lg font-medium text-slate-900 mb-1">Aucun témoignage en attente</h3>
+              <p className="text-slate-500 text-sm">Tous les témoignages ont été modérés ou aucun n'a été soumis.</p>
           </div>
       ) : (
           <div className="grid gap-6">
@@ -86,7 +91,7 @@ const TestimonyModeration = () => {
                       <CardContent>
                           {item.audio_url ? (
                                <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                   <Button size="icon" variant="ghost" className="rounded-full bg-white shadow-sm" onClick={() => togglePlay(item.audio_url, item.id)}>
+                                   <Button size="icon" variant="ghost" className="rounded-full bg-white shadow-sm" onClick={() => togglePlay(item.audio_url, item.id)} aria-label={playingId === item.id ? "Pause" : "Écouter"}>
                                        {playingId === item.id ? <Pause size={20} /> : <Play size={20} />}
                                    </Button>
                                    <span className="text-sm font-medium">Écouter le témoignage audio</span>

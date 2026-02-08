@@ -200,6 +200,7 @@ const PrayerList = () => {
   };
 
   const deletePrayer = async (id) => {
+    if (!window.confirm("Supprimer cette requête de prière ? Cette action est irréversible.")) return;
     try {
         const { error } = await supabase
             .from('prayer_requests')
@@ -234,7 +235,7 @@ const PrayerList = () => {
   const filteredDisciplePrayers = selectedDisciple ? prayers.filter(p => p.disciple_name === selectedDisciple) : [];
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto space-y-8 pb-20">
+    <div className="w-full max-w-screen-2xl mx-auto space-y-8 pb-20">
       
       {/* Header */}
       <div className="space-y-4">
@@ -269,7 +270,7 @@ const PrayerList = () => {
       </div>
 
       {/* Input Card */}
-      <Card className="bg-white border-gray-200 shadow-sm p-4 space-y-4">
+      <Card id="prayer-form" className="bg-white border-gray-200 shadow-sm p-4 space-y-4 scroll-mt-24">
           <form onSubmit={handleAdd} className="space-y-4">
             
             <Select 
@@ -353,8 +354,19 @@ const PrayerList = () => {
                  <Loader2 className="animate-spin h-8 w-8 text-purple-600"></Loader2>
              </div>
         ) : sortedPrayers.length === 0 ? (
-             <div className="text-center py-16 text-gray-600 text-lg font-medium">
-                Aucune requête de prière pour le moment.
+             <div className="text-center py-16 px-6 bg-white rounded-xl border border-gray-200 border-dashed shadow-sm">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Bell className="w-8 h-8 text-purple-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucune requête de prière</h3>
+                <p className="text-gray-600 mb-6 max-w-sm mx-auto">
+                  Partagez un sujet de prière pour que la communauté puisse intercéder. Utilisez le formulaire ci-dessus pour ajouter votre première requête.
+                </p>
+                <div className="flex justify-center">
+                  <a href="#prayer-form" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium transition-colors">
+                    <Plus size={18} /> Ajouter une requête de prière
+                  </a>
+                </div>
              </div>
         ) : (
             <AnimatePresence mode='popLayout'>

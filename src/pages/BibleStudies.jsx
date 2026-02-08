@@ -66,7 +66,7 @@ const BibleStudies = () => {
   ];
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto space-y-8 pb-20">
+    <div className="w-full max-w-screen-2xl mx-auto space-y-8 pb-20">
       <div className="space-y-2">
         <h1 className="text-3xl font-bold text-white">Études Bibliques</h1>
         <p className="text-gray-400">Ressources vidéos pour votre croissance spirituelle.</p>

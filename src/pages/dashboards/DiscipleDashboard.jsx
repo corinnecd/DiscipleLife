@@ -299,7 +299,9 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
             <Calendar className="h-4 w-4 text-indigo-600" />
           </CardHeader>
           <CardContent>
-            {stats.nextRdv ? (
+            {loading ? (
+              <div className="text-sm text-gray-500 py-2">Chargement...</div>
+            ) : stats.nextRdv ? (
               <div className="space-y-1">
                 <div className="text-2xl font-bold text-gray-900">
                   {format(new Date(stats.nextRdv.scheduled_date), 'dd MMM', { locale: fr })}
@@ -324,7 +326,9 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
             <Heart className="h-4 w-4 text-pink-600" />
           </CardHeader>
           <CardContent>
-            {stats.nextPrayer ? (
+            {loading ? (
+              <div className="text-sm text-gray-500 py-2">Chargement...</div>
+            ) : stats.nextPrayer ? (
               <div className="space-y-1">
                 <div className="text-2xl font-bold text-gray-900">
                   {format(new Date(stats.nextPrayer.scheduled_date), 'dd MMM', { locale: fr })}

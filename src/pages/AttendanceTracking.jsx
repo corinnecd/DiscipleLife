@@ -324,7 +324,7 @@ const AttendanceTracking = () => {
   const reminder = getReminderMessage();
 
   return (
-    <div id="attendance-tracking-content" className="w-full max-w-[1800px] mx-auto space-y-8 pb-20">
+    <div id="attendance-tracking-content" className="w-full space-y-8 pb-20">
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -722,11 +722,14 @@ const AttendanceTracking = () => {
                       <p>Chargement de l'historique...</p>
                     </div>
                   ) : history.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-gray-600 gap-2">
-                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
-                        <CalendarCheck className="w-6 h-6 text-gray-400" />
+                    <div className="flex flex-col items-center justify-center h-64 text-gray-600 gap-4 py-8">
+                      <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                        <CalendarCheck className="w-8 h-8 text-purple-600" />
                       </div>
-                      <p>Aucune donnée enregistrée pour cette catégorie.</p>
+                      <div className="text-center">
+                        <h3 className="text-lg font-medium text-gray-900 mb-1">Aucune donnée enregistrée</h3>
+                        <p className="text-sm text-gray-500">L'historique de présence apparaîtra ici.</p>
+                      </div>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">

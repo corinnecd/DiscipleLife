@@ -416,7 +416,7 @@ const Disciples = () => {
   ];
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto space-y-6 pb-20">
+    <div className="w-full space-y-6 pb-20">
       <div className="flex flex-col md:flex-row justify-between gap-4 items-start md:items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">Mes Disciples</h1>
@@ -438,10 +438,21 @@ const Disciples = () => {
       </div>
 
       {loading ? (
-        <div className="text-center py-10 text-gray-600">Chargement...</div>
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+        </div>
       ) : filteredDisciples.length === 0 ? (
-        <div className="text-center py-10 text-gray-600 bg-white rounded-xl border border-gray-200 border-dashed shadow-sm">
-          Aucun disciple trouvé. Commencez par en ajouter un !
+        <div className="text-center py-16 px-6 bg-white rounded-xl border border-gray-200 border-dashed shadow-sm">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center">
+            <User className="w-8 h-8 text-purple-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucun disciple trouvé</h3>
+          <p className="text-gray-600 mb-6 max-w-sm mx-auto">
+            {searchTerm ? "Aucun résultat pour votre recherche. Modifiez les critères ou ajoutez un nouveau disciple." : "Commencez par ajouter votre premier disciple pour le suivre et l'accompagner."}
+          </p>
+          <Button onClick={() => setIsAddModalOpen(true)} className="bg-purple-600 hover:bg-purple-700 text-white gap-2">
+            <Plus size={20} /> Ajouter un disciple
+          </Button>
         </div>
       ) : (
         <div className="space-y-8">

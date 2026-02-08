@@ -163,7 +163,7 @@ const AddEbookForm = ({ onSuccess, onCancel }) => {
           {fields.map((field, index) => (
             <div key={field.id} className="p-4 border border-white/10 rounded-lg bg-white/5 space-y-3 relative">
               <div className="absolute right-2 top-2">
-                 <Button type="button" size="icon" variant="ghost" onClick={() => remove(index)} className="h-6 w-6 text-gray-500 hover:text-red-400">
+                 <Button type="button" size="icon" variant="ghost" onClick={() => remove(index)} className="h-6 w-6 text-gray-500 hover:text-red-400" aria-label="Supprimer ce lien">
                     <Trash2 className="h-4 w-4" />
                  </Button>
               </div>

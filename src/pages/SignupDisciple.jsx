@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, ArrowLeft, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
+import { cn } from '@/lib/utils';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const SignupDisciple = () => {
   const [loading, setLoading] = useState(false);
@@ -39,6 +42,7 @@ const SignupDisciple = () => {
   const [searchParams] = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [errors, setErrors] = useState({});
 
   // Rôle pré-rempli depuis l'URL (/signup?role=disciple, /signup?role=mentor, etc.)
   useEffect(() => {
@@ -111,11 +115,35 @@ const SignupDisciple = () => {
   }, []);
 
   const handleInputChange = (e) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
+    if (name === 'password' && errors.confirmPassword && formData.confirmPassword !== value) {
+      setErrors(prev => ({ ...prev, confirmPassword: 'Les mots de passe ne correspondent pas.' }));
+    } else if (name === 'confirmPassword' && value !== formData.password) {
+      setErrors(prev => ({ ...prev, confirmPassword: 'Les mots de passe ne correspondent pas.' }));
+    } else if (name === 'confirmPassword' && value === formData.password) {
+      setErrors(prev => ({ ...prev, confirmPassword: '' }));
+    }
+  };
+
+  const validateSignup = () => {
+    const e = {};
+    if (!formData.firstName?.trim()) e.firstName = 'Le prénom est requis.';
+    if (!formData.lastName?.trim()) e.lastName = 'Le nom est requis.';
+    if (!formData.email?.trim()) e.email = 'L\'email est requis.';
+    else if (!EMAIL_REGEX.test(formData.email)) e.email = 'Format d\'email invalide.';
+    if (!formData.password) e.password = 'Le mot de passe est requis.';
+    else if (formData.password.length < 6) e.password = 'Le mot de passe doit contenir au moins 6 caractères.';
+    if (formData.password !== formData.confirmPassword) e.confirmPassword = 'Les mots de passe ne correspondent pas.';
+    if (formData.role === 'disciple' && !formData.familleId) e.familleId = 'Veuillez sélectionner votre famille.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
   const handleFamilleChange = (value) => {
     setFormData(prev => ({ ...prev, familleId: value }));
+    if (errors.familleId) setErrors(prev => ({ ...prev, familleId: '' }));
   };
 
   const handleRoleChange = (value) => {
@@ -132,25 +160,7 @@ const SignupDisciple = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (formData.password !== formData.confirmPassword) {
-        toast({ 
-          title: "Erreur", 
-          description: "Les mots de passe ne correspondent pas.", 
-          variant: "destructive" 
-        });
-        return;
-    }
-
-    if (formData.role === 'disciple' && !formData.familleId) {
-        toast({ 
-          title: "Erreur", 
-          description: "Veuillez sélectionner votre famille.", 
-          variant: "destructive" 
-        });
-        return;
-    }
-
+    if (!validateSignup()) return;
     setLoading(true);
     try {
       // Créer le compte utilisateur avec les métadonnées (alignées sur la table profils)
@@ -239,20 +249,24 @@ const SignupDisciple = () => {
                     <Input 
                       name="firstName" 
                       value={formData.firstName} 
-                      onChange={handleInputChange} 
+                      onChange={handleInputChange}
+                      onBlur={() => validateSignup()}
                       required 
-                      className="bg-black/20 border-white/10 text-white" 
+                      className={cn("bg-black/20 text-white", errors.firstName ? "border-red-500" : "border-white/10")}
                     />
+                    {errors.firstName && <p className="text-xs text-red-400">{errors.firstName}</p>}
                 </div>
                 <div className="space-y-2">
                     <Label>Nom</Label>
                     <Input 
                       name="lastName" 
                       value={formData.lastName} 
-                      onChange={handleInputChange} 
+                      onChange={handleInputChange}
+                      onBlur={() => validateSignup()}
                       required 
-                      className="bg-black/20 border-white/10 text-white" 
+                      className={cn("bg-black/20 text-white", errors.lastName ? "border-red-500" : "border-white/10")}
                     />
+                    {errors.lastName && <p className="text-xs text-red-400">{errors.lastName}</p>}
                 </div>
              </div>
              <div className="space-y-2">
@@ -268,7 +282,7 @@ const SignupDisciple = () => {
                     onValueChange={handleFamilleChange}
                     required
                   >
-                    <SelectTrigger className="bg-black/20 border-white/10 text-white">
+                    <SelectTrigger className={cn("bg-black/20 text-white", errors.familleId ? "border-red-500" : "border-white/10")}>
                       <SelectValue placeholder="Sélectionnez votre famille" />
                     </SelectTrigger>
                     <SelectContent className="bg-[#1a0b2e] border-white/10">
@@ -290,6 +304,7 @@ const SignupDisciple = () => {
                     </SelectContent>
                   </Select>
                 )}
+                {errors.familleId && <p className="text-xs text-red-400 mt-1">{errors.familleId}</p>}
                 <p className="text-xs text-gray-500 mt-1">
                   Sélectionnez la famille à laquelle vous appartenez.
                 </p>
@@ -405,10 +420,12 @@ const SignupDisciple = () => {
                   type="email" 
                   name="email" 
                   value={formData.email} 
-                  onChange={handleInputChange} 
+                  onChange={handleInputChange}
+                  onBlur={() => formData.email && validateSignup()}
                   required 
-                  className="bg-black/20 border-white/10 text-white" 
+                  className={cn("bg-black/20 text-white", errors.email ? "border-red-500" : "border-white/10")}
                 />
+                {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
              </div>
              <div className="space-y-2">
                 <Label>Mot de passe</Label>
@@ -417,10 +434,11 @@ const SignupDisciple = () => {
                     type={showPassword ? 'text' : 'password'} 
                     name="password" 
                     value={formData.password} 
-                    onChange={handleInputChange} 
+                    onChange={handleInputChange}
+                    onBlur={() => formData.password && validateSignup()}
                     required 
                     minLength={6}
-                    className="bg-black/20 border-white/10 text-white pr-10" 
+                    className={cn("bg-black/20 text-white pr-10", errors.password ? "border-red-500" : "border-white/10")}
                   />
                   <button
                     type="button"
@@ -431,6 +449,7 @@ const SignupDisciple = () => {
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                {errors.password && <p className="text-xs text-red-400">{errors.password}</p>}
              </div>
              <div className="space-y-2">
                 <Label>Confirmer le mot de passe</Label>
@@ -439,9 +458,10 @@ const SignupDisciple = () => {
                     type={showConfirmPassword ? 'text' : 'password'} 
                     name="confirmPassword" 
                     value={formData.confirmPassword} 
-                    onChange={handleInputChange} 
+                    onChange={handleInputChange}
+                    onBlur={() => formData.confirmPassword && validateSignup()}
                     required 
-                    className="bg-black/20 border-white/10 text-white pr-10" 
+                    className={cn("bg-black/20 text-white pr-10", errors.confirmPassword ? "border-red-500" : "border-white/10")}
                   />
                   <button
                     type="button"
@@ -452,6 +472,7 @@ const SignupDisciple = () => {
                     {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                {errors.confirmPassword && <p className="text-xs text-red-400">{errors.confirmPassword}</p>}
              </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">

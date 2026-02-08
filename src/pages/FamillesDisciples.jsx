@@ -110,12 +110,6 @@ const FamillesDisciples = () => {
 
         // 3. Calculer le total
         const total = (membresData || []).length;
-
-        console.log('📊 Calcul membres famille (modal):', {
-          familleId: selectedFamille.id,
-          total
-        });
-
         setNombreMembresReel(total);
       } catch (error) {
         console.error('Erreur calcul nombre membres:', error);
@@ -190,8 +184,6 @@ const FamillesDisciples = () => {
         throw error;
       }
 
-      console.log('Familles récupérées:', data);
-
       // Si des familles sont retournées, récupérer les effectifs (RPC) puis les superviseurs
       if (data && data.length > 0) {
         const familleIds = data.map(f => f.id);
@@ -209,7 +201,7 @@ const FamillesDisciples = () => {
           });
         }
         if (rpcErr) {
-          console.warn('RPC get_nombre_profils_par_familles non disponible ou erreur:', rpcErr.message);
+          if (import.meta.env.DEV) console.warn('RPC get_nombre_profils_par_familles non disponible ou erreur:', rpcErr.message);
         }
         if (Object.keys(nombreMembresMap).length === 0) {
           for (const famille of data) {
@@ -479,10 +471,6 @@ const FamillesDisciples = () => {
         console.error('Erreur récupération superviseur:', superviseurError);
       }
 
-      console.log('🔍 Superviseur récupéré pour affiliation:', superviseurData);
-      console.log('🔍 superviseurId utilisé:', superviseurId);
-      console.log('🔍 user.id:', user.id);
-
       const membres = [];
 
       // 3. Ajouter le superviseur (sera mis à jour avec le nombre de disciples directs plus tard)
@@ -636,10 +624,6 @@ const FamillesDisciples = () => {
           }
         }
 
-        console.log('📋 Nom superviseur pour affiliation des disciples directs:', nomSuperviseurPourAffiliation);
-        console.log('📋 Données superviseur complètes:', superviseurData);
-        console.log('📋 Membre superviseur dans membres:', membres.find(m => m.type === 'superviseur'));
-
         disciplesData.forEach(disciple => {
           const isDirect = !disciple.mentor_id || disciple.mentor_id === superviseurId;
           let affiliation = null;
@@ -664,8 +648,6 @@ const FamillesDisciples = () => {
               }
             }
           }
-
-          console.log(`👤 Disciple ${disciple.first_name} ${disciple.last_name} (direct: ${isDirect}) -> affiliation: "${affiliation}"`);
 
           membres.push({
             id: disciple.id,
@@ -1010,7 +992,7 @@ const FamillesDisciples = () => {
         <title>Familles de Disciples - DiscipleLife</title>
       </Helmet>
 
-      <div className="w-full max-w-[1800px] mx-auto space-y-6 pb-20">
+      <div className="w-full space-y-6 pb-20">
         {/* Bouton retour */}
         <Button
           variant="ghost"
@@ -1238,7 +1220,8 @@ const FamillesDisciples = () => {
                 transition={{ duration: 0.4, delay: index * 0.05 }}
               >
               <Card 
-                className="bg-white border-gray-200 hover:shadow-lg transition-shadow"
+                className="bg-white border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => setSelectedFamille(famille)}
               >
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -1271,7 +1254,10 @@ const FamillesDisciples = () => {
                         </AvatarFallback>
                       </Avatar>
                       {canEditAvatar && (
-                        <label className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow cursor-pointer hover:bg-purple-50">
+                        <label
+                          className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow cursor-pointer hover:bg-purple-50"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <Camera className="w-3 h-3 text-purple-600" />
                           <input
                             type="file"
@@ -1320,7 +1306,7 @@ const FamillesDisciples = () => {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
                       className="flex-1 bg-purple-600 text-white hover:bg-blue-600"
@@ -1368,12 +1354,17 @@ const FamillesDisciples = () => {
         </div>
 
         {familles.length === 0 && !loading && (
-          <Card className="bg-white border-gray-200">
-            <CardContent className="py-12 text-center">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">Aucune famille trouvée</p>
+          <Card className="bg-white border-gray-200 border-dashed">
+            <CardContent className="py-16 text-center">
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Users className="w-8 h-8 text-purple-600" />
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucune famille trouvée</h3>
+              <p className="text-gray-600 mb-6 max-w-sm mx-auto">Créez votre première famille de disciples pour organiser et suivre vos communautés.</p>
               {hasAdminView && (
-                <Button className="mt-4 bg-purple-600 text-white hover:bg-purple-700">
+                <Button onClick={openCreateDialog} className="bg-purple-600 text-white hover:bg-purple-700">
                   <Plus className="w-4 h-4 mr-2" />
                   Créer la première famille
                 </Button>
@@ -2161,9 +2152,14 @@ const FamillesDisciples = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
               </div>
             ) : disciplesList.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun disciple suivi par ce membre.</p>
+              <div className="text-center py-12 rounded-xl border border-gray-200 border-dashed bg-gray-50/50">
+                <div className="flex justify-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Users className="w-8 h-8 text-purple-600" />
+                  </div>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-1">Aucun disciple suivi</h3>
+                <p className="text-gray-500 text-sm">Ce membre ne suit aucun disciple pour le moment.</p>
               </div>
             ) : (
               <div className="space-y-2">

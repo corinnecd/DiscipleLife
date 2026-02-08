@@ -1387,7 +1387,7 @@ const PasteurDashboard = () => {
         <title>Dashboard Pasteur - DiscipleLife</title>
       </Helmet>
       
-      <div id="pasteur-dashboard-content" className="w-full max-w-[1800px] mx-auto space-y-6 pb-24 bg-gray-50 dark:bg-gray-50 min-h-screen">
+      <div id="pasteur-dashboard-content" className="w-full max-w-screen-2xl mx-auto space-y-6 p-6 pb-24 bg-gray-50 dark:bg-gray-50 min-h-screen">
         {/* Bouton retour */}
         <Button
           variant="ghost"

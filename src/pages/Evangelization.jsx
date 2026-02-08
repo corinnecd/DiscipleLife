@@ -267,6 +267,7 @@ const Evangelization = () => {
   };
 
   const handleDeleteVisiteur = async (id) => {
+    if (!window.confirm("Supprimer ce visiteur ? Cette action est irréversible.")) return;
     try {
       const { error } = await supabase
         .from('visiteurs')
@@ -680,7 +681,7 @@ const Evangelization = () => {
       // Si la table n'existe pas (erreur 42P01 ou PGRST116), on marque la table comme inexistante
       if (error) {
         if (error.code === '42P01' || error.code === 'PGRST116' || error.message?.includes('does not exist') || error.message?.includes('relation') && error.message?.includes('does not exist')) {
-          console.warn('Table codes_invitation n\'existe pas encore. Exécutez la migration SQL 002_objectif1_codes_invitation.sql');
+          if (import.meta.env.DEV) console.warn('Table codes_invitation n\'existe pas encore. Exécutez la migration SQL 002_objectif1_codes_invitation.sql');
           setTableCodesInvitationExists(false);
           setCodeInvitation(null);
           setCodeInvitationError(null);
@@ -769,7 +770,7 @@ const Evangelization = () => {
       if (error) {
         // Si la table n'existe pas, on ignore silencieusement
         if (error.code === '42P01' || error.message?.includes('does not exist')) {
-          console.warn('Table invitations_envoyees n\'existe pas encore.');
+          if (import.meta.env.DEV) console.warn('Table invitations_envoyees n\'existe pas encore.');
           setInvitationsEnvoyees([]);
           return;
         }
@@ -1030,6 +1031,7 @@ const Evangelization = () => {
   };
 
   const handleDeleteEvenement = async (id) => {
+    if (!window.confirm("Supprimer cet événement ? Cette action est irréversible.")) return;
     try {
       const { error } = await supabase
         .from('evenements_evangelisation')
@@ -1140,6 +1142,7 @@ const Evangelization = () => {
   };
 
   const handleDeleteActivite = async (id) => {
+    if (!window.confirm("Supprimer cette activité ? Cette action est irréversible.")) return;
     try {
       const { error } = await supabase
         .from('activites_solidarite')
@@ -1187,7 +1190,7 @@ const Evangelization = () => {
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto pb-20 space-y-6">
+    <div className="w-full pb-20 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <Button 
@@ -1398,9 +1401,17 @@ const Evangelization = () => {
             <div className="text-center py-12 text-gray-600">Chargement...</div>
           ) : filteredVisiteurs.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-xl border border-gray-200 border-dashed">
-              <UserPlus className="w-16 h-16 text-purple-500 mx-auto mb-4" />
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                  <UserPlus className="w-8 h-8 text-purple-600" />
+                </div>
+              </div>
               <h3 className="text-lg font-medium text-gray-900 mb-1">Aucun visiteur trouvé</h3>
-              <p className="text-gray-600">Commencez à ajouter des visiteurs.</p>
+              <p className="text-gray-600 mb-6">Commencez à ajouter des visiteurs pour suivre vos contacts évangéliques.</p>
+              <Button onClick={() => setIsVisiteurDialogOpen(true)} className="bg-purple-600 hover:bg-purple-700">
+                <UserPlus size={18} className="mr-2" />
+                Ajouter un visiteur
+              </Button>
             </div>
           ) : (
             <div className="grid gap-3">
@@ -1613,9 +1624,17 @@ const Evangelization = () => {
             <div className="text-center py-12 text-gray-500">Chargement...</div>
           ) : campagnes.length === 0 ? (
             <div className="text-center py-12 bg-card/5 rounded-xl border border-white/5 border-dashed">
-              <Target className="w-16 h-16 text-purple-500 mx-auto mb-4" />
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center">
+                  <Target className="w-8 h-8 text-purple-400" />
+                </div>
+              </div>
               <h3 className="text-lg font-medium text-gray-900 mb-1">Aucune campagne</h3>
-              <p className="text-gray-400">Créez votre première campagne d'évangélisation.</p>
+              <p className="text-gray-400 mb-6">Créez votre première campagne d'évangélisation pour organiser vos actions.</p>
+              <Button onClick={() => setIsCampagneDialogOpen(true)} className="bg-purple-600 hover:bg-purple-700">
+                <Target size={18} className="mr-2" />
+                Créer une campagne
+              </Button>
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
@@ -1849,9 +1868,17 @@ const Evangelization = () => {
             <div className="text-center py-12 text-gray-500">Chargement...</div>
           ) : evenements.length === 0 ? (
             <div className="text-center py-12 bg-card/5 rounded-xl border border-white/5 border-dashed">
-              <CalendarDays className="w-16 h-16 text-purple-500 mx-auto mb-4" />
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center">
+                  <CalendarDays className="w-8 h-8 text-purple-400" />
+                </div>
+              </div>
               <h3 className="text-lg font-medium text-gray-900 mb-1">Aucun événement</h3>
-              <p className="text-gray-400">Créez votre premier événement d'évangélisation.</p>
+              <p className="text-gray-400 mb-6">Créez votre premier événement d'évangélisation pour rassembler votre communauté.</p>
+              <Button onClick={() => setIsEvenementDialogOpen(true)} className="bg-purple-600 hover:bg-purple-700">
+                <CalendarDays size={18} className="mr-2" />
+                Créer un événement
+              </Button>
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
@@ -2064,9 +2091,17 @@ const Evangelization = () => {
             <div className="text-center py-12 text-gray-500">Chargement...</div>
           ) : activitesSolidarite.length === 0 ? (
             <div className="text-center py-12 bg-card/5 rounded-xl border border-white/5 border-dashed">
-              <Heart className="w-16 h-16 text-purple-500 mx-auto mb-4" />
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center">
+                  <Heart className="w-8 h-8 text-purple-400" />
+                </div>
+              </div>
               <h3 className="text-lg font-medium text-gray-900 mb-1">Aucune activité</h3>
-              <p className="text-gray-400">Créez votre première activité de solidarité.</p>
+              <p className="text-gray-400 mb-6">Créez votre première activité de solidarité pour servir votre communauté.</p>
+              <Button onClick={() => setIsActiviteDialogOpen(true)} className="bg-purple-600 hover:bg-purple-700">
+                <Heart size={18} className="mr-2" />
+                Créer une activité
+              </Button>
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">

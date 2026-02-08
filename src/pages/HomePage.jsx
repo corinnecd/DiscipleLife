@@ -66,34 +66,34 @@ const HomePage = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
-              className="flex flex-row justify-center gap-4 flex-nowrap"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-row lg:flex-nowrap justify-center gap-3 sm:gap-4"
             >
               <Button 
                 onClick={() => navigate('/signup?role=pasteur')}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-purple-500/30 transition-all hover:scale-105 whitespace-nowrap"
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-5 sm:px-6 sm:py-6 text-sm sm:text-base rounded-full font-bold shadow-lg shadow-purple-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
-                <Church className="mr-2" /> Pasteur Référent de Famille
+                <Church className="mr-2 shrink-0" size={18} /> Pasteur Référent de Famille
               </Button>
               
               <Button 
                 onClick={() => navigate('/signup?role=superviseur')}
-                className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-amber-500/30 transition-all hover:scale-105 whitespace-nowrap"
+                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-5 sm:px-6 sm:py-6 text-sm sm:text-base rounded-full font-bold shadow-lg shadow-amber-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
-                <Building2 className="mr-2" /> Je suis Superviseur
+                <Building2 className="mr-2 shrink-0" size={18} /> Je suis Superviseur
               </Button>
               
               <Button 
                 onClick={() => navigate('/signup?role=mentor')}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-blue-500/30 transition-all hover:scale-105 whitespace-nowrap"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-5 sm:px-6 sm:py-6 text-sm sm:text-base rounded-full font-bold shadow-lg shadow-blue-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
-                <UserCheck className="mr-2" /> Je suis Mentor
+                <UserCheck className="mr-2 shrink-0" size={18} /> Je suis Mentor
               </Button>
               
               <Button 
                 onClick={() => navigate('/signup?role=disciple')}
-                className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-6 text-base rounded-full font-bold shadow-lg shadow-teal-500/30 transition-all hover:scale-105 whitespace-nowrap"
+                className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-5 sm:px-6 sm:py-6 text-sm sm:text-base rounded-full font-bold shadow-lg shadow-teal-500/30 transition-all hover:scale-105 whitespace-nowrap"
               >
-                <UserPlus className="mr-2" /> Je suis Disciple
+                <UserPlus className="mr-2 shrink-0" size={18} /> Je suis Disciple
               </Button>
             </motion.div>
             

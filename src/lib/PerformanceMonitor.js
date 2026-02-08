@@ -2,6 +2,7 @@
  * Système de monitoring des performances
  * Mesure et enregistre les temps de chargement et les requêtes pour valider les optimisations
  */
+import { logger } from './logger';
 
 class PerformanceMonitor {
   constructor() {
@@ -216,7 +217,7 @@ class PerformanceMonitor {
       try {
         localStorage.setItem('performance_metrics', JSON.stringify(this.metrics));
       } catch (e) {
-        console.warn('Impossible de sauvegarder les métriques:', e);
+        logger.warn('Impossible de sauvegarder les métriques:', e);
       }
     }
   }
@@ -241,7 +242,7 @@ class PerformanceMonitor {
           };
         }
       } catch (e) {
-        console.warn('Impossible de charger les métriques:', e);
+        logger.warn('Impossible de charger les métriques:', e);
       }
     }
   }
@@ -251,11 +252,13 @@ class PerformanceMonitor {
    */
   logSummary() {
     const report = this.generateReport();
-    console.group('📊 Rapport de Performance');
-    console.log('Métriques Globales:', report.global);
-    console.log('Métriques par Page:', report.pages);
-    console.log('Temps de Rendu:', report.renderTimes);
-    console.groupEnd();
+    if (import.meta.env.DEV) {
+      console.group('📊 Rapport de Performance');
+      logger.log('Métriques Globales:', report.global);
+      logger.log('Métriques par Page:', report.pages);
+      logger.log('Temps de Rendu:', report.renderTimes);
+      console.groupEnd();
+    }
     return report;
   }
 }

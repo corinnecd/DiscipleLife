@@ -15,7 +15,7 @@ export function StatsComparatives({ statsComparatives, loadingStatsComparatives,
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {statsComparatives.moyenneAutresFamilles !== null ? (
+        {statsComparatives && statsComparatives.moyenneAutresFamilles != null ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center p-4 bg-purple-50 rounded-lg">
               <div className="text-2xl font-bold text-purple-600">

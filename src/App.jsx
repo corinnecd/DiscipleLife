@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { RoleProvider, useRole } from '@/context/RoleContext';
@@ -11,68 +11,71 @@ import UpdatePassword from './pages/UpdatePassword';
 import ForgotPassword from './pages/ForgotPassword';
 import { useToast } from '@/components/ui/use-toast';
 
-// Public Pages
+// Public Pages (chargées immédiatement)
 import HomePage from './pages/HomePage';
-import SignupMentor from './pages/SignupMentor';
 import SignupDisciple from './pages/SignupDisciple';
-import SignupSuperviseur from './pages/SignupSuperviseur';
-import SignupPasteur from './pages/SignupPasteur';
-
-// Dashboard imports
-import MentorDashboard from './pages/dashboards/MentorDashboard';
-import DiscipleDashboard from './pages/dashboards/DiscipleDashboard';
-import AdminDashboard from './pages/dashboards/AdminDashboard';
-import SuperviseurDashboard from './pages/dashboards/SuperviseurDashboard';
 import DashboardHome from './pages/DashboardHome';
 
-// Feature Pages
+// Pages critiques (chargées immédiatement)
+import DiscipleDashboard from './pages/dashboards/DiscipleDashboard';
+import Profile from './pages/Profile';
+import Settings from './pages/Settings';
+import Menu from './pages/Menu';
+import HelpFAQ from './pages/HelpFAQ';
 import Circles from './pages/Circles';
 import Disciples from './pages/Disciples';
 import DiscipleDetail from './pages/DiscipleDetail';
 import PrayerList from './pages/PrayerList';
-import SendReport from './pages/SendReport';
-import Statistics from './pages/Statistics'; // Import Statistics Page
-import Evangelization from './pages/Evangelization';
-import Engagement from './pages/Engagement';
-import Transformation from './pages/Transformation';
-import ParcoursDetail from './pages/ParcoursDetail';
-import Ebooks from './pages/Ebooks';
-import TeachingVideos from './pages/TeachingVideos';
-import TestimonialVideos from './pages/TestimonialVideos';
-import WordMeditation from './pages/WordMeditation';
-import BooksToRead from './pages/BooksToRead';
-import BookReader from './pages/BookReader';
-import Profile from './pages/Profile';
-import Settings from './pages/Settings';
-import Menu from './pages/Menu';
-import ImpactX from './pages/ImpactX';
-import ImpactXVideo from './pages/ImpactXVideo';
-import SearchPage from './pages/SearchPage';
-import HelpFAQ from './pages/HelpFAQ';
-import FeedbackForm from './pages/FeedbackForm';
-import NotificationCenter from './pages/NotificationCenter';
-import MeetingScheduler from './pages/MeetingScheduler';
-import PrayerReminder from './pages/PrayerReminder';
-import MySummaries from './pages/MySummaries';
-import AttendanceTracking from './pages/AttendanceTracking';
-import FamillesDisciples from './pages/FamillesDisciples';
-import GenealogicalTree from './pages/GenealogicalTree';
 
-// New Feature Pages
-import AppointmentsList from './pages/AppointmentsList';
-import PrayerSessionsList from './pages/PrayerSessionsList';
-import HistoryLog from './pages/HistoryLog';
-
-// Admin imports
-import AdminReportsView from './pages/AdminReportsView';
-import AdminTestimonyModeration from './pages/AdminTestimonyModeration';
-import AdminAccessCodeManager from './pages/AdminAccessCodeManager';
-import AdminActivityLog from './pages/AdminActivityLog';
-import AdminFeedback from './pages/AdminFeedback';
-import PerformanceDashboard from './components/PerformanceDashboard';
+// Lazy loading - pages lourdes chargées à la demande
+const MentorDashboard = lazy(() => import('./pages/dashboards/MentorDashboard'));
+const AdminDashboard = lazy(() => import('./pages/dashboards/AdminDashboard'));
+const SuperviseurDashboard = lazy(() => import('./pages/dashboards/SuperviseurDashboard'));
+const SendReport = lazy(() => import('./pages/SendReport'));
+const Statistics = lazy(() => import('./pages/Statistics'));
+const Evangelization = lazy(() => import('./pages/Evangelization'));
+const Engagement = lazy(() => import('./pages/Engagement'));
+const Transformation = lazy(() => import('./pages/Transformation'));
+const ParcoursDetail = lazy(() => import('./pages/ParcoursDetail'));
+const Ebooks = lazy(() => import('./pages/Ebooks'));
+const TeachingVideos = lazy(() => import('./pages/TeachingVideos'));
+const TestimonialVideos = lazy(() => import('./pages/TestimonialVideos'));
+const WordMeditation = lazy(() => import('./pages/WordMeditation'));
+const BooksToRead = lazy(() => import('./pages/BooksToRead'));
+const BookReader = lazy(() => import('./pages/BookReader'));
+const ImpactX = lazy(() => import('./pages/ImpactX'));
+const ImpactXVideo = lazy(() => import('./pages/ImpactXVideo'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
+const FeedbackForm = lazy(() => import('./pages/FeedbackForm'));
+const NotificationCenter = lazy(() => import('./pages/NotificationCenter'));
+const MeetingScheduler = lazy(() => import('./pages/MeetingScheduler'));
+const PrayerReminder = lazy(() => import('./pages/PrayerReminder'));
+const MySummaries = lazy(() => import('./pages/MySummaries'));
+const AttendanceTracking = lazy(() => import('./pages/AttendanceTracking'));
+const FamillesDisciples = lazy(() => import('./pages/FamillesDisciples'));
+const GenealogicalTree = lazy(() => import('./pages/GenealogicalTree'));
+const AppointmentsList = lazy(() => import('./pages/AppointmentsList'));
+const PrayerSessionsList = lazy(() => import('./pages/PrayerSessionsList'));
+const HistoryLog = lazy(() => import('./pages/HistoryLog'));
+const AdminReportsView = lazy(() => import('./pages/AdminReportsView'));
+const AdminTestimonyModeration = lazy(() => import('./pages/AdminTestimonyModeration'));
+const AdminAccessCodeManager = lazy(() => import('./pages/AdminAccessCodeManager'));
+const AdminActivityLog = lazy(() => import('./pages/AdminActivityLog'));
+const AdminFeedback = lazy(() => import('./pages/AdminFeedback'));
+const PerformanceDashboard = lazy(() => import('./components/PerformanceDashboard'));
 
 import { Helmet } from 'react-helmet';
 import { Toaster } from "@/components/ui/toaster";
+
+// Fallback pendant le chargement lazy
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-[60vh] bg-gray-50">
+    <div className="flex flex-col items-center gap-3 text-gray-500">
+      <div className="w-10 h-10 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+      <span className="text-sm">Chargement...</span>
+    </div>
+  </div>
+);
 
 // Composant pour protéger l'accès aux dashboards
 const ProtectedDashboard = ({ allowedRoles, children, dashboardName }) => {
@@ -270,7 +273,9 @@ function App() {
                 <meta name="description" content="Plateforme de formation de disciples." />
                 <meta name="theme-color" content="#0f0518" />
             </Helmet>
-            <AppRoutes />
+            <Suspense fallback={<PageLoader />}>
+              <AppRoutes />
+            </Suspense>
             <Toaster />
           </ThemeProvider>
         </RoleProvider>

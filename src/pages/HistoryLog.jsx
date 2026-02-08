@@ -58,7 +58,7 @@ const HistoryLog = () => {
   };
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto space-y-6">
+    <div className="w-full max-w-screen-2xl mx-auto p-4 md:p-8 space-y-6">
        <div className="flex items-center gap-4">
            <Button variant="ghost" onClick={() => navigate(-1)} className="text-gray-400 hover:text-white">Retour</Button>
            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -70,8 +70,14 @@ const HistoryLog = () => {
            {loading ? (
                <div className="text-center text-gray-500">Chargement...</div>
            ) : logs.length === 0 ? (
-               <div className="text-center py-10 text-gray-500 border border-dashed border-white/10 rounded-xl">
-                   Aucun historique disponible.
+               <div className="text-center py-16 border border-dashed border-white/10 rounded-xl bg-white/5">
+                   <div className="flex justify-center mb-4">
+                     <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
+                       <History className="w-8 h-8 text-gray-400" />
+                     </div>
+                   </div>
+                   <h3 className="text-lg font-medium text-white mb-1">Aucun historique disponible</h3>
+                   <p className="text-gray-400 text-sm">Les modifications de RDV et de prières apparaîtront ici.</p>
                </div>
            ) : (
                logs.map(log => (

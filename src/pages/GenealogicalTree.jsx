@@ -33,15 +33,9 @@ import { Helmet } from 'react-helmet';
 import { exportElementToPDF } from '@/lib/ExportUtils';
 import { useToast } from '@/components/ui/use-toast';
 
-const TREE_MAX_DEPTH = 20; // Évite stack overflow si cycle ou arbre très profond
-
 // --- Recursive Tree Node for Desktop (onNodeClick = sélection au clic pour Ascendants/Descendants) ---
-const TreeNode = ({ node, level = 0, onNodeClick, selectedNodeId, visitedIds = new Set() }) => {
-  if (!node || level >= TREE_MAX_DEPTH) return null;
-  const seen = level === 0 ? new Set() : new Set(visitedIds);
-  if (seen.has(node.id)) return null;
-  seen.add(node.id);
-  const hasChildren = node.children && node.children.length > 0 && level < TREE_MAX_DEPTH - 1;
+const TreeNode = ({ node, level = 0, onNodeClick, selectedNodeId }) => {
+  const hasChildren = node.children && node.children.length > 0;
   const avatarColor = getAvatarColor(node.name);
   const isSelected = selectedNodeId && node?.id === selectedNodeId;
 
@@ -106,7 +100,7 @@ const TreeNode = ({ node, level = 0, onNodeClick, selectedNodeId, visitedIds = n
                      `}
                    ></div>
 
-                  <TreeNode node={child} level={level + 1} onNodeClick={onNodeClick} selectedNodeId={selectedNodeId} visitedIds={new Set(seen)} />
+                  <TreeNode node={child} level={level + 1} onNodeClick={onNodeClick} selectedNodeId={selectedNodeId} />
                </div>
              ))}
           </div>
@@ -129,13 +123,13 @@ const DesktopTreeView = ({ data, onNodeClick, selectedNodeId }) => {
     <div className="relative w-full h-[calc(100vh-140px)] overflow-hidden bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
       {/* Controls */}
       <div className="absolute top-4 right-4 z-50 flex flex-col gap-2 bg-white p-1 rounded-lg shadow-md border border-slate-100">
-        <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-8 w-8">
+        <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-8 w-8" aria-label="Zoom avant">
           <ZoomIn size={18} />
         </Button>
-        <Button variant="ghost" size="icon" onClick={handleReset} className="h-8 w-8">
+        <Button variant="ghost" size="icon" onClick={handleReset} className="h-8 w-8" aria-label="Réinitialiser la vue">
           <Maximize size={18} />
         </Button>
-        <Button variant="ghost" size="icon" onClick={handleZoomOut} className="h-8 w-8">
+        <Button variant="ghost" size="icon" onClick={handleZoomOut} className="h-8 w-8" aria-label="Zoom arrière">
           <ZoomOut size={18} />
         </Button>
       </div>
@@ -306,63 +300,56 @@ function buildTreeFromArbreRows(rows) {
     const node = byId[r.id];
     if (!node) return;
     if (r.parent_id == null) root = node;
-    else if (r.parent_id !== r.id && byId[r.parent_id]) byId[r.parent_id].children.push(node);
+    else if (byId[r.parent_id]) byId[r.parent_id].children.push(node);
   });
   return root;
 }
 
-// --- Flatten tree to list (root first, then descendants depth-first). Protège contre les cycles. ---
+// --- Flatten tree to list (root first, then descendants depth-first) ---
 function flattenTree(node) {
   if (!node) return [];
   const out = [];
-  const visited = new Set();
-  function walk(n, depth) {
-    if (!n || depth > TREE_MAX_DEPTH || visited.has(n.id)) return;
-    visited.add(n.id);
+  function walk(n) {
     out.push(n);
-    (n.children || []).forEach((c) => walk(c, depth + 1));
+    (n.children || []).forEach(walk);
   }
-  walk(node, 0);
+  walk(node);
   return out;
 }
 
-// --- Build map id -> node from tree (for ancestors). Protège contre les cycles. ---
+// --- Build map id -> node from tree (for ancestors) ---
 function treeToById(root) {
   const byId = {};
-  const visited = new Set();
-  function walk(n, depth) {
-    if (!n || depth > TREE_MAX_DEPTH || visited.has(n.id)) return;
-    visited.add(n.id);
+  function walk(n) {
+    if (!n) return;
     byId[n.id] = n;
-    (n.children || []).forEach((c) => walk(c, depth + 1));
+    (n.children || []).forEach(walk);
   }
-  walk(root, 0);
+  walk(root);
   return byId;
 }
 
-// --- Ancestors of node (from node up to root). Limite pour éviter boucle si cycle. ---
+// --- Ancestors of node (from node up to root) ---
 function getAncestors(node, byId) {
   const list = [];
   let cur = node;
-  let steps = 0;
-  while (cur?.parent_id && byId[cur.parent_id] && steps < TREE_MAX_DEPTH) {
+  while (cur?.parent_id && byId[cur.parent_id]) {
     cur = byId[cur.parent_id];
     list.push(cur);
-    steps += 1;
   }
   return list.reverse();
 }
 
-// --- Extract subtree with given node as root (limite profondeur pour éviter stack overflow) ---
-function subtreeAsRoot(node, depth = 0) {
-  if (!node || depth > TREE_MAX_DEPTH) return null;
+// --- Extract subtree with given node as root ---
+function subtreeAsRoot(node) {
+  if (!node) return null;
   return {
     id: node.id,
     name: node.name,
     role: node.role,
     nb_disciples: node.nb_disciples,
     avatar_url: node.avatar_url,
-    children: (node.children || []).map((c) => subtreeAsRoot(c, depth + 1)).filter(Boolean),
+    children: (node.children || []).map(subtreeAsRoot),
   };
 }
 
@@ -530,20 +517,19 @@ const GenealogicalTree = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Fetch Tree Data : par famille (selectedFamilleId) ou DR mode (?pasteur= ou pasteur connecté sans filtre).
+  // Fetch Tree Data : par famille (selectedFamilleId) ou DR mode (?pasteur=). Pas de "Ma lignée".
   useEffect(() => {
     const fetchTree = async () => {
       const hasPasteurUrl = urlPasteurId && urlPasteurId.length > 0;
-      const pasteurFullTreeId = hasPasteurUrl ? urlPasteurId : (userProfile?.role === 'pasteur' && user?.id && !urlFamilyId ? user.id : null);
-      if (!selectedFamilleId && !pasteurFullTreeId) return;
+      if (!selectedFamilleId && !hasPasteurUrl) return;
       setLoading(true);
       setTreeData(null);
 
       try {
-        // --- Arbre complet du pasteur (URL ?pasteur= ou pasteur connecté sans ?family=) : tous les superviseurs ---
-        if (pasteurFullTreeId) {
+        // --- Mode DR (lien dashboard pasteur) : arbre de toutes les familles du pasteur ---
+        if (hasPasteurUrl) {
           const { data: arbreRows, error: rpcError } = await supabase.rpc('get_arbre_4_niveaux', {
-            p_pasteur_id: pasteurFullTreeId,
+            p_pasteur_id: urlPasteurId,
           });
           if (rpcError) throw rpcError;
           const root = buildTreeFromArbreRows(arbreRows || []);
@@ -621,7 +607,7 @@ const GenealogicalTree = () => {
     };
 
     fetchTree();
-  }, [selectedFamilleId, familles, urlPasteurId, urlFamilyId, userProfile?.role, user?.id]);
+  }, [selectedFamilleId, familles, urlPasteurId]);
 
   return (
     <>
@@ -629,7 +615,7 @@ const GenealogicalTree = () => {
         <title>Arbre Généalogique | DiscipleLife</title>
       </Helmet>
 
-      <div className="w-full max-w-[1800px] mx-auto h-full flex flex-col space-y-4">
+      <div className="w-full h-full flex flex-col space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-black dark:text-slate-900 flex items-center gap-2">

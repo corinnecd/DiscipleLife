@@ -15,15 +15,15 @@ const MenuItem = ({ icon: Icon, label, path, color }) => {
   return (
     <div 
       onClick={() => navigate(path)}
-      className="flex items-center justify-between p-4 bg-[#1a0b2e] border border-white/5 rounded-xl cursor-pointer hover:bg-white/5 transition-colors group"
+      className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-colors group shadow-sm"
     >
       <div className="flex items-center gap-4">
         <div className={`w-10 h-10 rounded-full ${color} flex items-center justify-center text-white`}>
            <Icon size={20} />
         </div>
-        <span className="text-white font-medium text-lg">{label}</span>
+        <span className="text-gray-900 font-medium text-lg">{label}</span>
       </div>
-      <ChevronRight className="text-gray-600 group-hover:text-white transition-colors" />
+      <ChevronRight className="text-gray-400 group-hover:text-gray-600 transition-colors" />
     </div>
   );
 };
@@ -31,7 +31,7 @@ const MenuItem = ({ icon: Icon, label, path, color }) => {
 const Menu = () => {
   return (
     <div className="max-w-md mx-auto space-y-6 pb-20 pt-4">
-      <h1 className="text-3xl font-bold text-white px-2">Menu</h1>
+      <h1 className="text-3xl font-bold text-gray-900 px-2">Menu</h1>
       
       <div className="space-y-3">
         <MenuItem 
@@ -61,14 +61,14 @@ const Menu = () => {
         <MenuItem 
             icon={HelpCircle} 
             label="FAQ" 
-            path="/faq" 
+            path="/help" 
             color="bg-orange-500" 
         />
       </div>
 
       <div className="text-center pt-8">
-          <p className="text-gray-600 text-xs">Version 1.0.2</p>
-          <p className="text-gray-700 text-[10px] mt-1">© 2024 DiscipleLife Inc.</p>
+          <p className="text-gray-500 text-xs">Version 1.0.2</p>
+          <p className="text-gray-600 text-[10px] mt-1">© 2024 DiscipleLife Inc.</p>
       </div>
     </div>
   );

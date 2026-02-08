@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
 import { 
   Home, 
@@ -81,24 +81,46 @@ const Layout = () => {
     }
   };
 
-  // Sidebar items avec couleurs d'icônes
-  const sidebarItems = [
-    { label: 'Accueil', path: '/home', icon: Home, iconColor: 'text-yellow-500' },
-    { label: 'Tableau de bord', path: '/dashboard', icon: LayoutDashboard, iconColor: 'text-blue-400' },
-    { label: 'Suivi de Présence', path: '/attendance', icon: CalendarCheck, iconColor: 'text-blue-500' },
-    { label: 'Familles de Disciples', path: '/familles', icon: Building2, iconColor: 'text-indigo-500' },
-    { label: 'Arbre généalogique', path: '/arbre-genealogique', icon: GitBranch, iconColor: 'text-amber-600' },
-    { label: 'Évangélisation', path: '/evangelization', icon: UserPlus, iconColor: 'text-teal-500' },
-    { label: 'Engagement', path: '/engagement', icon: Award, iconColor: 'text-purple-500' },
-    { label: 'Transformation', path: '/transformation', icon: Heart, iconColor: 'text-pink-500' },
-    { label: 'Mes Disciples', path: '/disciples', icon: User, iconColor: 'text-green-500' },
-    { label: 'Cercles', path: '/circles', icon: Target, iconColor: 'text-pink-500' },
-    { label: 'Requêtes de Prières', path: '/prayer-requests', icon: Heart, iconColor: 'text-pink-500' },
-    { label: 'Statistiques', path: '/statistics', icon: BarChart2, iconColor: 'text-purple-500' },
-    { label: 'Envoyer Rapport', path: '/send-report', icon: Send, iconColor: 'text-teal-500' },
-    { label: 'E-Books', path: '/ebooks', icon: BookOpen, iconColor: 'text-orange-500' },
-    { label: 'Vidéos', path: '/teaching-videos', icon: PlayCircle, iconColor: 'text-blue-500' },
+  // Sidebar items avec couleurs d'icônes et regroupements
+  // roles: tableau des rôles autorisés ; si absent = visible par tous
+  // group: catégorie pour regrouper les items
+  const allSidebarItems = [
+    { label: 'Accueil', path: '/home', icon: Home, iconColor: 'text-yellow-500', group: 'general' },
+    { label: 'Tableau de bord', path: '/dashboard', icon: LayoutDashboard, iconColor: 'text-blue-400', group: 'general' },
+    { label: 'Suivi de Présence', path: '/attendance', icon: CalendarCheck, iconColor: 'text-blue-500', group: 'community' },
+    { label: 'Familles de Disciples', path: '/familles', icon: Building2, iconColor: 'text-indigo-500', group: 'community', roles: ['superviseur', 'pasteur', 'admin', 'super_admin'] },
+    { label: 'Arbre généalogique', path: '/arbre-genealogique', icon: GitBranch, iconColor: 'text-amber-600', group: 'community', roles: ['superviseur', 'pasteur', 'admin', 'super_admin'] },
+    { label: 'Mes Disciples', path: '/disciples', icon: User, iconColor: 'text-green-500', group: 'community', roles: ['mentor', 'superviseur', 'pasteur', 'admin', 'super_admin'] },
+    { label: 'Cercles', path: '/circles', icon: Target, iconColor: 'text-pink-500', group: 'community' },
+    { label: 'Requêtes de Prières', path: '/prayer-requests', icon: Heart, iconColor: 'text-pink-500', group: 'community' },
+    { label: 'Évangélisation', path: '/evangelization', icon: UserPlus, iconColor: 'text-teal-500', group: 'formation' },
+    { label: 'Engagement', path: '/engagement', icon: Award, iconColor: 'text-purple-500', group: 'formation' },
+    { label: 'Transformation', path: '/transformation', icon: Heart, iconColor: 'text-pink-500', group: 'formation' },
+    { label: 'E-Books', path: '/ebooks', icon: BookOpen, iconColor: 'text-orange-500', group: 'formation' },
+    { label: 'Vidéos', path: '/teaching-videos', icon: PlayCircle, iconColor: 'text-blue-500', group: 'formation' },
+    { label: 'Statistiques', path: '/statistics', icon: BarChart2, iconColor: 'text-purple-500', group: 'reports', roles: ['mentor', 'superviseur', 'pasteur', 'admin', 'super_admin'] },
+    { label: 'Envoyer Rapport', path: '/send-report', icon: Send, iconColor: 'text-teal-500', group: 'reports', roles: ['mentor', 'superviseur', 'pasteur', 'admin', 'super_admin'] },
   ];
+
+  // Filtrer selon le rôle
+  const effectiveRole = role || 'disciple';
+  const sidebarItems = allSidebarItems.filter(
+    (item) => !item.roles || item.roles.includes(effectiveRole)
+  );
+
+  // Regrouper par catégorie (afficher seulement les groupes qui ont des items)
+  const groupLabels = {
+    general: 'Général',
+    community: 'Communauté',
+    formation: 'Formation',
+    reports: 'Rapports'
+  };
+  const groupsOrder = ['general', 'community', 'formation', 'reports'];
+  const groupedItems = groupsOrder.reduce((acc, groupKey) => {
+    const items = sidebarItems.filter((i) => i.group === groupKey);
+    if (items.length > 0) acc.push({ key: groupKey, label: groupLabels[groupKey], items });
+    return acc;
+  }, []);
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-gray-50 border-r border-gray-200">
@@ -112,35 +134,44 @@ const Layout = () => {
         </span>
       </div>
 
-      {/* Navigation Items */}
-      <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-        {sidebarItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn(
-                "flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 group",
-                isActive 
-                  ? "bg-white text-gray-900 font-medium shadow-sm border border-gray-200" 
-                  : "text-gray-700 hover:text-gray-900 hover:bg-white"
-              )}
-            >
-              <item.icon 
-                size={20} 
-                className={cn(
-                  "transition-colors",
-                  isActive ? item.iconColor : item.iconColor
-                )} 
-              />
-              <span>{item.label}</span>
-              {isActive && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-teal-400" />
-              )}
-            </Link>
-          );
-        })}
+      {/* Navigation Items - regroupés par catégorie */}
+      <nav className="flex-1 px-4 py-4 space-y-6 overflow-y-auto">
+        {groupedItems.map((group) => (
+          <div key={group.key} className="space-y-1">
+            <p className="px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              {group.label}
+            </p>
+            <div className="space-y-1">
+              {group.items.map((item) => {
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 group",
+                      isActive 
+                        ? "bg-white text-gray-900 font-medium shadow-sm border border-gray-200" 
+                        : "text-gray-700 hover:text-gray-900 hover:bg-white"
+                    )}
+                  >
+                    <item.icon 
+                      size={20} 
+                      className={cn(
+                        "transition-colors shrink-0",
+                        isActive ? item.iconColor : item.iconColor
+                      )} 
+                    />
+                    <span>{item.label}</span>
+                    {isActive && (
+                      <div className="ml-auto w-1.5 h-1.5 rounded-full bg-teal-400" />
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* User & Logout Area */}
@@ -191,7 +222,7 @@ const Layout = () => {
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-lg border-b border-gray-200 px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
-           <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(true)}>
+           <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(true)} aria-label="Ouvrir le menu">
              <Menu className="text-gray-700" />
            </Button>
            <span className="font-bold text-gray-800">DiscipleLife</span>
@@ -212,7 +243,7 @@ const Layout = () => {
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
           <div className="absolute left-0 top-0 bottom-0 w-[80%] max-w-sm bg-gray-50 border-r border-gray-200 shadow-2xl">
             <div className="p-4 flex justify-end">
-               <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(false)}>
+               <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(false)} aria-label="Fermer le menu">
                  <X className="text-gray-600" />
                </Button>
             </div>
@@ -226,7 +257,7 @@ const Layout = () => {
       {/* Main Content - scrollable pour éviter que le bas du dashboard soit tronqué */}
       <main className="flex-1 min-w-0 min-h-0 flex flex-col pt-20 lg:pt-0 bg-gray-50 dark:bg-gray-50">
         {/* Top Header (Desktop only) */}
-        <header className="hidden lg:flex shrink-0 h-20 items-center justify-between px-8 border-b border-gray-200 bg-white/80 backdrop-blur sticky top-0 z-40">
+        <header className="hidden lg:flex shrink-0 h-20 items-center justify-between px-4 lg:px-6 border-b border-gray-200 bg-white/80 backdrop-blur sticky top-0 z-40">
            <div className="flex items-center text-gray-500 text-sm">
               <span className="opacity-60">Application</span>
               <span className="mx-2 text-gray-300">/</span>
@@ -241,11 +272,12 @@ const Layout = () => {
                 size="icon" 
                 className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                 onClick={() => setShowGlobalSearch(!showGlobalSearch)}
+                aria-label="Recherche globale"
               >
                  <Search size={20} />
               </Button>
               <NotificationBell />
-              <Button variant="ghost" size="icon" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100" onClick={() => navigate('/settings')}>
+              <Button variant="ghost" size="icon" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100" onClick={() => navigate('/settings')} aria-label="Paramètres">
                  <Settings size={20} />
               </Button>
            </div>
@@ -260,8 +292,17 @@ const Layout = () => {
           </div>
         )}
 
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-8 md:px-12 w-full max-w-7xl mx-auto animate-in fade-in duration-500 bg-gray-50 dark:bg-gray-50 py-4 md:py-6 pb-24">
-          <Outlet />
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden w-full px-3 md:px-4 lg:px-6 py-4 md:py-5 animate-in fade-in duration-500 bg-gray-50 dark:bg-gray-50 pb-24">
+          <Suspense fallback={
+            <div className="flex items-center justify-center min-h-[40vh]">
+              <div className="flex flex-col items-center gap-3 text-gray-500">
+                <div className="w-10 h-10 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm">Chargement...</span>
+              </div>
+            </div>
+          }>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
     </div>

@@ -132,16 +132,16 @@ const ImpactXVideo = () => {
       
       {/* Header */}
       <div className="p-4 border-b border-slate-800 bg-slate-950 flex items-center gap-4 sticky top-0 z-50">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/impact-x')} className="text-slate-400 hover:text-white">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/impact-x')} className="text-slate-400 hover:text-white" aria-label="Retour à Impact X">
           <ArrowLeft className="h-6 w-6" />
         </Button>
         <h1 className="text-lg font-semibold truncate flex-1">{video.title}</h1>
-        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white">
+        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white" aria-label="Partager">
           <Share2 className="h-5 w-5" />
         </Button>
       </div>
 
-      <div className="w-full max-w-[1800px] mx-auto flex-1 flex flex-col gap-6">
+      <div className="w-full max-w-screen-2xl mx-auto flex-1 p-4 md:p-8 flex flex-col gap-6">
          {/* Video Player Container */}
          <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-800">
             {video.video_url.includes('youtube') || video.video_url.includes('vimeo') ? (

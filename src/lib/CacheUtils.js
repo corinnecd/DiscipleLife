@@ -2,6 +2,7 @@
  * Cache utilities for frequently accessed data
  * Uses localStorage with TTL (Time To Live) for automatic expiration
  */
+import { logger } from './logger';
 
 const CACHE_PREFIX = 'disciple_life_cache_';
 const DEFAULT_TTL = 5 * 60 * 1000; // 5 minutes default TTL
@@ -30,7 +31,7 @@ export const setCache = (key, data, ttl = DEFAULT_TTL) => {
     localStorage.setItem(cacheKey, JSON.stringify(cacheData));
     return true;
   } catch (error) {
-    console.warn('Cache set error:', error);
+    logger.warn('Cache set error:', error);
     // If localStorage is full, try to clear old entries
     if (error.name === 'QuotaExceededError') {
       clearExpiredCache();
@@ -85,7 +86,7 @@ export const getCache = (key) => {
       return data;
     }
   } catch (error) {
-    console.warn('Cache get error:', error);
+    logger.warn('Cache get error:', error);
     return null;
   }
 };
@@ -100,7 +101,7 @@ export const clearCache = (key) => {
     localStorage.removeItem(cacheKey);
     return true;
   } catch (error) {
-    console.warn('Cache clear error:', error);
+    logger.warn('Cache clear error:', error);
     return false;
   }
 };
@@ -134,12 +135,12 @@ export const clearExpiredCache = () => {
     });
 
     if (clearedCount > 0) {
-      console.log(`Cleared ${clearedCount} expired cache entries`);
+      logger.log(`Cleared ${clearedCount} expired cache entries`);
     }
 
     return clearedCount;
   } catch (error) {
-    console.warn('Clear expired cache error:', error);
+    logger.warn('Clear expired cache error:', error);
     return 0;
   }
 };
@@ -159,10 +160,10 @@ export const clearAllCache = () => {
       }
     });
 
-    console.log(`Cleared ${clearedCount} cache entries`);
+    logger.log(`Cleared ${clearedCount} cache entries`);
     return clearedCount;
   } catch (error) {
-    console.warn('Clear all cache error:', error);
+    logger.warn('Clear all cache error:', error);
     return 0;
   }
 };
@@ -207,7 +208,7 @@ export const getCacheStats = () => {
       totalSize: `${(totalSize / 1024).toFixed(2)} KB`
     };
   } catch (error) {
-    console.warn('Cache stats error:', error);
+    logger.warn('Cache stats error:', error);
     return {
       totalEntries: 0,
       validEntries: 0,
@@ -230,7 +231,7 @@ export const getOrSetCache = async (key, asyncFn, ttl = DEFAULT_TTL) => {
   // Try to get from cache first
   const cached = getCache(key);
   if (cached !== null) {
-    console.log(`Cache hit: ${key}`);
+    logger.log(`Cache hit: ${key}`);
     // Enregistrer un cache hit
     if (typeof window !== 'undefined' && window.performanceMonitor) {
       window.performanceMonitor.recordApiCall(key, 'GET', null, true);
@@ -239,7 +240,7 @@ export const getOrSetCache = async (key, asyncFn, ttl = DEFAULT_TTL) => {
   }
 
   // Cache miss, execute function and cache result
-  console.log(`Cache miss: ${key}`);
+  logger.log(`Cache miss: ${key}`);
   const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
   try {
     const data = await asyncFn();

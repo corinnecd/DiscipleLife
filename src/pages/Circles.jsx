@@ -354,7 +354,7 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
         className={`fixed inset-0 z-[40] flex flex-col ${category.color} overflow-y-auto overflow-x-hidden`}
       >
         <div className="relative p-6 pt-8 flex justify-end">
-            <Button variant="ghost" size="icon" onClick={onClose} className="text-white hover:bg-white/20">
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-white hover:bg-white/20" aria-label="Fermer">
                 <X size={32} />
             </Button>
         </div>
@@ -612,8 +612,18 @@ const CircleModal = ({ category, onClose, onUpdate }) => {
                     ))
                   )}
                   {!loading && people.length === 0 && !isAdding && (
-                      <div className="text-center py-10 opacity-60 col-span-2">
-                          <p className="text-white text-lg">Aucune personne dans ce cercle pour le moment.</p>
+                      <div className="text-center py-12 px-6 col-span-2 bg-white/5 rounded-xl border border-white/10">
+                          <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
+                            <User className="w-7 h-7 text-white/80" />
+                          </div>
+                          <p className="text-white text-lg font-medium mb-2">Aucune personne dans ce cercle</p>
+                          <p className="text-white/70 text-sm mb-4">Ajoutez votre premier disciple pour commencer à le suivre.</p>
+                          <Button
+                            onClick={() => setIsAdding(true)}
+                            className="bg-white text-slate-900 hover:bg-white/90 gap-2"
+                          >
+                            <Plus size={18} /> Ajouter une personne
+                          </Button>
                       </div>
                   )}
               </div>

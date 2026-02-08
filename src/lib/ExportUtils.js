@@ -1,4 +1,4 @@
-
+import { logger } from './logger';
 import { saveAs } from 'file-saver';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -9,7 +9,7 @@ export const ExportUtils = {
   exportToExcel: (data, filename, options = {}) => {
     try {
       if (!data || !data.length) {
-        console.warn("No data to export");
+        logger.warn("No data to export");
         throw new Error("Aucune donnée à exporter");
       }
 
@@ -319,7 +319,7 @@ export const ExportUtils = {
             pdf.setFont('helvetica', 'bold');
             pdf.text('DL', margin, 12);
           } catch (e) {
-            console.warn('Logo not loaded:', e);
+            logger.warn('Logo not loaded:', e);
           }
         }
         

@@ -145,8 +145,8 @@ const AdminResourceManager = () => {
                            <h3 className="text-white font-medium truncate">{res.title}</h3>
                            <p className="text-xs text-gray-500 mb-2 truncate">{res.category}</p>
                            <div className="flex gap-2">
-                               <Button size="icon" variant="ghost" className="h-6 w-6 text-gray-400 hover:text-white"><Edit size={14} /></Button>
-                               <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400 hover:text-red-300 hover:bg-red-500/10"><Trash2 size={14} /></Button>
+                               <Button size="icon" variant="ghost" className="h-6 w-6 text-gray-400 hover:text-white" aria-label="Modifier"><Edit size={14} /></Button>
+                               <Button size="icon" variant="ghost" className="h-6 w-6 text-red-400 hover:text-red-300 hover:bg-red-500/10" aria-label="Supprimer"><Trash2 size={14} /></Button>
                            </div>
                        </div>
                    </CardContent>

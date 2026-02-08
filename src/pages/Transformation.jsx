@@ -27,6 +27,7 @@ import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import jsPDF from 'jspdf';
+import { logger } from '@/lib/logger';
 
 const Transformation = () => {
   const { user } = useAuth();
@@ -187,13 +188,13 @@ const Transformation = () => {
   // Rafraîchir les données quand on revient sur la page
   useEffect(() => {
     if (user && location.pathname === '/transformation') {
-      console.log('🔄 Rafraîchissement des données (retour sur la page)', location.search);
+      logger.log('🔄 Rafraîchissement des données (retour sur la page)', location.search);
       
       // Forcer un rafraîchissement complet des données
       const refreshData = async () => {
         try {
           await fetchAllData();
-          console.log('✅ Données rafraîchies avec succès');
+          logger.log('✅ Données rafraîchies avec succès');
         } catch (error) {
           handleError(error, { context: 'refreshData' }, "Erreur lors du rafraîchissement des données.");
         }
@@ -214,7 +215,7 @@ const Transformation = () => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && user && location.pathname === '/transformation') {
-        console.log('🔄 Page visible, rafraîchissement des données');
+        logger.log('🔄 Page visible, rafraîchissement des données');
         fetchAllData();
       }
     };
@@ -302,7 +303,7 @@ const Transformation = () => {
       // Réinitialiser les modules avant de charger les nouveaux
       setModules([]);
       
-      console.log('🔍 Récupération des modules pour parcours_id:', parcoursId);
+      logger.log('🔍 Récupération des modules pour parcours_id:', parcoursId);
       
       const { data, error } = await supabase
         .from('modules_parcours')
@@ -316,8 +317,8 @@ const Transformation = () => {
         throw error;
       }
       
-      console.log('✅ Modules récupérés:', data?.length || 0, 'modules pour parcours', parcoursId);
-      console.log('📋 Détails des modules:', data);
+      logger.log('✅ Modules récupérés:', data?.length || 0, 'modules pour parcours', parcoursId);
+      logger.log('📋 Détails des modules:', data);
       
       setModules(data || []);
     } catch (error) {
@@ -331,17 +332,17 @@ const Transformation = () => {
   };
 
   const handleViewParcours = async (parcours) => {
-    console.log('👆 Clic sur parcours:', parcours.nom, 'ID:', parcours.id);
+    logger.log('👆 Clic sur parcours:', parcours.nom, 'ID:', parcours.id);
     setSelectedParcours(parcours);
     await fetchModules(parcours.id);
-    console.log('✅ Ouverture de la modale, selectedParcours:', parcours);
+    logger.log('✅ Ouverture de la modale, selectedParcours:', parcours);
     setIsParcoursDialogOpen(true);
-    console.log('✅ isParcoursDialogOpen devrait être true maintenant');
+    logger.log('✅ isParcoursDialogOpen devrait être true maintenant');
   };
 
   const handleStartParcours = async (parcoursId) => {
     try {
-      console.log('🚀 Démarrage du parcours:', parcoursId);
+      logger.log('🚀 Démarrage du parcours:', parcoursId);
       
       // Vérifier si l'utilisateur est déjà inscrit
       const { data: existing, error: checkError } = await supabase
@@ -359,7 +360,7 @@ const Transformation = () => {
       if (existing) {
         // Si le parcours est déjà terminé, ne pas le réinitialiser
         if (existing.statut === 'termine') {
-          console.log('⚠️ Parcours déjà terminé, redirection vers la page de détail');
+          logger.log('⚠️ Parcours déjà terminé, redirection vers la page de détail');
           toast({
             title: 'Parcours déjà terminé',
             description: 'Ce parcours est déjà complété à 100%. Redirection vers la page de détail...',
@@ -370,7 +371,7 @@ const Transformation = () => {
         }
         
         // Mettre à jour le statut si déjà inscrit (mais pas terminé)
-        console.log('🔄 Mise à jour progression existante:', existing.id, 'statut actuel:', existing.statut);
+        logger.log('🔄 Mise à jour progression existante:', existing.id, 'statut actuel:', existing.statut);
         const { error } = await supabase
           .from('user_parcours_progression')
           .update({
@@ -383,11 +384,11 @@ const Transformation = () => {
           console.error('❌ Erreur mise à jour:', error);
           throw error;
         }
-        console.log('✅ Progression mise à jour avec succès');
+        logger.log('✅ Progression mise à jour avec succès');
       } else {
         // Créer une nouvelle inscription
         // Ne pas inclure modules_completes car cela cause une erreur "expected JSON array"
-        console.log('➕ Création nouvelle progression pour parcours:', parcoursId);
+        logger.log('➕ Création nouvelle progression pour parcours:', parcoursId);
         const { data: newProgression, error } = await supabase
           .from('user_parcours_progression')
           .insert([{
@@ -404,11 +405,11 @@ const Transformation = () => {
           console.error('❌ Erreur création progression:', error);
           throw error;
         }
-        console.log('✅ Progression créée avec succès:', newProgression);
+        logger.log('✅ Progression créée avec succès:', newProgression);
       }
 
       // Rafraîchir les données avant de naviguer
-      console.log('🔄 Rafraîchissement des données...');
+      logger.log('🔄 Rafraîchissement des données...');
       await fetchUserProgression();
       await fetchParcours();
       
@@ -460,7 +461,7 @@ const Transformation = () => {
     }
 
     try {
-      console.log('🔄 Réinitialisation de toutes les formations pour les tests...');
+      logger.log('🔄 Réinitialisation de toutes les formations pour les tests...');
       
       // 1. Récupérer toutes les progressions de l'utilisateur
       const { data: progressions, error: progError } = await supabase
@@ -474,15 +475,15 @@ const Transformation = () => {
       }
 
       if (!progressions || progressions.length === 0) {
-        console.log('ℹ️ Aucune progression trouvée');
+        logger.log('ℹ️ Aucune progression trouvée');
         return;
       }
 
       const progressionIds = progressions.map(p => p.id);
-      console.log(`📊 ${progressionIds.length} progressions trouvées`);
+      logger.log(`📊 ${progressionIds.length} progressions trouvées`);
 
       // 2. Supprimer tous les modules complétés
-      console.log('🗑️ Suppression des modules complétés...');
+      logger.log('🗑️ Suppression des modules complétés...');
       const { error: deleteModulesError } = await supabase
         .from('user_module_progression')
         .delete()
@@ -492,12 +493,12 @@ const Transformation = () => {
         console.error('❌ Erreur suppression modules:', deleteModulesError);
         throw deleteModulesError;
       }
-      console.log('✅ Modules complétés supprimés');
+      logger.log('✅ Modules complétés supprimés');
 
       // 3. Remettre toutes les progressions à "en_cours" avec progression 0%
       // S'assurer de remettre TOUS les statuts (termine, abandonne, etc.) à "en_cours"
-      console.log('🔄 Remise à zéro des progressions...');
-      console.log('📊 Progressions à réinitialiser:', progressions.map(p => p.id));
+      logger.log('🔄 Remise à zéro des progressions...');
+      logger.log('📊 Progressions à réinitialiser:', progressions.map(p => p.id));
       
       // Mettre à jour toutes les progressions, peu importe leur statut actuel
       const { error: updateError } = await supabase
@@ -513,7 +514,7 @@ const Transformation = () => {
         console.error('❌ Erreur mise à jour progressions:', updateError);
         throw updateError;
       }
-      console.log('✅ Progressions remises à zéro (statut: en_cours, progression: 0%)');
+      logger.log('✅ Progressions remises à zéro (statut: en_cours, progression: 0%)');
       
       // Vérifier que la mise à jour a bien fonctionné
       const { data: verifyData, error: verifyError } = await supabase
@@ -524,21 +525,21 @@ const Transformation = () => {
       if (verifyError) {
         console.error('❌ Erreur vérification:', verifyError);
       } else {
-        console.log('✅ Vérification après réinitialisation:');
+        logger.log('✅ Vérification après réinitialisation:');
         verifyData?.forEach(p => {
-          console.log(`  - Progression ${p.id}: statut=${p.statut}, progression=${p.progression_pourcentage}%`);
+          logger.log(`  - Progression ${p.id}: statut=${p.statut}, progression=${p.progression_pourcentage}%`);
         });
       }
 
       // 4. Rafraîchir toutes les données
-      console.log('🔄 Rafraîchissement des données...');
+      logger.log('🔄 Rafraîchissement des données...');
       await Promise.all([
         fetchUserProgression(),
         fetchParcours(),
         fetchStatsData()
       ]);
 
-      console.log('✅ Réinitialisation terminée avec succès !');
+      logger.log('✅ Réinitialisation terminée avec succès !');
       
     } catch (error) {
       console.error('❌ Erreur lors de la réinitialisation:', error);
@@ -604,7 +605,7 @@ const Transformation = () => {
   // ========== FONCTIONS POUR LA PROGRESSION ==========
   const fetchUserProgression = async () => {
     if (!user?.id) {
-      console.warn('⚠️ Pas d\'utilisateur connecté, impossible de récupérer les progressions');
+      logger.warn('⚠️ Pas d\'utilisateur connecté, impossible de récupérer les progressions');
       setUserProgression([]);
       setProgressionLoading(false);
       return [];
@@ -612,7 +613,7 @@ const Transformation = () => {
     
     try {
       setProgressionLoading(true);
-      console.log('🔄 Début fetchUserProgression pour user:', user.id);
+      logger.log('🔄 Début fetchUserProgression pour user:', user.id);
       
       const { data, error } = await supabase
         .from('user_parcours_progression')
@@ -647,12 +648,12 @@ const Transformation = () => {
         return [];
       }
       
-      console.log('✅ Progression récupérée:', data?.length || 0, 'parcours');
+      logger.log('✅ Progression récupérée:', data?.length || 0, 'parcours');
       
       if (!data || data.length === 0) {
-        console.log('⚠️ Aucune progression trouvée pour l\'utilisateur:', user.id);
+        logger.log('⚠️ Aucune progression trouvée pour l\'utilisateur:', user.id);
       } else {
-        console.log('📊 Toutes les progressions:', data.map(p => ({
+        logger.log('📊 Toutes les progressions:', data.map(p => ({
           id: p.id,
           parcours_id: p.parcours_id,
           parcours_nom: p.parcours_transformation?.nom || 'NOM MANQUANT',
@@ -666,9 +667,9 @@ const Transformation = () => {
         
         // Log des parcours complétés
         const completes = data.filter(p => p.statut === 'termine');
-        console.log('✅ Parcours complétés trouvés dans fetchUserProgression:', completes.length);
+        logger.log('✅ Parcours complétés trouvés dans fetchUserProgression:', completes.length);
         completes.forEach(p => {
-          console.log(`  ✓ ${p.parcours_transformation?.nom || 'Sans nom'}: ${p.progression_pourcentage}% (modules: ${p.modules_completes})`);
+          logger.log(`  ✓ ${p.parcours_transformation?.nom || 'Sans nom'}: ${p.progression_pourcentage}% (modules: ${p.modules_completes})`);
         });
       }
       
@@ -708,7 +709,7 @@ const Transformation = () => {
                 
                 // Si le statut dans la DB n'est pas "termine", corriger
                 if (progression.statut !== 'termine' || progression.progression_pourcentage !== 100) {
-                  console.log(`🔧 Correction automatique: Progression ${progression.id} - Tous les modules complétés (${completedCount}/${totalModules}), mise à jour à "termine"`);
+                  logger.log(`🔧 Correction automatique: Progression ${progression.id} - Tous les modules complétés (${completedCount}/${totalModules}), mise à jour à "termine"`);
                   
                   // Si le statut est "abandonne", on le remet d'abord à "en_cours"
                   if (progression.statut === 'abandonne') {
@@ -738,7 +739,7 @@ const Transformation = () => {
                   if (updateError) {
                     console.error(`❌ Erreur correction progression ${progression.id}:`, updateError);
                   } else {
-                    console.log(`✅ Progression ${progression.id} corrigée: statut mis à "termine"`);
+                    logger.log(`✅ Progression ${progression.id} corrigée: statut mis à "termine"`);
                     // Mettre à jour localement
                     progression.statut = 'termine';
                     progression.progression_pourcentage = 100;
@@ -778,9 +779,9 @@ const Transformation = () => {
       const progressionsActives = (data || []).filter(p => 
         p.statut === 'en_cours' || p.statut === 'inscrit'
       );
-      console.log('🎯 Progressions actives (en_cours ou inscrit):', progressionsActives.length);
+      logger.log('🎯 Progressions actives (en_cours ou inscrit):', progressionsActives.length);
       if (progressionsActives.length > 0) {
-        console.log('📋 Détails progressions actives:', progressionsActives.map(p => ({
+        logger.log('📋 Détails progressions actives:', progressionsActives.map(p => ({
           id: p.id,
           parcours_nom: p.parcours_transformation?.nom || 'NOM MANQUANT',
           statut: p.statut,
@@ -788,8 +789,8 @@ const Transformation = () => {
           date_debut: p.date_debut
         })));
       } else {
-        console.log('⚠️ Aucune progression active trouvée');
-        console.log('📋 Statuts des progressions:', data?.map(p => p.statut) || []);
+        logger.log('⚠️ Aucune progression active trouvée');
+        logger.log('📋 Statuts des progressions:', data?.map(p => p.statut) || []);
       }
       
       setUserProgression(data || []);
@@ -844,7 +845,7 @@ const Transformation = () => {
         journalData.titre = journalFormData.titre;
       }
 
-      console.log('💾 Données à enregistrer:', journalData);
+      logger.log('💾 Données à enregistrer:', journalData);
 
       if (editingJournalId) {
         const { error } = await supabase
@@ -1085,7 +1086,7 @@ const Transformation = () => {
       
       // TOUJOURS récupérer les données depuis la base de données pour avoir les données les plus récentes
       // Cela garantit que "Parcours Complétés" utilise les données les plus à jour
-      console.log('📊 Récupération des données depuis la base de données pour les statistiques');
+      logger.log('📊 Récupération des données depuis la base de données pour les statistiques');
       
       const { data, error: progError } = await supabase
         .from('user_parcours_progression')
@@ -1105,11 +1106,11 @@ const Transformation = () => {
       }
       const progressions = data || [];
       
-      console.log('📊 Progressions utilisées pour les statistiques (depuis Mes Formations):', progressions?.length || 0);
+      logger.log('📊 Progressions utilisées pour les statistiques (depuis Mes Formations):', progressions?.length || 0);
       if (progressions && progressions.length > 0) {
-        console.log('📋 Détails des progressions:');
+        logger.log('📋 Détails des progressions:');
         progressions.forEach(p => {
-          console.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut=${p.statut}, progression=${p.progression_pourcentage}%, modules=${p.modules_completes}`);
+          logger.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut=${p.statut}, progression=${p.progression_pourcentage}%, modules=${p.modules_completes}`);
         });
       }
 
@@ -1131,14 +1132,14 @@ const Transformation = () => {
         modulesCompletes = modData || [];
       }
       
-      console.log('📊 Modules complétés calculés pour progressions actives:', modulesCompletes.length, '(progressions actives:', progressionsActives.length, '/ total:', progressions?.length || 0, ')');
+      logger.log('📊 Modules complétés calculés pour progressions actives:', modulesCompletes.length, '(progressions actives:', progressionsActives.length, '/ total:', progressions?.length || 0, ')');
 
       // DÉSACTIVÉ TEMPORAIREMENT : Vérification et correction des parcours complétés
       // Cette logique cause une erreur de contrainte CHECK, donc on la désactive pour l'instant
       // Le statut sera mis à jour directement dans ParcoursDetail.jsx quand un module est complété
-      console.log('⚠️ Vérification et correction des parcours complétés DÉSACTIVÉE (pour éviter l\'erreur de contrainte CHECK)');
+      logger.log('⚠️ Vérification et correction des parcours complétés DÉSACTIVÉE (pour éviter l\'erreur de contrainte CHECK)');
       /*
-      console.log('🔍 Vérification et correction des parcours complétés...');
+      logger.log('🔍 Vérification et correction des parcours complétés...');
       for (const progression of progressions || []) {
         if (progression.statut !== 'termine') {
           // Récupérer tous les modules du parcours
@@ -1162,15 +1163,15 @@ const Transformation = () => {
           );
           const completedCount = completedModulesForProgression.length;
 
-          console.log(`🔍 Vérification parcours "${progression.parcours_transformation?.nom || progression.parcours_id}":`);
-          console.log(`  - Total modules: ${totalModules}`);
-          console.log(`  - Modules complétés: ${completedCount}`);
-          console.log(`  - Statut actuel: ${progression.statut}`);
-          console.log(`  - Progression: ${progression.progression_pourcentage}%`);
+          logger.log(`🔍 Vérification parcours "${progression.parcours_transformation?.nom || progression.parcours_id}":`);
+          logger.log(`  - Total modules: ${totalModules}`);
+          logger.log(`  - Modules complétés: ${completedCount}`);
+          logger.log(`  - Statut actuel: ${progression.statut}`);
+          logger.log(`  - Progression: ${progression.progression_pourcentage}%`);
 
           // Si tous les modules sont complétés, mettre à jour le statut
           if (completedCount === totalModules && totalModules > 0) {
-            console.log(`✅ Parcours "${progression.parcours_transformation?.nom || progression.parcours_id}" a tous ses modules complétés (${completedCount}/${totalModules}), mise à jour du statut...`);
+            logger.log(`✅ Parcours "${progression.parcours_transformation?.nom || progression.parcours_id}" a tous ses modules complétés (${completedCount}/${totalModules}), mise à jour du statut...`);
             
             // Ne pas inclure modules_completes car cela cause une erreur "expected JSON array"
             const { error: updateError } = await supabase
@@ -1185,7 +1186,7 @@ const Transformation = () => {
             if (updateError) {
               console.error(`❌ Erreur mise à jour parcours ${progression.id}:`, updateError);
             } else {
-              console.log(`✅ Statut du parcours ${progression.id} mis à jour à "termine"`);
+              logger.log(`✅ Statut du parcours ${progression.id} mis à jour à "termine"`);
               // Mettre à jour la progression locale
               progression.statut = 'termine';
               progression.progression_pourcentage = 100;
@@ -1206,9 +1207,9 @@ const Transformation = () => {
       if (evalError) throw evalError;
 
       // Calculer les statistiques
-      console.log('📊 Calcul des statistiques...');
-      console.log('📋 Toutes les progressions récupérées:', progressions?.length || 0);
-      console.log('📋 Détails de toutes les progressions:', progressions?.map(p => ({
+      logger.log('📊 Calcul des statistiques...');
+      logger.log('📋 Toutes les progressions récupérées:', progressions?.length || 0);
+      logger.log('📋 Détails de toutes les progressions:', progressions?.map(p => ({
         id: p.id,
         parcours_nom: p.parcours_transformation?.nom,
         statut: p.statut,
@@ -1218,7 +1219,7 @@ const Transformation = () => {
       
       // DEBUG: Vérifier les statuts uniques trouvés
       const statutsUniques = [...new Set(progressions?.map(p => p.statut) || [])];
-      console.log('🔍 Statuts uniques trouvés dans toutes les progressions:', statutsUniques);
+      logger.log('🔍 Statuts uniques trouvés dans toutes les progressions:', statutsUniques);
       
       // Vérifier si tous les modules sont complétés pour chaque progression active
       // Cela permet de compter les formations complétées même si le statut n'est pas encore "termine" dans la DB
@@ -1250,12 +1251,12 @@ const Transformation = () => {
             
             // Si tous les modules sont complétés, considérer le parcours comme complété
             if (completedCount === totalModules && totalModules > 0) {
-              console.log(`✅ Parcours "${progression.parcours_transformation?.nom || progression.parcours_id}" a tous ses modules complétés (${completedCount}/${totalModules}), considéré comme complété`);
+              logger.log(`✅ Parcours "${progression.parcours_transformation?.nom || progression.parcours_id}" a tous ses modules complétés (${completedCount}/${totalModules}), considéré comme complété`);
               parcoursCompletesVerifies.push(progression.id);
               
               // Corriger le statut dans la DB si nécessaire
               if (progression.statut !== 'termine' || progression.progression_pourcentage !== 100) {
-                console.log(`🔧 Correction automatique du statut pour le parcours ${progression.id}...`);
+                logger.log(`🔧 Correction automatique du statut pour le parcours ${progression.id}...`);
                 
                 // Si le statut est "abandonne", on le remet d'abord à "en_cours"
                 if (progression.statut === 'abandonne') {
@@ -1284,7 +1285,7 @@ const Transformation = () => {
                 if (updateError) {
                   console.error(`❌ Erreur correction progression ${progression.id}:`, updateError);
                 } else {
-                  console.log(`✅ Progression ${progression.id} corrigée: statut mis à "termine"`);
+                  logger.log(`✅ Progression ${progression.id} corrigée: statut mis à "termine"`);
                   // Mettre à jour localement
                   progression.statut = 'termine';
                   progression.progression_pourcentage = 100;
@@ -1301,23 +1302,23 @@ const Transformation = () => {
       const parcoursCompletes = parcoursCompletesVerifies.length;
       const parcoursEnCours = progressionsActives.filter(p => p.statut === 'en_cours' && !parcoursCompletesVerifies.includes(p.id)).length || 0;
       
-      console.log('📊 Parcours complétés (vérifiés):', parcoursCompletes);
-      console.log('📊 Parcours en cours:', parcoursEnCours);
+      logger.log('📊 Parcours complétés (vérifiés):', parcoursCompletes);
+      logger.log('📊 Parcours en cours:', parcoursEnCours);
       
       // DEBUG: Vérifier aussi les parcours avec progression 100% mais statut différent (hors abandonnés)
       const parcours100Pourcent = progressionsActives.filter(p => p.progression_pourcentage === 100 && p.statut !== 'termine' && !parcoursCompletesVerifies.includes(p.id)) || [];
       if (parcours100Pourcent.length > 0) {
-        console.warn('⚠️ ATTENTION: Parcours à 100% mais statut différent de "termine":', parcours100Pourcent.map(p => ({
+        logger.warn('⚠️ ATTENTION: Parcours à 100% mais statut différent de "termine":', parcours100Pourcent.map(p => ({
           nom: p.parcours_transformation?.nom,
           statut: p.statut,
           progression: p.progression_pourcentage
         })));
         
         // CORRECTION AUTOMATIQUE : Mettre à jour le statut des parcours à 100% qui ne sont pas marqués comme 'termine'
-        console.log('🔧 Correction automatique des parcours à 100% avec statut incorrect...');
+        logger.log('🔧 Correction automatique des parcours à 100% avec statut incorrect...');
         for (const parcours of parcours100Pourcent) {
           try {
-            console.log(`🔧 Correction du parcours "${parcours.parcours_transformation?.nom || parcours.parcours_id}"...`);
+            logger.log(`🔧 Correction du parcours "${parcours.parcours_transformation?.nom || parcours.parcours_id}"...`);
             const { error: fixError } = await supabase
               .from('user_parcours_progression')
               .update({
@@ -1330,7 +1331,7 @@ const Transformation = () => {
             if (fixError) {
               console.error(`❌ Erreur lors de la correction du parcours ${parcours.id}:`, fixError);
             } else {
-              console.log(`✅ Parcours ${parcours.id} corrigé avec succès (statut mis à 'termine')`);
+              logger.log(`✅ Parcours ${parcours.id} corrigé avec succès (statut mis à 'termine')`);
               // Mettre à jour la progression locale pour refléter le changement
               parcours.statut = 'termine';
             }
@@ -1341,39 +1342,39 @@ const Transformation = () => {
         
         // Recompter les parcours complétés après correction
         const parcoursCompletesApresCorrection = progressionsActives.filter(p => p.statut === 'termine').length || 0;
-        console.log('✅ Parcours complétés après correction:', parcoursCompletesApresCorrection);
+        logger.log('✅ Parcours complétés après correction:', parcoursCompletesApresCorrection);
       }
       
       // Afficher les détails des parcours en cours (hors abandonnés)
       const parcoursEnCoursList = progressionsActives.filter(p => p.statut === 'en_cours') || [];
-      console.log('📚 PARCOURS EN COURS (statut="en_cours"):', parcoursEnCours, 'parcours');
+      logger.log('📚 PARCOURS EN COURS (statut="en_cours"):', parcoursEnCours, 'parcours');
       if (parcoursEnCoursList.length > 0) {
-        console.log('📋 Détails des parcours en cours:');
+        logger.log('📋 Détails des parcours en cours:');
         parcoursEnCoursList.forEach(p => {
-          console.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut="${p.statut}", progression=${p.progression_pourcentage}%`);
+          logger.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut="${p.statut}", progression=${p.progression_pourcentage}%`);
         });
       }
       
       // Afficher les détails des parcours complétés (vérifiés)
       const parcoursCompletesList = progressionsActives.filter(p => parcoursCompletesVerifies.includes(p.id)) || [];
-      console.log('✅ PARCOURS COMPLÉTÉS (vérifiés - statut="termine" OU tous modules complétés):', parcoursCompletes, 'parcours');
+      logger.log('✅ PARCOURS COMPLÉTÉS (vérifiés - statut="termine" OU tous modules complétés):', parcoursCompletes, 'parcours');
       if (parcoursCompletesList.length > 0) {
-        console.log('📋 Détails des parcours complétés:');
+        logger.log('📋 Détails des parcours complétés:');
         parcoursCompletesList.forEach(p => {
-          console.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut="${p.statut}", progression=${p.progression_pourcentage}%`);
+          logger.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut="${p.statut}", progression=${p.progression_pourcentage}%`);
         });
       } else {
-        console.log('⚠️ Aucun parcours complété trouvé');
+        logger.log('⚠️ Aucun parcours complété trouvé');
         // Afficher tous les statuts uniques pour debug (progressions actives uniquement)
         const statutsUniquesActives = [...new Set(progressionsActives.map(p => p.statut) || [])];
-        console.log('📊 Statuts uniques trouvés dans les progressions actives:', statutsUniquesActives);
+        logger.log('📊 Statuts uniques trouvés dans les progressions actives:', statutsUniquesActives);
         // Chercher les parcours actifs avec progression 100%
         const parcours100PourcentActifs = progressionsActives.filter(p => p.progression_pourcentage === 100) || [];
-        console.log('🔍 Parcours actifs avec progression_pourcentage=100%:', parcours100PourcentActifs.length);
+        logger.log('🔍 Parcours actifs avec progression_pourcentage=100%:', parcours100PourcentActifs.length);
         if (parcours100PourcentActifs.length > 0) {
-          console.log('📋 Détails des parcours actifs à 100% (mais statut différent de "termine"):');
+          logger.log('📋 Détails des parcours actifs à 100% (mais statut différent de "termine"):');
           parcours100PourcentActifs.forEach(p => {
-            console.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut="${p.statut}", progression=${p.progression_pourcentage}%`);
+            logger.log(`  - ${p.parcours_transformation?.nom || 'Sans nom'}: statut="${p.statut}", progression=${p.progression_pourcentage}%`);
           });
         }
       }
@@ -1892,7 +1893,7 @@ const Transformation = () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      console.log('✅ Export CSV réussi');
+      logger.log('✅ Export CSV réussi');
     } catch (error) {
       console.error('❌ Erreur lors de l\'export CSV:', error);
     }
@@ -1921,7 +1922,7 @@ const Transformation = () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      console.log('✅ Export JSON réussi');
+      logger.log('✅ Export JSON réussi');
     } catch (error) {
       console.error('❌ Erreur lors de l\'export JSON:', error);
     }
@@ -1942,7 +1943,7 @@ const Transformation = () => {
 📝 ${statsData.evaluationsCount || 0} évaluations réalisées
 ✍️ ${statsData.journalEntriesCount || 0} entrées de journal`;
 
-      console.log('🔍 Tentative de partage:', shareText);
+      logger.log('🔍 Tentative de partage:', shareText);
 
       if (navigator.share) {
         try {
@@ -1950,27 +1951,27 @@ const Transformation = () => {
             title: 'Ma progression DiscipleLife',
             text: shareText
           });
-          console.log('✅ Partage réussi via Web Share API');
+          logger.log('✅ Partage réussi via Web Share API');
         } catch (error) {
           if (error.name !== 'AbortError') {
-            console.warn('⚠️ Partage Web Share API échoué, copie dans le presse-papiers:', error);
+            logger.warn('⚠️ Partage Web Share API échoué, copie dans le presse-papiers:', error);
             // Copier dans le presse-papiers si le partage échoue
             try {
               await navigator.clipboard.writeText(shareText);
-              console.log('✅ Texte copié dans le presse-papiers');
+              logger.log('✅ Texte copié dans le presse-papiers');
             } catch (clipboardError) {
               console.error('❌ Erreur lors de la copie dans le presse-papiers:', clipboardError);
             }
           } else {
-            console.log('ℹ️ Partage annulé par l\'utilisateur');
+            logger.log('ℹ️ Partage annulé par l\'utilisateur');
           }
         }
       } else {
-        console.log('ℹ️ Web Share API non disponible, copie dans le presse-papiers');
+        logger.log('ℹ️ Web Share API non disponible, copie dans le presse-papiers');
         // Fallback: copier dans le presse-papiers
         try {
           await navigator.clipboard.writeText(shareText);
-          console.log('✅ Texte copié dans le presse-papiers');
+          logger.log('✅ Texte copié dans le presse-papiers');
         } catch (clipboardError) {
           console.error('❌ Erreur lors de la copie dans le presse-papiers:', clipboardError);
         }
@@ -2090,12 +2091,12 @@ const Transformation = () => {
       // Sauvegarder le PDF
       const fileName = `Certificat_${parcoursNom.replace(/[^a-zA-Z0-9]/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
       
-      console.log('📄 Génération du certificat PDF pour:', userName, '-', parcoursNom);
-      console.log('📄 Nom du fichier:', fileName);
+      logger.log('📄 Génération du certificat PDF pour:', userName, '-', parcoursNom);
+      logger.log('📄 Nom du fichier:', fileName);
       
       try {
         doc.save(fileName);
-        console.log('✅ Certificat PDF généré et téléchargé avec succès');
+        logger.log('✅ Certificat PDF généré et téléchargé avec succès');
       } catch (saveError) {
         console.error('❌ Erreur lors de la sauvegarde du PDF:', saveError);
         throw saveError;
@@ -2148,7 +2149,7 @@ const Transformation = () => {
         enCours: []
       });
 
-      console.log('🔍 Récupération des formations pour disciple:', selectedDisciple?.name);
+      logger.log('🔍 Récupération des formations pour disciple:', selectedDisciple?.name);
       let query = supabase
         .from('user_parcours_progression')
         .select(`
@@ -2170,9 +2171,9 @@ const Transformation = () => {
         throw progError;
       }
 
-      console.log(`✅ ${progressions?.length || 0} progressions trouvées pour user_id ${discipleUserId}`);
+      logger.log(`✅ ${progressions?.length || 0} progressions trouvées pour user_id ${discipleUserId}`);
       if (progressions && progressions.length > 0) {
-        console.log('📋 Détails des progressions:', progressions.map(p => ({
+        logger.log('📋 Détails des progressions:', progressions.map(p => ({
           id: p.id,
           parcours_id: p.parcours_id,
           nom: p.parcours_transformation?.nom,
@@ -2251,7 +2252,7 @@ const Transformation = () => {
         }
       });
 
-      console.log(`📊 Formations récupérées pour user_id ${discipleUserId} - Complétées: ${completes.length}, En cours: ${enCours.length}`);
+      logger.log(`📊 Formations récupérées pour user_id ${discipleUserId} - Complétées: ${completes.length}, En cours: ${enCours.length}`);
 
       setDiscipleFormations({
         completes,
@@ -2270,7 +2271,7 @@ const Transformation = () => {
   };
 
   const handleDiscipleSelect = async (disciple) => {
-    console.log('👤 Disciple sélectionné:', disciple);
+    logger.log('👤 Disciple sélectionné:', disciple);
     if (!disciple.user_id) {
       console.error('❌ Le disciple sélectionné n\'a pas de user_id:', disciple);
       toast({
@@ -2550,7 +2551,7 @@ const Transformation = () => {
       </Helmet>
 
       <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-        <div className="w-full max-w-[1800px] mx-auto">
+        <div className="max-w-screen-2xl mx-auto">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-2">
@@ -2733,10 +2734,15 @@ const Transformation = () => {
                   <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
                 </div>
               ) : filteredParcours.length === 0 ? (
-                <Card className="bg-white border-gray-200">
-                  <CardContent className="py-12 text-center">
-                    <BookOpen className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-                    <p className="text-gray-600">Aucun parcours disponible pour le moment</p>
+                <Card className="bg-white border-gray-200 border-dashed">
+                  <CardContent className="py-16 text-center">
+                    <div className="flex justify-center mb-4">
+                      <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                        <BookOpen className="w-8 h-8 text-purple-600" />
+                      </div>
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">Aucun parcours disponible</h3>
+                    <p className="text-gray-600 text-sm">Les parcours de formation seront bientôt disponibles ou modifiez vos filtres de recherche.</p>
                   </CardContent>
                 </Card>
               ) : (
@@ -2846,8 +2852,8 @@ const Transformation = () => {
                 const progressionsActives = userProgression.filter(prog => 
                   prog.statut === 'en_cours' || prog.statut === 'inscrit' || prog.statut === 'termine'
                 );
-                console.log('📋 Onglet Mes Formations - Progressions actives:', progressionsActives.length);
-                console.log('📊 Détails progressions actives:', progressionsActives.map(p => ({
+                logger.log('📋 Onglet Mes Formations - Progressions actives:', progressionsActives.length);
+                logger.log('📊 Détails progressions actives:', progressionsActives.map(p => ({
                   id: p.id,
                   parcours_id: p.parcours_id,
                   parcours_nom: p.parcours_transformation?.nom || 'NOM MANQUANT',
@@ -2856,7 +2862,7 @@ const Transformation = () => {
                 })));
                 
                 if (progressionsActives.length === 0 && userProgression.length > 0) {
-                  console.warn('⚠️ Aucune progression active mais des progressions existent:', userProgression.map(p => ({
+                  logger.warn('⚠️ Aucune progression active mais des progressions existent:', userProgression.map(p => ({
                     id: p.id,
                     statut: p.statut,
                     parcours_nom: p.parcours_transformation?.nom || 'NOM MANQUANT'
@@ -2868,7 +2874,7 @@ const Transformation = () => {
                     {progressionsActives.map((prog) => {
                     const parcour = prog.parcours_transformation;
                     if (!parcour) {
-                      console.warn('⚠️ Progression sans parcours:', prog.id);
+                      logger.warn('⚠️ Progression sans parcours:', prog.id);
                       return null;
                     }
                     
@@ -2980,8 +2986,8 @@ const Transformation = () => {
                 const progressionsActives = userProgression.filter(prog => 
                   prog.statut === 'en_cours' || prog.statut === 'inscrit'
                 );
-                console.log('📋 Onglet Mes Parcours - Progressions actives:', progressionsActives.length);
-                console.log('📊 Détails:', progressionsActives.map(p => ({
+                logger.log('📋 Onglet Mes Parcours - Progressions actives:', progressionsActives.length);
+                logger.log('📊 Détails:', progressionsActives.map(p => ({
                   id: p.id,
                   parcours_nom: p.parcours_transformation?.nom,
                   statut: p.statut,
@@ -2989,7 +2995,7 @@ const Transformation = () => {
                 })));
                 
                 if (progressionsActives.length === 0) {
-                  console.log('⚠️ Aucune progression active trouvée. Toutes les progressions:', userProgression.map(p => ({
+                  logger.log('⚠️ Aucune progression active trouvée. Toutes les progressions:', userProgression.map(p => ({
                     id: p.id,
                     statut: p.statut,
                     parcours_nom: p.parcours_transformation?.nom
@@ -3001,7 +3007,7 @@ const Transformation = () => {
                     {progressionsActives.map((prog) => {
                     const parcour = prog.parcours_transformation;
                     if (!parcour) {
-                      console.warn('⚠️ Progression sans parcours:', prog.id);
+                      logger.warn('⚠️ Progression sans parcours:', prog.id);
                       return null;
                     }
                     return (

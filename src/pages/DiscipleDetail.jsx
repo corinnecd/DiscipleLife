@@ -475,7 +475,13 @@ const DiscipleDetail = () => {
     }
   };
 
-  if (loading) return <div className="text-center text-white p-10">Chargement...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[40vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+      </div>
+    );
+  }
   if (!disciple) return null;
 
   const displayName = disciple.name || `${(disciple.first_name || '')} ${(disciple.last_name || '')}`.trim() || 'Sans nom';
@@ -486,7 +492,7 @@ const DiscipleDetail = () => {
   const countDisciplesAffichage = disciplesSuivis.length;
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto space-y-6 relative">
+    <div className="space-y-6 max-w-4xl mx-auto relative">
       <Button 
         variant="ghost" 
         className="text-gray-400 hover:text-white pl-0 gap-2"
@@ -696,9 +702,14 @@ const DiscipleDetail = () => {
               <span className="ml-2 text-gray-600">Chargement...</span>
             </div>
           ) : rowsListeDisciples.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p>Aucun disciple suivi par ce disciple pour le moment.</p>
+            <div className="text-center py-12 rounded-xl border border-gray-200 border-dashed bg-gray-50/50">
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Users className="w-8 h-8 text-purple-600" />
+                </div>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-1">Aucun disciple suivi</h3>
+              <p className="text-gray-500 text-sm">Ce disciple ne suit personne pour le moment.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">

@@ -165,7 +165,7 @@ const MentorRichDashboard = () => {
         <DialogContent className="sm:max-w-md bg-white text-slate-900 border-none rounded-2xl p-0 overflow-hidden">
              <div className="absolute right-4 top-4 z-10">
                 <DialogClose asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500" aria-label="Fermer">
                         <X size={16} />
                     </Button>
                 </DialogClose>

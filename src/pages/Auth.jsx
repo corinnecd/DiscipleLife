@@ -12,6 +12,9 @@ import { useToast } from '@/components/ui/use-toast';
 import { Loader2, Mail, Lock, User, ArrowRight, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/customSupabaseClient';
+import { cn } from '@/lib/utils';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const Auth = () => {
   const [activeTab, setActiveTab] = useState('login');
@@ -28,16 +31,40 @@ const Auth = () => {
     firstName: '',
     lastName: ''
   });
+  const [errors, setErrors] = useState({});
   const [showPasswordLogin, setShowPasswordLogin] = useState(false);
   const [showPasswordRegister, setShowPasswordRegister] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+  const validateLogin = () => {
+    const e = {};
+    if (!formData.email.trim()) e.email = 'L\'email est requis.';
+    else if (!EMAIL_REGEX.test(formData.email)) e.email = 'Format d\'email invalide.';
+    if (!formData.password) e.password = 'Le mot de passe est requis.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const validateRegister = () => {
+    const e = {};
+    if (!formData.firstName?.trim()) e.firstName = 'Le prénom est requis.';
+    if (!formData.lastName?.trim()) e.lastName = 'Le nom est requis.';
+    if (!formData.email?.trim()) e.email = 'L\'email est requis.';
+    else if (!EMAIL_REGEX.test(formData.email)) e.email = 'Format d\'email invalide.';
+    if (!formData.password) e.password = 'Le mot de passe est requis.';
+    else if (formData.password.length < 6) e.password = 'Le mot de passe doit contenir au moins 6 caractères.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!validateLogin()) return;
     setLoading(true);
     const timeoutMs = 20000; // 20 s pour éviter que le bouton reste bloqué (ex. Supabase injoignable)
     const timeoutPromise = new Promise((_, reject) =>
@@ -85,6 +112,7 @@ const Auth = () => {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    if (!validateRegister()) return;
     setLoading(true);
     try {
       // Métadonnées alignées sur la table profils (champs de base ; pour famille/date/rôle, utiliser /signup)
@@ -144,7 +172,7 @@ const Auth = () => {
              <p className="text-slate-400 mt-2">Votre compagnon de croissance spirituelle</p>
           </div>
 
-          <Tabs defaultValue="login" value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs defaultValue="login" value={activeTab} onValueChange={(v) => { setActiveTab(v); setErrors({}); }} className="w-full">
             <TabsList className="grid w-full grid-cols-2 bg-white/5 border border-white/10 mb-6 rounded-xl p-1">
               <TabsTrigger 
                 value="login" 
@@ -177,12 +205,14 @@ const Auth = () => {
                             name="email" 
                             type="email" 
                             placeholder="exemple@email.com" 
-                            className="pl-9 bg-black/20 border-white/10 focus:border-purple-500 transition-all"
+                            className={cn("pl-9 bg-black/20 focus:border-purple-500 transition-all", errors.email ? "border-red-500" : "border-white/10")}
                             value={formData.email}
                             onChange={handleInputChange}
+                            onBlur={() => formData.email && validateLogin()}
                             required
                         />
                       </div>
+                      {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="password">Mot de passe</Label>
@@ -193,9 +223,10 @@ const Auth = () => {
                             name="password" 
                             type={showPasswordLogin ? 'text' : 'password'} 
                             placeholder="••••••••"
-                            className="pl-9 pr-10 bg-black/20 border-white/10 focus:border-purple-500 transition-all"
+                            className={cn("pl-9 pr-10 bg-black/20 focus:border-purple-500 transition-all", errors.password ? "border-red-500" : "border-white/10")}
                             value={formData.password}
                             onChange={handleInputChange}
+                            onBlur={() => formData.password && validateLogin()}
                             required
                         />
                         <button
@@ -207,6 +238,7 @@ const Auth = () => {
                           {showPasswordLogin ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                       </div>
+                      {errors.password && <p className="text-xs text-red-400">{errors.password}</p>}
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-col gap-2">
@@ -239,11 +271,13 @@ const Auth = () => {
                             id="firstName" 
                             name="firstName" 
                             placeholder="Jean" 
-                            className="bg-black/20 border-white/10 focus:border-purple-500 transition-all"
+                            className={cn("bg-black/20 focus:border-purple-500 transition-all", errors.firstName ? "border-red-500" : "border-white/10")}
                             value={formData.firstName}
                             onChange={handleInputChange}
+                            onBlur={() => formData.firstName && validateRegister()}
                             required
                         />
+                        {errors.firstName && <p className="text-xs text-red-400">{errors.firstName}</p>}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="lastName">Nom</Label>
@@ -251,11 +285,13 @@ const Auth = () => {
                             id="lastName" 
                             name="lastName" 
                             placeholder="Dupont" 
-                            className="bg-black/20 border-white/10 focus:border-purple-500 transition-all"
+                            className={cn("bg-black/20 focus:border-purple-500 transition-all", errors.lastName ? "border-red-500" : "border-white/10")}
                             value={formData.lastName}
                             onChange={handleInputChange}
+                            onBlur={() => formData.lastName && validateRegister()}
                             required
                         />
+                        {errors.lastName && <p className="text-xs text-red-400">{errors.lastName}</p>}
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -267,12 +303,14 @@ const Auth = () => {
                             name="email" 
                             type="email" 
                             placeholder="exemple@email.com"
-                            className="pl-9 bg-black/20 border-white/10 focus:border-purple-500 transition-all"
+                            className={cn("pl-9 bg-black/20 focus:border-purple-500 transition-all", errors.email ? "border-red-500" : "border-white/10")}
                             value={formData.email}
                             onChange={handleInputChange}
+                            onBlur={() => formData.email && validateRegister()}
                             required
                         />
                       </div>
+                      {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="password">Mot de passe</Label>
@@ -283,9 +321,10 @@ const Auth = () => {
                             name="password" 
                             type={showPasswordRegister ? 'text' : 'password'} 
                             placeholder="••••••••"
-                            className="pl-9 pr-10 bg-black/20 border-white/10 focus:border-purple-500 transition-all"
+                            className={cn("pl-9 pr-10 bg-black/20 focus:border-purple-500 transition-all", errors.password ? "border-red-500" : "border-white/10")}
                             value={formData.password}
                             onChange={handleInputChange}
+                            onBlur={() => formData.password && validateRegister()}
                             required
                             minLength={6}
                         />
@@ -298,6 +337,7 @@ const Auth = () => {
                           {showPasswordRegister ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                       </div>
+                      {errors.password && <p className="text-xs text-red-400">{errors.password}</p>}
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-col gap-2">

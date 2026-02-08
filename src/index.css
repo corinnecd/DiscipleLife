@@ -81,6 +81,15 @@
   body {
     @apply text-foreground transition-colors duration-300;
   }
+
+  /* Focus visible pour navigation clavier (a11y) */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
 }
 
 /* Custom Scrollbar */

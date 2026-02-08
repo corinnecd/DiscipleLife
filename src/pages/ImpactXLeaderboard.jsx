@@ -158,7 +158,7 @@ const ImpactXLeaderboard = () => {
 
       {/* Hero Header */}
       <div className="relative bg-gradient-to-b from-purple-900/20 to-slate-950 pt-10 pb-8 px-4 border-b border-white/5">
-         <div className="w-full max-w-[1800px] mx-auto">
+         <div className="w-full max-w-screen-2xl mx-auto">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                 <div>
                     <h1 className="text-3xl md:text-4xl font-bold text-white flex items-center gap-3">
@@ -202,7 +202,7 @@ const ImpactXLeaderboard = () => {
          </div>
       </div>
 
-      <div className="w-full max-w-[1800px] mx-auto space-y-8">
+      <div className="w-full max-w-screen-2xl mx-auto p-4 md:p-8 space-y-8">
          
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Main Leaderboard */}

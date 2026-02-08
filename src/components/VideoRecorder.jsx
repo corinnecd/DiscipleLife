@@ -82,7 +82,7 @@ const VideoRecorder = ({ onRecordingComplete, bucketName = 'videos' }) => {
       const options = { mimeType: 'video/webm;codecs=vp8,opus' };
       // Fallback for Safari if needed, though WebM is widely supported now or uses mp4
       if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-         console.warn(`${options.mimeType} not supported, trying default`);
+         if (import.meta.env.DEV) console.warn(`${options.mimeType} not supported, trying default`);
          mediaRecorderRef.current = new MediaRecorder(streamRef.current);
       } else {
          mediaRecorderRef.current = new MediaRecorder(streamRef.current, options);

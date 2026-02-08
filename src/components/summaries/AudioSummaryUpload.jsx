@@ -5,7 +5,7 @@ import AudioRecorder from '@/components/AudioRecorder';
 export default function AudioSummaryUpload({ onSuccess }) {
   const handleComplete = (url, duration) => {
     // Logic to save summary to DB would go here
-    console.log("Audio saved:", url, duration);
+    if (import.meta.env.DEV) console.log("Audio saved:", url, duration);
     if (onSuccess) onSuccess();
   };
 

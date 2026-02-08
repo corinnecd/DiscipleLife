@@ -152,8 +152,18 @@ const AppointmentsList = () => {
           {loading ? (
               <div className="text-center py-10 text-gray-500">Chargement...</div>
           ) : items.length === 0 ? (
-              <div className="text-center py-10 bg-[#1a0b2e] rounded-xl border border-white/10 text-gray-500">
-                  Aucun rendez-vous à venir.
+              <div className="text-center py-12 bg-[#1a0b2e] rounded-xl border border-white/10 border-dashed">
+                  <div className="flex justify-center mb-4">
+                    <div className="w-16 h-16 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                      <CalendarDays className="w-8 h-8 text-indigo-400" />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-medium text-white mb-1">Aucun rendez-vous à venir</h3>
+                  <p className="text-gray-400 text-sm mb-6">Planifiez un entretien avec un disciple ou un mentor.</p>
+                  <Button onClick={() => setIsCreateOpen(true)} variant="outline" className="border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Planifier un RDV
+                  </Button>
               </div>
           ) : (
               items.map((item) => (

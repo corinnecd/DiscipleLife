@@ -12,6 +12,7 @@ import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { Loader2, Camera, Save, User } from 'lucide-react';
 import { compressImage } from '@/lib/ImageCompression';
 import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 
 const Profile = () => {
   const { user, refreshProfile } = useAuth();
@@ -26,6 +27,21 @@ const Profile = () => {
   // Avatar Upload
   const [avatarFile, setAvatarFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  // Validation inline
+  const [errors, setErrors] = useState({});
+
+  const validateProfile = () => {
+    const e = {};
+    if (!profile?.first_name?.trim()) e.first_name = 'Le prénom est requis.';
+    if (!profile?.last_name?.trim()) e.last_name = 'Le nom est requis.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const clearFieldError = (field) => {
+    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
+  };
 
   useEffect(() => {
     if (user) fetchProfile();
@@ -63,6 +79,7 @@ const Profile = () => {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
+    if (!validateProfile()) return;
     setSaving(true);
     try {
       // 1. Handle Avatar Upload with Compression
@@ -110,10 +127,16 @@ const Profile = () => {
     }
   };
 
-  if (loading) return <div className="flex justify-center p-8 bg-gray-50 min-h-screen"><Loader2 className="animate-spin text-gray-600" /></div>;
+  if (loading) {
+    return (
+      <div className="w-full max-w-screen-2xl mx-auto p-4 md:p-8 flex items-center justify-center min-h-[40vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+      </div>
+    );
+  }
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto space-y-6 bg-gray-50 min-h-screen">
+    <div className="w-full max-w-screen-2xl mx-auto p-4 md:p-8 space-y-6 bg-gray-50 min-h-screen">
        <h1 className="text-3xl font-bold text-gray-900 mb-6">Mon Profil</h1>
        
        <Card className="bg-gray-100 border-gray-200">
@@ -167,17 +190,21 @@ const Profile = () => {
                       <label className="text-sm font-medium text-gray-900">Prénom</label>
                       <Input 
                          value={profile.first_name || ''} 
-                         onChange={e => setProfile({...profile, first_name: e.target.value})}
-                         className="bg-white border-gray-300 text-gray-900"
+                         onChange={e => { setProfile({...profile, first_name: e.target.value}); clearFieldError('first_name'); }}
+                         onBlur={() => { if (!profile?.first_name?.trim()) setErrors(prev => ({ ...prev, first_name: 'Le prénom est requis.' })); else setErrors(prev => ({ ...prev, first_name: '' })); }}
+                         className={cn("bg-white text-gray-900", errors.first_name ? "border-red-500" : "border-gray-300")}
                       />
+                      {errors.first_name && <p className="text-xs text-red-500">{errors.first_name}</p>}
                    </div>
                    <div className="space-y-2">
                       <label className="text-sm font-medium text-gray-900">Nom</label>
                       <Input 
                          value={profile.last_name || ''} 
-                         onChange={e => setProfile({...profile, last_name: e.target.value})}
-                         className="bg-white border-gray-300 text-gray-900"
+                         onChange={e => { setProfile({...profile, last_name: e.target.value}); clearFieldError('last_name'); }}
+                         onBlur={() => { if (!profile?.last_name?.trim()) setErrors(prev => ({ ...prev, last_name: 'Le nom est requis.' })); else setErrors(prev => ({ ...prev, last_name: '' })); }}
+                         className={cn("bg-white text-gray-900", errors.last_name ? "border-red-500" : "border-gray-300")}
                       />
+                      {errors.last_name && <p className="text-xs text-red-500">{errors.last_name}</p>}
                    </div>
                 </div>
 

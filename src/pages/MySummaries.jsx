@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
+import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Mic, Video, UploadCloud, FileText, History, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -12,6 +14,7 @@ import VideoRecorderSummary from '@/components/summaries/VideoRecorderSummary';
 import SummaryHistory from '@/components/summaries/SummaryHistory';
 
 const MySummaries = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('upload');
   const [uploadType, setUploadType] = useState('audio'); // 'audio', 'video-upload', 'video-record'
   const [refreshHistory, setRefreshHistory] = useState(0);
@@ -32,9 +35,13 @@ const MySummaries = () => {
 
   if (error) {
     return (
-        <div className="flex items-center justify-center min-h-[50vh] text-red-600 gap-2">
-            <AlertCircle />
-            <p>{error}</p>
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-red-600 gap-4 p-8 text-center">
+            <AlertCircle size={48} />
+            <h3 className="text-lg font-semibold text-gray-900">Accès refusé</h3>
+            <p className="text-gray-600">{error}</p>
+            <Button onClick={() => navigate('/auth')} variant="outline" className="mt-2">
+              Se connecter
+            </Button>
         </div>
     );
   }
@@ -45,7 +52,7 @@ const MySummaries = () => {
         <title>Mes Résumés | DiscipleLife</title>
       </Helmet>
 
-      <div className="w-full max-w-[1800px] mx-auto py-8 space-y-8">
+      <div className="w-full max-w-screen-2xl mx-auto py-8 space-y-8">
         <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">Mes Résumés</h1>
             <p className="text-slate-500">Partagez votre progression et vos réflexions avec votre mentor et votre groupe.</p>

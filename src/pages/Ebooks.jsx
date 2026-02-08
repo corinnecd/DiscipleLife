@@ -161,8 +161,8 @@ const Ebooks = () => {
       </Helmet>
 
       {/* Header Section */}
-      <div className="bg-gradient-to-b from-[#1a0b2e] to-[#0f0518] pt-12 pb-8 border-b border-white/5">
-        <div className="w-full max-w-[1800px] mx-auto">
+      <div className="bg-gradient-to-b from-[#1a0b2e] to-[#0f0518] pt-12 pb-8 px-4 md:px-8 border-b border-white/5">
+        <div className="w-full max-w-screen-2xl mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div className="flex items-center gap-4">
                <div className="p-3 bg-teal-500/10 rounded-xl border border-teal-500/20">
@@ -195,15 +195,24 @@ const Ebooks = () => {
       </div>
 
       {/* Content Grid */}
-      <div className="w-full max-w-[1800px] mx-auto py-8">
+      <div className="w-full max-w-screen-2xl mx-auto px-4 md:px-8 py-8">
         {loading ? (
             <div className="flex justify-center items-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-teal-500" />
             </div>
         ) : filteredEbooks.length === 0 ? (
-            <div className="text-center py-20 text-gray-500 bg-[#1a0b2e]/30 rounded-xl border border-white/5 border-dashed">
-                <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">Aucun ebook trouvé.</p>
+            <div className="text-center py-20 bg-[#1a0b2e]/30 rounded-xl border border-white/5 border-dashed">
+                <div className="flex justify-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-teal-500/20 flex items-center justify-center">
+                    <BookOpen className="w-8 h-8 text-teal-400" />
+                  </div>
+                </div>
+                <h3 className="text-lg font-medium text-white mb-1">Aucun ebook trouvé</h3>
+                <p className="text-gray-400 mb-6">Découvrez les parcours de formation pour accéder à des ebooks.</p>
+                <Button onClick={() => navigate('/transformation')} className="bg-teal-600 hover:bg-teal-700">
+                  <Library className="w-4 h-4 mr-2" />
+                  Explorer les parcours
+                </Button>
             </div>
         ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">

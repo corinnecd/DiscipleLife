@@ -14,7 +14,8 @@ import {
   Plus, 
   Trash2, 
   RefreshCw, 
-  Copy
+  Copy,
+  Key
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -167,8 +168,16 @@ const AdminAccessCodeManager = () => {
               </TableRow>
             ) : codes.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-slate-500">
-                  Aucun code d'accès créé.
+                <TableCell colSpan={7} className="text-center py-12">
+                  <div className="flex flex-col items-center gap-3 text-slate-500">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                      <Key className="w-6 h-6 text-slate-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-slate-700">Aucun code d'accès créé</h3>
+                      <p className="text-sm mt-1">Créez un code pour inviter des utilisateurs.</p>
+                    </div>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
@@ -204,10 +213,10 @@ const AdminAccessCodeManager = () => {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                       <Button variant="ghost" size="icon" onClick={() => copyToClipboard(code.code)}>
+                       <Button variant="ghost" size="icon" onClick={() => copyToClipboard(code.code)} aria-label="Copier le code">
                           <Copy className="h-4 w-4 text-slate-400" />
                        </Button>
-                       <Button variant="ghost" size="icon" onClick={() => handleDelete(code.id)} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                       <Button variant="ghost" size="icon" onClick={() => handleDelete(code.id)} className="text-red-500 hover:text-red-600 hover:bg-red-50" aria-label="Supprimer">
                           <Trash2 className="h-4 w-4" />
                        </Button>
                     </div>

@@ -168,7 +168,7 @@ const PrayerSessionsList = () => {
   };
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto space-y-6">
+    <div className="w-full max-w-screen-2xl mx-auto p-4 md:p-8 space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
            <h1 className="text-3xl font-bold text-white flex items-center gap-2">
@@ -203,8 +203,24 @@ const PrayerSessionsList = () => {
           {loading ? (
               <div className="text-center py-10 text-gray-500">Chargement...</div>
           ) : sessions.length === 0 ? (
-              <div className="text-center py-10 bg-[#1a0b2e] rounded-xl border border-white/10 text-gray-500">
-                  Aucune session {filter === 'upcoming' ? 'à venir' : filter === 'completed' ? 'terminée' : 'annulée'}.
+              <div className="text-center py-12 bg-[#1a0b2e] rounded-xl border border-white/10 border-dashed">
+                  <div className="flex justify-center mb-4">
+                    <div className="w-16 h-16 rounded-full bg-pink-500/20 flex items-center justify-center">
+                      <Heart className="w-8 h-8 text-pink-400" />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-medium text-white mb-1">
+                    Aucune session {filter === 'upcoming' ? 'à venir' : filter === 'completed' ? 'terminée' : 'annulée'}
+                  </h3>
+                  <p className="text-gray-400 text-sm mb-6">
+                    {filter === 'upcoming' ? 'Planifiez une session de prière avec votre mentor.' : 'Les sessions apparaîtront ici.'}
+                  </p>
+                  {filter === 'upcoming' && (
+                    <Button onClick={() => setIsCreateOpen(true)} variant="outline" className="border-pink-500/30 text-pink-400 hover:bg-pink-500/10">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Planifier une prière
+                    </Button>
+                  )}
               </div>
           ) : (
               sessions.map(sess => (

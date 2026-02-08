@@ -107,7 +107,7 @@ export default function AudioRecorder({ bucketName = 'voice-messages', titlePref
       ) : (
         <div className="flex items-center gap-4 w-full">
           <audio src={audioUrl} controls className="flex-1 h-10" />
-          <Button variant="ghost" size="icon" onClick={resetRecording} className="text-red-500">
+          <Button variant="ghost" size="icon" onClick={resetRecording} className="text-red-500" aria-label="Supprimer l'enregistrement">
             <Trash2 size={20} />
           </Button>
         </div>

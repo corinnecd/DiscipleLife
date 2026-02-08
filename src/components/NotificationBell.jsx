@@ -109,7 +109,7 @@ export default function NotificationBell() {
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR' && err) {
           if (err?.message?.includes('JWT') || err?.message?.includes('exp')) return;
-          console.warn('Realtime notifications:', err?.message || err);
+          if (import.meta.env.DEV) console.warn('Realtime notifications:', err?.message || err);
         }
       });
 
@@ -132,7 +132,9 @@ export default function NotificationBell() {
     <div className="relative">
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="relative p-2 text-gray-500 hover:text-gray-900 transition-colors"
+        className="relative p-2 text-gray-500 hover:text-gray-900 transition-colors rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        aria-label={unreadCount > 0 ? `Notifications (${unreadCount} non lue${unreadCount > 1 ? 's' : ''})` : 'Notifications'}
+        aria-expanded={showDropdown}
       >
         {loading ? (
           <Loader2 className="h-5 w-5 animate-spin text-gray-400" />

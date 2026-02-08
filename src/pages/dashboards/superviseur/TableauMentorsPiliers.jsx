@@ -68,9 +68,14 @@ export function TableauMentorsPiliers({
             <p className="text-gray-500">Chargement des données des mentors...</p>
           </div>
         ) : mentors.length === 0 ? (
-          <div className="text-center py-12">
-            <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500">Aucun mentor trouvé dans votre famille.</p>
+          <div className="text-center py-12 rounded-xl border border-gray-200 border-dashed bg-gray-50/50">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                <Users className="w-8 h-8 text-purple-600" />
+              </div>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">Aucun mentor trouvé</h3>
+            <p className="text-gray-500 text-sm">Les mentors de votre famille apparaîtront ici.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

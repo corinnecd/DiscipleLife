@@ -303,7 +303,7 @@ const InterviewsList = () => {
   };
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto space-y-6 pb-20 pt-16 md:pt-20">
+    <div className="w-full max-w-screen-2xl mx-auto space-y-6 pb-20 p-3 md:p-0 pt-16 md:pt-20">
       
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -377,9 +377,14 @@ const InterviewsList = () => {
            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
         </div>
       ) : filteredEvents.length === 0 ? (
-        <div className="text-center py-16 opacity-50">
-          <CalendarDays className="mx-auto h-16 w-16 text-gray-500 mb-4" />
-          <p className="text-lg text-gray-400">Aucun entretien trouvé</p>
+        <div className="text-center py-16 rounded-xl border border-gray-200 border-dashed bg-gray-50/50">
+          <div className="flex justify-center mb-4">
+            <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+              <CalendarDays className="w-8 h-8 text-purple-600" />
+            </div>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-1">Aucun entretien trouvé</h3>
+          <p className="text-gray-500 text-sm">Les entretiens planifiés apparaîtront ici.</p>
         </div>
       ) : (
         <div className="space-y-3 md:space-y-4">
@@ -433,7 +438,7 @@ const InterviewsList = () => {
                         <div className="absolute right-0 top-0 md:relative md:top-auto md:right-auto -mr-2 -mt-1 md:mr-0 md:mt-0">
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-8 md:w-8 text-gray-500 hover:text-white">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 md:h-8 md:w-8 text-gray-500 hover:text-white" aria-label="Plus d'options">
                                         <MoreVertical size={16} />
                                     </Button>
                                 </DropdownMenuTrigger>

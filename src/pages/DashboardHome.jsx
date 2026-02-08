@@ -103,17 +103,14 @@ const DashboardHome = () => {
               
               // Si l'erreur indique que la colonne n'existe pas (code 42703), on ignore
               if (titreError) {
-                if (titreError.code === '42703' || titreError.message?.includes('does not exist')) {
-                  console.log('Colonne titre non disponible - Migration 058 non exécutée');
-                } else {
+                if (titreError.code !== '42703' && !titreError.message?.includes('does not exist')) {
                   console.error('Erreur lors de la récupération du titre:', titreError);
                 }
               } else if (titreData) {
                 titre = titreData.titre || '';
               }
-            } catch (e) {
+            } catch {
               // Ignorer l'erreur si la colonne n'existe pas
-              console.log('Erreur lors de la récupération du titre (ignorée):', e.message);
             }
             
             // Si c'est un superviseur, récupérer aussi le nom de la famille
@@ -131,7 +128,6 @@ const DashboardHome = () => {
                 famille_nom: familleData?.nom || ''
               };
               
-              console.log('Superviseur info chargée:', superviseurData);
               setSuperviseurInfo(superviseurData);
             }
           } else if (user?.user_metadata?.first_name) {
@@ -163,8 +159,6 @@ const DashboardHome = () => {
               const titre = superviseurInfo.titre || '';
               const famille = superviseurInfo.famille_nom || '';
               const hasData = prenom || nom;
-              
-              console.log('DashboardHome - role:', role, 'superviseurInfo:', superviseurInfo, 'firstName:', firstName, 'hasData:', hasData);
               
               if (isSuperviseur && hasData) {
                 const nomComplet = `${prenom} ${nom}`.trim();

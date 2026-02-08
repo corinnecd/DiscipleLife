@@ -34,7 +34,6 @@ import { ChartsSupplementaires } from './superviseur/ChartsSupplementaires';
 import { ArbreGenealogiqueEmbed } from '@/components/ArbreGenealogiqueEmbed';
 import { ReportReminderCard } from './superviseur/ReportReminderCard';
 import { SuperviseurDashboardHeader } from './superviseur/SuperviseurDashboardHeader';
-
 const SuperviseurDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -121,7 +120,6 @@ const SuperviseurDashboard = () => {
     mentorsConsolides,
     loadingMentorsConsolides,
     handleRefreshMentorsConsolides,
-    refreshDashboard,
     chartsLoaded,
     setChartsLoaded,
     statsComparativesRequested,
@@ -165,10 +163,9 @@ const SuperviseurDashboard = () => {
     setActiviteRecente,
   } = dashboard;
 
-  // Lazy loading des graphiques : attacher les observers uniquement après le premier chargement,
-  // pour que les refs (formationVideoRef, etc.) soient bien attachés au DOM.
+  // Hook pour détecter la visibilité d'un élément (IntersectionObserver) - Lazy loading des graphiques
   useEffect(() => {
-    if (!user || initialLoading) return;
+    if (!user) return; // Ne pas observer si les données principales ne sont pas chargées
 
     const observers = [];
 
@@ -252,9 +249,9 @@ const SuperviseurDashboard = () => {
         if (element) observer.unobserve(element);
       });
     };
-  }, [user?.id, initialLoading]);
+  }, [user?.id]);
 
-  // Spinner pleine page uniquement au premier chargement (pas à chaque refetch KPI)
+  // Spinner pleine page au premier chargement (pas à chaque refetch KPI)
   if (initialLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center min-h-[50vh]">
@@ -284,8 +281,8 @@ const SuperviseurDashboard = () => {
         <title>Tableau de bord Superviseur - DiscipleLife</title>
       </Helmet>
       
-      <div id="superviseur-dashboard-content" className="w-full max-w-[1800px] mx-auto space-y-6 bg-gray-50 min-h-screen">
-        <SuperviseurDashboardHeader onBack={() => navigate(-1)} onRefresh={refreshDashboard} refreshing={phase1Loading || loading} />
+      <div id="superviseur-dashboard-content" className="space-y-6 p-6 bg-gray-50 min-h-screen">
+        <SuperviseurDashboardHeader onBack={() => navigate(-1)} />
 
         <ReportReminderCard
           reportReminder={reportReminder}

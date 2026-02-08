@@ -294,7 +294,7 @@ const Challenge21Days = () => {
         <title>Challenge 21 Jours | DiscipleLife</title>
       </Helmet>
       
-      <div className="w-full max-w-[1800px] mx-auto space-y-8 pb-12">
+      <div className="w-full max-w-screen-2xl mx-auto space-y-8 pb-12">
         {/* Header Section */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-8 shadow-xl">
            <div className="absolute top-0 right-0 p-4 opacity-10 transform translate-x-10 -translate-y-10">
