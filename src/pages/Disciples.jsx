@@ -2,13 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Plus, ChevronRight, Upload, Loader2, Camera, User } from 'lucide-react';
+import { Search, Plus, ChevronRight, Upload, Loader2, Camera, User, GitBranch } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/customSupabaseClient';
 import { getAvatarColor, getInitials } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
@@ -416,15 +417,22 @@ const Disciples = () => {
   ];
 
   return (
-    <div className="w-full space-y-6 pb-20">
+    <div className="w-full p-6 space-y-6 pb-20">
       <div className="flex flex-col md:flex-row justify-between gap-4 items-start md:items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">Mes Disciples</h1>
             <p className="text-gray-600">Suivi individuel et accompagnement.</p>
           </div>
-          <Button onClick={() => setIsAddModalOpen(true)} className="bg-purple-600 hover:bg-purple-700 text-white gap-2">
-             <Plus size={20} /> Ajouter un disciple
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" asChild className="border-purple-300 text-purple-700 hover:bg-purple-50 gap-2">
+              <Link to="/arbre-genealogique">
+                <GitBranch size={18} /> Arbre généalogique
+              </Link>
+            </Button>
+            <Button onClick={() => setIsAddModalOpen(true)} className="bg-purple-600 hover:bg-purple-700 text-white gap-2">
+               <Plus size={20} /> Ajouter un disciple
+            </Button>
+          </div>
       </div>
 
       <div className="relative">
@@ -467,7 +475,7 @@ const Disciples = () => {
                   <span className={`text-sm ${group.color} opacity-70`}>({groupDisciples.length})</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {groupDisciples.map(disciple => (
+                    {[...groupDisciples].sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b))).map(disciple => (
                     <motion.div 
                       key={disciple.id}
                       layout

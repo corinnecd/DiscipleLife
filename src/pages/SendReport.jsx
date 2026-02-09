@@ -828,7 +828,7 @@ const SendReport = () => {
   };
 
   return (
-    <div className="w-full max-w-screen-2xl mx-auto space-y-8 pb-20">
+    <div className="w-full max-w-screen-2xl mx-auto p-6 space-y-8 pb-20">
       
       {/* Header */}
       <div className="space-y-4">

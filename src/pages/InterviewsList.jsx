@@ -303,7 +303,7 @@ const InterviewsList = () => {
   };
 
   return (
-    <div className="w-full max-w-screen-2xl mx-auto space-y-6 pb-20 p-3 md:p-0 pt-16 md:pt-20">
+    <div className="w-full max-w-screen-2xl mx-auto p-6 space-y-6 pb-20 pt-16 md:pt-20">
       
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

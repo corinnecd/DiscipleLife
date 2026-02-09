@@ -137,7 +137,7 @@ const BookReader = () => {
   const percentComplete = Math.round((progress.chapters_read.length / chapters.length) * 100) || 0;
 
   return (
-    <div className="w-full max-w-screen-2xl mx-auto space-y-8 pb-20">
+    <div className="w-full max-w-screen-2xl mx-auto p-6 space-y-8 pb-20">
       {/* Header */}
       <div className="flex flex-col md:flex-row gap-6 items-start pt-6">
         <Button variant="ghost" size="icon" onClick={() => navigate('/ebooks')} className="mt-1" aria-label="Retour aux ebooks">

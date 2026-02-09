@@ -324,7 +324,7 @@ const AttendanceTracking = () => {
   const reminder = getReminderMessage();
 
   return (
-    <div id="attendance-tracking-content" className="w-full space-y-8 pb-20">
+    <div id="attendance-tracking-content" className="w-full p-6 space-y-8 pb-20">
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

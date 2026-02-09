@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { getOrSetCache, clearCache } from '@/lib/CacheUtils';
 import { handleError } from '@/lib/ErrorHandler';
-import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft, Mail, Calendar, Building2, Search, X, RefreshCw, Download } from 'lucide-react';
+import { Users, Target, TrendingUp, UserCheck, Loader2, Plus, Edit, Eye, Camera, Trash2, ArrowLeft, Mail, Calendar, Building2, Search, X, RefreshCw, Download, GitBranch } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Helmet } from 'react-helmet';
@@ -992,7 +992,7 @@ const FamillesDisciples = () => {
         <title>Familles de Disciples - DiscipleLife</title>
       </Helmet>
 
-      <div className="w-full space-y-6 pb-20">
+      <div className="w-full p-6 space-y-6 pb-20">
         {/* Bouton retour */}
         <Button
           variant="ghost"
@@ -1623,9 +1623,15 @@ const FamillesDisciples = () => {
                 return (
             <>
               <DialogHeader>
-                <DialogTitle className="text-2xl font-bold text-black flex items-center gap-3">
-                  <Building2 className="h-6 w-6 text-purple-600" />
+                <DialogTitle className="text-2xl font-bold text-black flex items-center gap-3 flex-wrap">
+                  <Building2 className="h-6 w-6 text-purple-600 shrink-0" />
                   {selectedFamille.nom || 'Famille sans nom'}
+                  <Button variant="outline" size="sm" asChild className="ml-auto shrink-0 border-purple-300 text-purple-700 hover:bg-purple-50">
+                    <Link to={`/arbre-genealogique?family=${selectedFamille.id}`} onClick={() => setSelectedFamille(null)}>
+                      <GitBranch size={16} className="mr-1" />
+                      Voir l'arbre
+                    </Link>
+                  </Button>
                 </DialogTitle>
                 <DialogDescription className="text-blue-600 font-bold">
                   {selectedFamille.identifiant_famille || 'N/A'}

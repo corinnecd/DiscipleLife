@@ -141,7 +141,7 @@ const HelpFAQ = () => {
   }
 
   return (
-    <div className="w-full max-w-screen-2xl mx-auto space-y-8 pb-12 animate-in fade-in duration-500">
+    <div className="w-full max-w-screen-2xl mx-auto p-6 space-y-8 pb-12 animate-in fade-in duration-500">
       {/* Breadcrumb */}
       <nav className="flex items-center text-sm text-gray-500 dark:text-gray-400">
         <Link to="/" className="hover:text-purple-600 dark:hover:text-purple-400 transition-colors">Accueil</Link>

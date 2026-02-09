@@ -157,7 +157,7 @@ export default function NotificationBell() {
 
       {/* Dropdown des dernières notifications */}
       <AnimatePresence>
-        {showDropdown && latestNotifications.length > 0 && (
+        {showDropdown && (
           <motion.div
             initial={{ opacity: 0, y: -10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -176,7 +176,13 @@ export default function NotificationBell() {
               </div>
             </div>
             <div className="max-h-96 overflow-y-auto">
-              {latestNotifications.map((notification) => (
+              {latestNotifications.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">
+                  <span className="text-4xl block mb-2">🔔</span>
+                  <p className="text-sm font-medium">Aucune notification</p>
+                  <p className="text-xs mt-1">Vous serez notifié des nouveautés.</p>
+                </div>
+              ) : latestNotifications.map((notification) => (
                 <motion.div
                   key={notification.id}
                   initial={{ opacity: 0, x: -10 }}
@@ -205,13 +211,22 @@ export default function NotificationBell() {
                 </motion.div>
               ))}
             </div>
-            <div className="p-3 border-t border-gray-200 bg-gray-50">
+            <div className="p-3 border-t border-gray-200 bg-gray-50 space-y-2">
+              {unreadCount > 0 && (
+                <Link
+                  to="/notifications?markAllRead=1"
+                  onClick={() => setShowDropdown(false)}
+                  className="block text-center text-xs text-gray-600 hover:text-gray-900"
+                >
+                  Marquer tout comme lu
+                </Link>
+              )}
               <Link
                 to="/notifications"
                 onClick={() => setShowDropdown(false)}
                 className="block text-center text-sm font-medium text-purple-600 hover:text-purple-700"
               >
-                Voir toutes les notifications →
+                {latestNotifications.length > 0 ? 'Voir toutes les notifications →' : 'Centre de notifications'}
               </Link>
             </div>
           </motion.div>

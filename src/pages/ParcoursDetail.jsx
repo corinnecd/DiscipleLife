@@ -600,7 +600,7 @@ const ParcoursDetail = () => {
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div className="w-full max-w-screen-2xl mx-auto px-4 md:px-8 py-4">
+          <div className="w-full max-w-screen-2xl mx-auto p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <Button
@@ -658,7 +658,7 @@ const ParcoursDetail = () => {
         </div>
 
         {/* Contenu principal */}
-        <div className="w-full max-w-screen-2xl mx-auto px-4 md:px-8 py-8">
+        <div className="w-full max-w-screen-2xl mx-auto p-6">
           {modules.length === 0 ? (
             <Card className="bg-white border-gray-300 border-dashed">
               <CardContent className="py-16 text-center">

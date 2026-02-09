@@ -368,7 +368,7 @@ const Engagement = () => {
       <Helmet>
         <title>Engagement & Fidélisation - Disciple Life</title>
       </Helmet>
-      <div className="w-full pb-20 space-y-6">
+      <div className="w-full p-6 pb-20 space-y-6">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}

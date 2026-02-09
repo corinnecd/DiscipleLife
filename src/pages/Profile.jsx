@@ -129,14 +129,14 @@ const Profile = () => {
 
   if (loading) {
     return (
-      <div className="w-full max-w-screen-2xl mx-auto p-4 md:p-8 flex items-center justify-center min-h-[40vh]">
+      <div className="w-full max-w-screen-2xl mx-auto p-6 flex items-center justify-center min-h-[40vh]">
         <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-screen-2xl mx-auto p-4 md:p-8 space-y-6 bg-gray-50 min-h-screen">
+    <div className="w-full max-w-screen-2xl mx-auto p-6 space-y-6 bg-gray-50 min-h-screen">
        <h1 className="text-3xl font-bold text-gray-900 mb-6">Mon Profil</h1>
        
        <Card className="bg-gray-100 border-gray-200">

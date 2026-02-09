@@ -407,7 +407,7 @@ const DiscipleDashboard = ({ targetDiscipleId = null }) => {
               <Library className="text-amber-600" size={24} />
               <span>Livres à Lire</span>
           </Button>
-          <Button variant="outline" className="h-24 flex flex-col gap-2 border-gray-200 bg-white hover:bg-purple-50 hover:border-purple-300 text-gray-700 shadow-sm" onClick={() => navigate('/arbre-genealogique')}>
+          <Button variant="outline" className="h-24 flex flex-col gap-2 border-gray-200 bg-white hover:bg-purple-50 hover:border-purple-300 text-gray-700 shadow-sm" onClick={() => navigate(famille?.id ? `/arbre-genealogique?family=${famille.id}` : '/arbre-genealogique')}>
               <GitBranch className="text-purple-600" size={24} />
               <span>Arbre généalogique</span>
           </Button>

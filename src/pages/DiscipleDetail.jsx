@@ -492,7 +492,7 @@ const DiscipleDetail = () => {
   const countDisciplesAffichage = disciplesSuivis.length;
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto relative">
+    <div className="space-y-6 max-w-4xl mx-auto p-6 relative">
       <Button 
         variant="ghost" 
         className="text-gray-400 hover:text-white pl-0 gap-2"

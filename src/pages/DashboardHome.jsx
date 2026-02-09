@@ -147,7 +147,7 @@ const DashboardHome = () => {
   }, [user]);
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className="p-6 space-y-8 pb-20">
       {/* Welcome Hero */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-950 via-purple-950 to-purple-900 border border-gray-200 shadow-lg p-8 md:p-12">
         <div className="relative z-10 max-w-3xl">

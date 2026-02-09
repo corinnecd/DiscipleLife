@@ -1190,7 +1190,7 @@ const Evangelization = () => {
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
 
   return (
-    <div className="w-full pb-20 space-y-6">
+    <div className="w-full p-6 pb-20 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <Button 

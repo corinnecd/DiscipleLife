@@ -59,7 +59,7 @@ const TestimonyModeration = () => {
   if (loading) return <div className="p-8 text-center">Chargement...</div>;
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="w-full max-w-6xl mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
         <AlertCircle className="text-orange-500" />
         Modération des Témoignages

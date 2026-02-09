@@ -140,7 +140,7 @@ const AppointmentsList = () => {
   };
 
   return (
-    <div className="container max-w-md mx-auto p-4 space-y-6 pb-20">
+    <div className="container max-w-md mx-auto p-6 space-y-6 pb-20">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-white">Prochains Rendez-vous</h1>
         <Button size="sm" variant="ghost" className="text-indigo-400" onClick={() => setIsCreateOpen(true)}>
