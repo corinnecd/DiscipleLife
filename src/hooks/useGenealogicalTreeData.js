@@ -89,7 +89,7 @@ export function useGenealogicalTreeData({ mode, famille, pasteurId }) {
             .single();
           const { data: membresData } = await supabase
             .from('profils')
-            .select('id, first_name, last_name, avatar_url, mentor_id')
+            .select('id, first_name, last_name, avatar_url, mentor_id, role')
             .eq('famille_id', famille.id);
           const dataList = membresData || [];
           const buildHierarchy = (parentId) =>
@@ -99,7 +99,7 @@ export function useGenealogicalTreeData({ mode, famille, pasteurId }) {
                 id: d.id,
                 name: [d.first_name, d.last_name].filter(Boolean).join(' ').trim() || 'Sans nom',
                 avatar_url: d.avatar_url,
-                role: 'Disciple',
+                role: d.role || 'Disciple',
                 children: buildHierarchy(d.id),
               }));
           const root = {

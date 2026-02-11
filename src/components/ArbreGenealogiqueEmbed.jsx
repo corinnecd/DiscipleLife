@@ -16,14 +16,25 @@ import { useGenealogicalTreeData } from '@/hooks/useGenealogicalTreeData';
 /** Profondeur max pour éviter récursion infinie ou stack overflow (données circulaires / arbre très profond) */
 const TREE_EMBED_MAX_DEPTH = 12;
 
+/** Styles par rôle (aligné avec la page Arbre généalogique) */
+const getRoleStyles = (role) => {
+  const r = (role || 'disciple').toLowerCase();
+  if (r === 'pasteur') return { border: 'border-violet-500', bg: 'bg-violet-50', badge: 'bg-violet-600' };
+  if (r === 'superviseur') return { border: 'border-blue-500', bg: 'bg-blue-50', badge: 'bg-blue-600' };
+  if (r === 'mentor') return { border: 'border-emerald-500', bg: 'bg-emerald-50', badge: 'bg-emerald-600' };
+  return { border: 'border-slate-300', bg: 'bg-slate-50', badge: 'bg-slate-600' };
+};
+
 const TreeNodeEmbed = ({ node, level = 0 }) => {
   if (!node || typeof node !== 'object') return null;
   if (level >= TREE_EMBED_MAX_DEPTH) return null;
 
   const children = Array.isArray(node.children) ? node.children : [];
-  const hasChildren = children.length > 0;
+  const nbDisciples = node.children?.length ?? node.nb_disciples ?? 0;
+  const hasChildren = children.length > 0 || nbDisciples > 0;
   const avatarColor = getAvatarColor(node.name || '');
   const nodeId = node.id ?? `node-${level}-${(node.name || '').slice(0, 8)}`;
+  const roleStyles = getRoleStyles(node.role);
 
   return (
     <div className="flex flex-col items-center">
@@ -33,7 +44,7 @@ const TreeNodeEmbed = ({ node, level = 0 }) => {
         transition={{ duration: 0.2 }}
         className={`
           flex flex-col items-center p-2 rounded-lg border bg-white shadow-sm min-w-[120px] max-w-[160px]
-          ${level === 0 ? 'border-primary/50 bg-primary/5' : 'border-slate-200'}
+          ${level === 0 ? 'border-primary/50 bg-primary/5' : `${roleStyles.border} ${roleStyles.bg}`}
         `}
       >
         <Avatar className={`h-10 w-10 mb-1 border-2 ${level === 0 ? 'border-primary' : 'border-white'}`}>
@@ -43,8 +54,12 @@ const TreeNodeEmbed = ({ node, level = 0 }) => {
         <h4 className="font-semibold text-xs text-slate-900 truncate w-full px-1">{node.name || '—'}</h4>
         <p className="text-[10px] text-slate-500 truncate">{node.role || 'Disciple'}</p>
         {hasChildren && (
-          <Badge variant="secondary" className="mt-1 text-[10px] h-4 px-1 bg-slate-100 text-slate-600">
-            {children.length} disciple{children.length > 1 ? 's' : ''}
+          <Badge
+            variant="secondary"
+            className={`mt-1 text-[10px] h-4 px-1 text-white ${roleStyles.badge}`}
+            title={`${nbDisciples} disciple${nbDisciples !== 1 ? 's' : ''} direct${nbDisciples !== 1 ? 's' : ''} (niveau 1)`}
+          >
+            {nbDisciples} disc. direct{nbDisciples !== 1 ? 's' : ''}
           </Badge>
         )}
       </motion.div>

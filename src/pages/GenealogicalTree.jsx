@@ -69,7 +69,7 @@ const TreeNode = ({ node, level = 0, onNodeClick, selectedNodeId, collapsedIds, 
   const isCollapsed = collapsedIds?.has(node.id);
   const roleStyles = getRoleStyles(node.role);
   const nbDisciples = node.children?.length ?? node.nb_disciples ?? 0;
-  const tooltipText = `${node.name} · ${node.role || 'Disciple'}${nbDisciples > 0 ? ` · ${nbDisciples} disciple${nbDisciples > 1 ? 's' : ''}` : ''}`;
+  const tooltipText = `${node.name} · ${node.role || 'Disciple'}${nbDisciples > 0 ? ` · ${nbDisciples} disciple${nbDisciples > 1 ? 's' : ''} direct${nbDisciples > 1 ? 's' : ''}` : ''}`;
 
   return (
     <div className="flex flex-col items-center" role="treeitem" aria-expanded={hasChildren ? !isCollapsed : undefined} aria-selected={isSelected} data-node-id={node.id}>
@@ -104,8 +104,8 @@ const TreeNode = ({ node, level = 0, onNodeClick, selectedNodeId, collapsedIds, 
         
         <div className="mt-2 flex items-center gap-1.5">
           {(hasChildren || nbDisciples > 0) && (
-            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-medium text-white ${roleStyles.badge}`}>
-              {nbDisciples} disciple{nbDisciples !== 1 ? 's' : ''}
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-medium text-white ${roleStyles.badge}`} title={`${nbDisciples} disciple${nbDisciples !== 1 ? 's' : ''} direct${nbDisciples !== 1 ? 's' : ''} (niveau 1)`}>
+              {nbDisciples} disc. direct{nbDisciples !== 1 ? 's' : ''}
             </span>
           )}
           {hasChildren && onToggleCollapse && (
@@ -141,14 +141,16 @@ const TreeNode = ({ node, level = 0, onNodeClick, selectedNodeId, collapsedIds, 
                <div key={`${child.id}-${level}-${index}`} className="flex flex-col items-center relative">
                   {/* Vertical line entering the child */}
                   <div className="absolute top-[-16px] left-1/2 -translate-x-1/2 w-px h-4 bg-slate-300"></div>
-                  {/* Horizontal line segments for siblings */}
+                  {/* Horizontal line segments between siblings (un seul enfant = pas de trait horizontal) */}
+                  {node.children.length > 1 && (
                    <div 
                      className={`absolute top-[-16px] h-px bg-slate-300 
                         ${index === 0 ? 'left-1/2 w-1/2' : ''} 
                         ${index === node.children.length - 1 ? 'right-1/2 w-1/2' : ''}
                         ${index > 0 && index < node.children.length - 1 ? 'w-full' : ''}
                      `}
-                   ></div>
+                   />
+                  )}
 
                   <TreeNode node={child} level={level + 1} onNodeClick={onNodeClick} selectedNodeId={selectedNodeId} collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse} />
                </div>
@@ -244,19 +246,22 @@ const DesktopTreeView = ({ data, onNodeClick, selectedNodeId, collapsedIds, onTo
         </Button>
       </div>
 
-      <div ref={containerRef} className="absolute inset-0 overflow-auto cursor-grab active:cursor-grabbing p-20 flex justify-center min-w-full" role="tree" aria-label="Arbre généalogique">
-         <motion.div 
-            style={{ scale, transformOrigin: 'top center' }}
-            drag
-            dragConstraints={containerRef}
-            className="flex justify-center"
-         >
-             {data ? (
-                <TreeNode node={data} onNodeClick={onNodeClick} selectedNodeId={selectedNodeId} collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse} />
-             ) : (
-                <div className="text-slate-400">Aucune donnée à afficher</div>
-             )}
-         </motion.div>
+      <div ref={containerRef} className="absolute inset-0 overflow-auto cursor-grab active:cursor-grabbing p-20" role="tree" aria-label="Arbre généalogique">
+         {/* Wrapper pleine largeur pour que l'arbre reste centré dans la zone visible (y compris avec la Fiche détaillée ouverte) */}
+         <div className="min-h-full w-full flex justify-center items-start">
+           <motion.div 
+              style={{ scale, transformOrigin: 'top center' }}
+              drag
+              dragConstraints={containerRef}
+              className="flex justify-center"
+           >
+               {data ? (
+                  <TreeNode node={data} onNodeClick={onNodeClick} selectedNodeId={selectedNodeId} collapsedIds={collapsedIds} onToggleCollapse={onToggleCollapse} />
+               ) : (
+                  <div className="text-slate-400">Aucune donnée à afficher</div>
+               )}
+           </motion.div>
+         </div>
       </div>
 
       {/* Mini-carte (overview) */}
@@ -955,6 +960,7 @@ const GenealogicalTree = () => {
                 variant="outline"
                 size="sm"
                 disabled={exporting}
+                className="bg-slate-100 text-slate-900 border-slate-200 hover:bg-primary hover:text-primary-foreground hover:border-primary"
                 onClick={async () => {
                   setExporting(true);
                   try {
@@ -994,7 +1000,7 @@ const GenealogicalTree = () => {
                     setExportingPng(false);
                   }
                 }}
-                className="border-slate-600 text-slate-700 hover:bg-slate-100"
+                className="bg-slate-100 text-slate-900 border-slate-200 hover:bg-primary hover:text-primary-foreground hover:border-primary"
               >
                 <Image className="h-4 w-4 mr-1" />
                 {exportingPng ? 'Export...' : 'Export PNG'}
@@ -1023,7 +1029,7 @@ const GenealogicalTree = () => {
                     setExportingSvg(false);
                   }
                 }}
-                className="border-slate-600 text-slate-700 hover:bg-slate-100"
+                className="bg-slate-100 text-slate-900 border-slate-200 hover:bg-primary hover:text-primary-foreground hover:border-primary"
               >
                 <GitBranch className="h-4 w-4 mr-1" />
                 {exportingSvg ? 'Export...' : 'Export SVG'}
@@ -1071,9 +1077,9 @@ const GenealogicalTree = () => {
           </div>
         ) : (
           <div id="arbre-genealogique-export" className="flex flex-col flex-1 min-h-0">
-            {/* Légende + Filtres par rôle */}
+            {/* Filtrer par rôle */}
             <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 pb-3 mb-3">
-              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Légende :</span>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Filtrer :</span>
               {LEGEND_ROLES.map((r) => (
                 <button
                   key={r.key}
@@ -1087,15 +1093,13 @@ const GenealogicalTree = () => {
                   {r.label}
                 </button>
               ))}
-              {roleFilter.size > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setRoleFilter(new Set())}
-                  className="text-xs text-slate-500 hover:text-slate-700 underline"
-                >
-                  Réinitialiser filtres
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setRoleFilter(new Set())}
+                className={`text-xs underline transition-opacity ${roleFilter.size > 0 ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                Réinitialiser les filtres
+              </button>
             </div>
 
             {/* Barre de recherche avec suggestions / autocomplétion */}
@@ -1221,11 +1225,11 @@ const GenealogicalTree = () => {
                     variant="outline"
                     size="sm"
                     onClick={handleCenterOnMe}
-                    className="shrink-0 border-amber-500 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                    className="shrink-0 bg-slate-100 text-slate-900 border-slate-200 hover:bg-primary hover:text-primary-foreground hover:border-primary"
                     title="Centrer l'arbre sur votre position"
                   >
                     <Crosshair className="h-4 w-4 mr-1" />
-                    Centrer sur moi
+                    Superviseur
                   </Button>
                 )}
                 <Button
@@ -1319,7 +1323,7 @@ const GenealogicalTree = () => {
                           </Button>
                           <Button
                             variant="outline"
-                            className="w-full"
+                            className="w-full bg-slate-100 text-slate-900 border-slate-200 hover:bg-blue-600 hover:text-white hover:border-blue-600"
                             onClick={() => navigate(`/disciples/${selectedNode.id}`)}
                           >
                             <User className="h-4 w-4 mr-2" />
@@ -1411,8 +1415,8 @@ const GenealogicalTree = () => {
                               {node.role || 'Disciple'}
                             </span>
                             {(node.children?.length > 0 || (node.nb_disciples != null && node.nb_disciples > 0)) && (
-                              <span className="text-xs text-slate-500">
-                                {(node.children?.length ?? node.nb_disciples ?? 0)} disciple{(node.children?.length ?? node.nb_disciples ?? 0) !== 1 ? 's' : ''}
+                              <span className="text-xs text-slate-500" title="Disciples directs (niveau 1 uniquement)">
+                                {(node.children?.length ?? node.nb_disciples ?? 0)} disciple{(node.children?.length ?? node.nb_disciples ?? 0) !== 1 ? 's' : ''} direct{(node.children?.length ?? node.nb_disciples ?? 0) !== 1 ? 's' : ''}
                               </span>
                             )}
                           </div>
@@ -1464,7 +1468,7 @@ const GenealogicalTree = () => {
                           </Button>
                           <Button
                             variant="outline"
-                            className="w-full"
+                            className="w-full bg-slate-100 text-slate-900 border-slate-200 hover:bg-blue-600 hover:text-white hover:border-blue-600"
                             onClick={() => navigate(`/disciples/${selectedNode.id}`)}
                           >
                             <User className="h-4 w-4 mr-2" />

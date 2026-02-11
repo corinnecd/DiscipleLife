@@ -70,15 +70,8 @@ const FamillesDisciples = () => {
   const [disciplesList, setDisciplesList] = useState([]);
   const [loadingDisciplesList, setLoadingDisciplesList] = useState(false);
 
-  // Ne jamais afficher 53 : remplacer par un nombre varié 40–65 (démo / ancienne valeur par défaut)
-  const nombreMembresAffichable = (raw, familleId) => {
-    const n = Number(raw) || 0;
-    if (n === 53 && familleId) {
-      const hash = String(familleId).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-      return 40 + (hash % 26);
-    }
-    return n;
-  };
+  // Afficher le nombre réel de membres (aligné avec l'arbre généalogique et get_nombre_profils_par_familles)
+  const nombreMembresAffichable = (raw) => Number(raw) || 0;
 
   // Calculer le nombre réel de membres quand une famille est sélectionnée
   useEffect(() => {
@@ -188,7 +181,7 @@ const FamillesDisciples = () => {
       if (data && data.length > 0) {
         const familleIds = data.map(f => f.id);
 
-        // 1. Toujours appeler la RPC pour le nombre de membres (évite d'afficher nombre_disciples_actuels = 53)
+        // 1. Toujours appeler la RPC pour le nombre réel de membres (source de vérité, alignée avec l'arbre)
         let nombreMembresMap = {};
         const { data: rpcCounts, error: rpcErr } = await supabase.rpc('get_nombre_profils_par_familles', {
           p_famille_ids: familleIds,
@@ -211,14 +204,6 @@ const FamillesDisciples = () => {
               .eq('famille_id', famille.id);
             nombreMembresMap[famille.id] = (membresData || []).length;
           }
-        }
-        const values = Object.values(nombreMembresMap);
-        const allSame = values.length > 1 && values.every(v => v === values[0]);
-        if (allSame && values[0] > 0) {
-          data.forEach((famille) => {
-            const hash = famille.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-            nombreMembresMap[famille.id] = 40 + (hash % 26);
-          });
         }
         setNombreMembresParFamille(nombreMembresMap);
 
@@ -1099,7 +1084,7 @@ const FamillesDisciples = () => {
                           const raw = nombreMembresParFamille[f.id] !== undefined 
                             ? nombreMembresParFamille[f.id] 
                             : (f.nombre_disciples_actuels || 0);
-                          return sum + nombreMembresAffichable(raw, f.id);
+                          return sum + nombreMembresAffichable(raw);
                         }, 0)}
                       </p>
                     </div>
@@ -1125,7 +1110,7 @@ const FamillesDisciples = () => {
                                 const raw = nombreMembresParFamille[f.id] !== undefined 
                                   ? nombreMembresParFamille[f.id] 
                                   : (f.nombre_disciples_actuels || 0);
-                                const n = nombreMembresAffichable(raw, f.id);
+                                const n = nombreMembresAffichable(raw);
                                 return sum + calculateProgression(n, f.objectif_disciples || 70);
                               }, 0) / familles.length
                             )
@@ -1198,7 +1183,7 @@ const FamillesDisciples = () => {
             const nombreMembresReel = nombreMembresParFamille[famille.id] !== undefined 
               ? nombreMembresParFamille[famille.id] 
               : (famille.nombre_disciples_actuels || 0);
-            const nombreAffiche = nombreMembresAffichable(nombreMembresReel, famille.id);
+            const nombreAffiche = nombreMembresAffichable(nombreMembresReel);
             const progression = calculateProgression(
               nombreAffiche,
               famille.objectif_disciples || 70
@@ -1619,7 +1604,7 @@ const FamillesDisciples = () => {
           {selectedFamille && (
             <>
               {(() => {
-                const nombreModalAffiche = nombreMembresAffichable(nombreMembresReel || selectedFamille.nombre_disciples_actuels || 0, selectedFamille.id);
+                const nombreModalAffiche = nombreMembresAffichable(nombreMembresReel || selectedFamille.nombre_disciples_actuels || 0);
                 return (
             <>
               <DialogHeader>

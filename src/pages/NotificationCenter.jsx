@@ -1,6 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,7 @@ import { Helmet } from 'react-helmet';
 const NotificationCenter = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +42,7 @@ const NotificationCenter = () => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [readFilter, setReadFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const markAllReadDoneRef = useRef(false);
 
   useEffect(() => {
     if (user) {
@@ -51,6 +54,31 @@ const NotificationCenter = () => {
       supabase.channel('notifications_center_channel').unsubscribe();
     };
   }, [user, currentPage, typeFilter, readFilter, searchQuery]); // Re-fetch on filter change
+
+  // Marquer tout comme lu si arrivée via ?markAllRead=1 (depuis NotificationBell)
+  useEffect(() => {
+    if (!user || markAllReadDoneRef.current) return;
+    if (searchParams.get('markAllRead') !== '1') return;
+    markAllReadDoneRef.current = true;
+    const next = new URLSearchParams(searchParams);
+    next.delete('markAllRead');
+    setSearchParams(next, { replace: true });
+    (async () => {
+      try {
+        const { error } = await supabase
+          .from('notifications')
+          .update({ read: true })
+          .eq('user_id', user.id)
+          .eq('read', false);
+        if (!error) {
+          setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+          toast({ description: 'Toutes les notifications ont été marquées comme lues.' });
+        }
+      } catch (e) {
+        console.error('markAllRead', e);
+      }
+    })();
+  }, [user, searchParams, setSearchParams, toast]);
 
   const fetchNotifications = async () => {
     try {

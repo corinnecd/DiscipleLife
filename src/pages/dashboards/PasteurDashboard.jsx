@@ -1,12 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
   Church, ChevronRight, ChevronDown, ChevronUp, Loader2, Search, Filter, Eye, BarChart3,
-  Mail, Phone, ArrowLeft, Building2, CheckCircle2, AlertCircle, Calendar, GitBranch,
-  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, Plus, X, Download, FileText, RefreshCw
+  Mail, Phone, ArrowLeft, Building2, CheckCircle2, AlertCircle, Calendar as CalendarIcon, GitBranch,
+  Moon, Heart, HeartHandshake, UserPlus, Megaphone, Book, Plus, X, Download, FileText, RefreshCw,
+  LayoutDashboard
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { getWeek, getQuarter, startOfWeek, endOfWeek, startOfQuarter, endOfQuarter, startOfMonth, endOfMonth, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,37 +37,34 @@ import {
 import { 
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
-import { ArbreGenealogiqueEmbed } from '@/components/ArbreGenealogiqueEmbed';
 import { MembersTableCard } from '@/components/MembersTableCard';
 import { useMembersTable } from '@/hooks/useMembersTable';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
+import PasteurOverview from '@/pages/dashboards/pasteur/PasteurOverview';
+import PasteurFamilies from '@/pages/dashboards/pasteur/PasteurFamilies';
+import PasteurKpiPeriod from '@/pages/dashboards/pasteur/PasteurKpiPeriod';
 
 const devLog = (...args) => { if (import.meta.env.DEV) console.log(...args); };
 const devWarn = (...args) => { if (import.meta.env.DEV) console.warn(...args); };
 const devError = (...args) => { if (import.meta.env.DEV) console.error(...args); };
 
-/** Curseur de survol du Tooltip : barre fine et gris clair pour les BarChart verticalux */
-const TooltipCursorBar = (props) => {
-  const h = 14;
-  const y = (props.y ?? 0) + ((props.height ?? 40) - h) / 2;
-  return <rect x={props.x ?? 0} y={y} width={props.width ?? 0} height={h} fill="#f9fafb" fillOpacity={0.95} />;
-};
-
-/** Ne jamais garder 53 (valeur figée ancienne) : remplacer par un nombre varié 40–65 selon famille_id */
-function nombreMembresPourStats(nb, familleId) {
-  const n = Number(nb) || 0;
-  if (n === 53 && familleId) {
-    const hash = String(familleId).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    return 40 + (hash % 26);
-  }
-  return n;
+/** Afficher le nombre réel de membres (plus de correction artificielle). */
+function nombreMembresPourStats(nb) {
+  return Number(nb) || 0;
 }
+
+const TAB_KEYS = { OVERVIEW: 'overview', KPI: 'kpi', FAMILIES: 'families', MEMBERS: 'members', REPORTS: 'reports' };
 
 const PasteurDashboard = () => {
   const { user } = useAuth();
   const { role } = useRole();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const { handleError } = useErrorHandler();
+  const activeTab = searchParams.get('tab') || TAB_KEYS.OVERVIEW;
+  const setActiveTab = (tab) => setSearchParams({ tab });
   const [loading, setLoading] = useState(true);
   const [pasteurNom, setPasteurNom] = useState({ first_name: '', last_name: '', identifiant_unique: '' });
   const [superviseurs, setSuperviseurs] = useState([]);
@@ -74,6 +74,9 @@ const PasteurDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchTermMentors, setSearchTermMentors] = useState('');
   const [filterEgliseMentors, setFilterEgliseMentors] = useState('__toutes__'); // Filtre par église (__toutes__ = toutes)
+  const [selectedPasteurIdForFamilies, setSelectedPasteurIdForFamilies] = useState(null); // Clic carte KPI → afficher les familles de ce pasteur
+  const [famillesForSelectedPasteur, setFamillesForSelectedPasteur] = useState([]);
+  const [loadingFamillesForPasteur, setLoadingFamillesForPasteur] = useState(false);
   const [selectedFamille, setSelectedFamille] = useState(null);
   const [familleModalDetails, setFamilleModalDetails] = useState({ members: [], reports: [], loading: false });
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -131,6 +134,8 @@ const PasteurDashboard = () => {
       tempsPartage: 0,
       nouveauxConvertis: 0,
       nouveauxArrivants: 0,
+      amesRevenues: 0,
+      neRepondPlus: 0,
       sortiesEvangelisation: 0,
       personnesEvangelisees: 0,
       comFratDisciples: 0,
@@ -144,35 +149,52 @@ const PasteurDashboard = () => {
   // Spinner pleine page uniquement au premier chargement (pas à chaque refetch KPI)
   const hasInitiallyLoadedRef = useRef(false);
 
-  // Chargement initial + rechargement quand les filtres KPI changent. user?.id pour éviter boucle si le contexte renvoie un nouvel objet à chaque rendu.
+  // Chargement initial : core uniquement (pasteur, superviseurs, familles, 4 KPI). Données KPI période chargées par onglet.
   useEffect(() => {
     if (!user?.id) {
-      setLoading(false); // Ne pas bloquer le spinner si user pas encore chargé (auth en cours)
+      setLoading(false);
       return;
     }
     if (fetchPasteurInProgressRef.current) return;
     fetchPasteurInProgressRef.current = true;
     fetchPasteurData()
       .then(() => { checkMissingReports(); })
-      .catch(() => {}) // fetchPasteurData gère setLoading(false) dans son finally
+      .catch(() => {})
       .finally(() => {
         fetchPasteurInProgressRef.current = false;
         hasInitiallyLoadedRef.current = true;
       });
-  }, [user?.id, kpiPeriodType, kpiSelectedYear, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek, kpiSelectedYearForPeriod]);
+  }, [user?.id]);
 
-  // Charger les mentors consolidés : dès que l'utilisateur pasteur est prêt (RPC), puis quand les familles sont chargées (repli)
+  // Charger les mentors consolidés uniquement quand l'onglet Vue d'ensemble est actif
   useEffect(() => {
-    if (!user?.id || (role !== 'pasteur' && role !== 'admin' && role !== 'super_admin')) return;
+    if (!user?.id || activeTab !== TAB_KEYS.OVERVIEW || (role !== 'pasteur' && role !== 'admin' && role !== 'super_admin')) return;
     fetchMentorsConsolides();
-  }, [user?.id, role, familles.length]);
+  }, [user?.id, role, activeTab, familles.length]);
 
-  // Charger KPI Total Disciples par Pasteur (pasteur, admin, super_admin)
+  // Charger KPI Total Disciples par Pasteur uniquement quand l'onglet Vue d'ensemble est actif
   useEffect(() => {
+    if (activeTab !== TAB_KEYS.OVERVIEW) return;
     if (role === 'pasteur' || role === 'admin' || role === 'super_admin') {
       fetchKpiParPasteur();
     }
-  }, [role]);
+  }, [activeTab, role]);
+
+  // Charger les données KPI / rapports uniquement quand l'onglet KPI & Période est actif (cache TTL 2 min)
+  useEffect(() => {
+    if (activeTab !== TAB_KEYS.KPI || !user?.id) return;
+    fetchKpiTabData();
+  }, [activeTab, user?.id, superviseurs.length, kpiPeriodType, kpiSelectedYearForPeriod, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek]);
+
+  // Quand on ouvre l'onglet Familles avec un pasteur sélectionné (clic sur une carte KPI), charger ses familles si ce n'est pas le pasteur connecté
+  useEffect(() => {
+    if (activeTab !== TAB_KEYS.FAMILIES || !selectedPasteurIdForFamilies) return;
+    if (selectedPasteurIdForFamilies === user?.id) {
+      setFamillesForSelectedPasteur([]);
+      return;
+    }
+    fetchFamillesForPasteur(selectedPasteurIdForFamilies);
+  }, [activeTab, selectedPasteurIdForFamilies, user?.id]);
 
   // Rafraîchir toutes les rubriques (KPI, Progression, Liste des Familles) après modification des effectifs
   const [refreshing, setRefreshing] = useState(false);
@@ -183,11 +205,17 @@ const PasteurDashboard = () => {
       const cacheKeyBase = `pasteur_${user.id}`;
       clearCache(`${cacheKeyBase}_info`);
       clearCache(`${cacheKeyBase}_superviseurs`);
+      clearCache(`pasteur_${user.id}_rapports_${kpiPeriodType}_${kpiSelectedYearForPeriod}_${kpiSelectedQuarter}_${kpiSelectedMonth}_${kpiSelectedWeek}`);
       clearCache(`familles_${role}_${role === 'superviseur' ? user.id : 'all'}`);
       for (let i = 0; i <= 50; i++) clearCache(`pasteur_${user.id}_mentors_consolides_f${i}`);
       await fetchPasteurData();
-      if (role === 'pasteur' || role === 'admin' || role === 'super_admin') {
-        await fetchKpiParPasteur();
+      if (activeTab === TAB_KEYS.OVERVIEW) {
+        if (role === 'pasteur' || role === 'admin' || role === 'super_admin') await fetchKpiParPasteur();
+        await fetchMentorsConsolides();
+      } else if (activeTab === TAB_KEYS.KPI) {
+        await fetchKpiTabData();
+      } else if (activeTab === TAB_KEYS.REPORTS) {
+        await fetchRapportsRecus();
       }
     } catch (e) {
       handleError(e, { context: 'refreshPasteurData' }, "Impossible de rafraîchir les données.");
@@ -236,10 +264,11 @@ const PasteurDashboard = () => {
   // Clé stable des familles pour éviter de recharger les membres quand seul le tableau familles change de référence (même ids)
   const familleIdsKey = (familles || []).map((f) => f.famille?.id).filter(Boolean).slice().sort().join(',');
 
-  // Charger tous les membres des familles du pasteur pour le tableau « Membres des familles »
+  // Charger tous les membres des familles du pasteur uniquement quand l'onglet Membres est actif
   useEffect(() => {
     const familleIds = (familles || []).map((f) => f.famille?.id).filter(Boolean);
-    if (!user?.id || familleIds.length === 0) {
+    if (!user?.id || activeTab !== TAB_KEYS.MEMBERS) return;
+    if (familleIds.length === 0) {
       setPasteurMembers([]);
       setPasteurMembersProgression({});
       setPasteurMembersDisciplesCount({});
@@ -294,7 +323,7 @@ const PasteurDashboard = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [user?.id, familleIdsKey]);
+  }, [user?.id, activeTab, familleIdsKey]);
 
   const fetchPasteurData = async () => {
     try {
@@ -431,7 +460,7 @@ const PasteurDashboard = () => {
           // Récupérer la famille du superviseur (prendre la première si plusieurs existent)
           const { data: famillesData, error: familleError } = await supabase
             .from('familles_disciples')
-            .select('*')
+            .select('id, superviseur_id, nom, identifiant_famille, statut, objectif_disciples, nombre_disciples_actuels, created_at')
             .eq('superviseur_id', superviseur.id)
             .order('created_at', { ascending: false })
             .limit(1);
@@ -461,7 +490,7 @@ const PasteurDashboard = () => {
           // Effectifs par famille (repli) : source unique = profils (plus de cercle_personnes)
           const { count: nombreDisciples, error: countError } = await supabase
             .from('profils')
-            .select('*', { count: 'exact', head: true })
+            .select('id', { count: 'exact', head: true })
             .eq('famille_id', familleData.id);
 
           if (countError) {
@@ -469,8 +498,7 @@ const PasteurDashboard = () => {
           }
 
           const nombreMembres = nombreMembresPourStats(
-            nombreDisciples ?? familleData.nombre_disciples_actuels ?? 0,
-            familleData.id
+            nombreDisciples ?? familleData.nombre_disciples_actuels ?? 0
           );
           const objectif = familleData.objectif_disciples || 70;
           const progression = Math.min((nombreMembres / objectif) * 100, 100);
@@ -502,7 +530,7 @@ const PasteurDashboard = () => {
         famillesValides = famillesValides.map((f) => {
           const row = bySuperviseur[f.superviseur?.id];
           if (!row) return f;
-          const nb = nombreMembresPourStats(Number(row.nb_disciples) ?? 0, f.famille?.id);
+          const nb = nombreMembresPourStats(Number(row.nb_disciples) ?? 0);
           const obj = Number(row.objectif) ?? 70;
           // Toujours dériver la progression % des effectifs et de l'objectif (sync avec KPI / Liste des Familles)
           const pct = obj > 0 ? Math.min(100, (nb / obj) * 100) : 0;
@@ -558,8 +586,81 @@ const PasteurDashboard = () => {
         progressionGlobale = objectifTotal > 0 ? Math.min(100, (totalDisciples / objectifTotal) * 100) : 0;
       }
 
-      // 5. Récupérer les statistiques des rapports
-      const superviseurIds = superviseursFinal.map(s => s.id);
+      // Core uniquement : rapports/KPI chargés par onglet (fetchKpiTabData quand onglet KPI actif)
+      const defaultKpiAnnuels = {
+        culteSamediSoir: 0,
+        culteDimancheMatin: 0,
+        afterCulteDimanche: 0,
+        tempsPriere: 0,
+        tempsPartage: 0,
+        nouveauxConvertis: 0,
+        nouveauxArrivants: 0,
+        amesRevenues: 0,
+        neRepondPlus: 0,
+        sortiesEvangelisation: 0,
+        personnesEvangelisees: 0,
+        comFratDisciples: 0,
+        veillee: 0,
+        meditationBible: 0
+      };
+      setGlobalStats({
+        totalSuperviseurs,
+        totalFamilles,
+        totalDisciples,
+        objectifTotal,
+        progressionGlobale: Math.min(progressionGlobale, 100),
+        famillesObjectifAtteint,
+        totalRapports: 0,
+        rapportsHebdo: 0,
+        rapportsMensuels: 0,
+        rapportsTrimestriels: 0,
+        rapportsAnnuels: 0,
+        kpiAnnuels: defaultKpiAnnuels
+      });
+
+    } catch (error) {
+      handleError(error, { context: 'fetchPasteurData' }, "Impossible de charger les données du tableau de bord.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Clé de cache pour les rapports KPI (par période)
+  const getKpiRapportsCacheKey = () =>
+    `pasteur_${user?.id}_rapports_${kpiPeriodType}_${kpiSelectedYearForPeriod}_${kpiSelectedQuarter}_${kpiSelectedMonth}_${kpiSelectedWeek}`;
+
+  // Charger les données KPI / rapports uniquement quand l'onglet KPI est actif (avec cache TTL 2 min)
+  const fetchKpiTabData = async () => {
+    const superviseurIds = (superviseurs || []).map((s) => s.id);
+    if (!user?.id || superviseurIds.length === 0) {
+      setLoadingKpiTab(false);
+      setKpiAnnuelsBreakdown({
+        personnesEvangelisees: [],
+        nouveauxConvertis: [],
+        nouveauxArrivants: [],
+        amesRevenues: [],
+        neRepondPlus: []
+      });
+      return;
+    }
+    setLoadingKpiTab(true);
+    try {
+      const objectifTotal = globalStats.objectifTotal || 1;
+      const cacheKey = getKpiRapportsCacheKey();
+      const rapportsData = await getOrSetCache(
+        cacheKey,
+        async () => {
+          const { data, error } = await supabase
+            .from('reports')
+            .select('user_id, report_type, statistics_snapshot, year, quarter, month, week_number, created_at')
+            .in('user_id', superviseurIds)
+            .eq('status', 'submitted');
+          if (error) throw error;
+          return data || [];
+        },
+        2 * 60 * 1000
+      );
+
       let totalRapports = 0;
       let rapportsHebdo = 0;
       let rapportsMensuels = 0;
@@ -573,143 +674,137 @@ const PasteurDashboard = () => {
         tempsPartage: 0,
         nouveauxConvertis: 0,
         nouveauxArrivants: 0,
+        amesRevenues: 0,
+        neRepondPlus: 0,
         sortiesEvangelisation: 0,
         personnesEvangelisees: 0,
         comFratDisciples: 0,
         veillee: 0,
         meditationBible: 0
       };
-      
-      if (superviseurIds.length > 0) {
-        const currentYear = new Date().getFullYear();
-        
-        // Récupérer tous les rapports pour compter par type
-        const { data: rapportsData, error: rapportsError } = await supabase
-          .from('reports')
-          .select('report_type, statistics_snapshot, year, quarter, month, week_number, created_at')
-          .in('user_id', superviseurIds)
-          .eq('status', 'submitted');
-        
-        if (!rapportsError && rapportsData) {
-          totalRapports = rapportsData.length;
-          rapportsHebdo = rapportsData.filter(r => r.report_type === 'hebdomadaire').length;
-          rapportsMensuels = rapportsData.filter(r => r.report_type === 'mensuel').length;
-          rapportsTrimestriels = rapportsData.filter(r => r.report_type === 'trimestriel').length;
-          rapportsAnnuels = rapportsData.filter(r => r.report_type === 'annuel').length;
-          
-          // Filtrer les rapports selon la période sélectionnée
-          const rapportsFiltres = rapportsData.filter(r => {
-            const selectedYear = parseInt(kpiSelectedYearForPeriod);
-            const reportDate = new Date(r.created_at);
-            const reportYear = r.year || reportDate.getFullYear();
-            
-            if (kpiPeriodType === 'annuel') {
-              // Pour les rapports annuels: vérifier l'année
-              if (r.report_type === 'annuel') {
-                return reportYear === selectedYear;
-              }
-              // Pour les autres types dans une période annuelle: inclure tous les rapports de l'année
-              return reportYear === selectedYear;
-            } else if (kpiPeriodType === 'trimestriel') {
-              const selectedQuarter = parseInt(kpiSelectedQuarter);
-              // Pour les rapports trimestriels: vérifier trimestre et année
-              if (r.report_type === 'trimestriel') {
-                return r.quarter === selectedQuarter && reportYear === selectedYear;
-              }
-              // Pour les autres types: vérifier si la date de création est dans le trimestre
-              const reportQuarter = getQuarter(reportDate);
-              return reportQuarter === selectedQuarter && reportYear === selectedYear;
-            } else if (kpiPeriodType === 'mensuel') {
-              const selectedMonth = parseInt(kpiSelectedMonth);
-              // Pour les rapports mensuels: vérifier mois et année (month est 0-indexed)
-              if (r.report_type === 'mensuel') {
-                return r.month === selectedMonth && reportYear === selectedYear;
-              }
-              // Pour les autres types: vérifier si la date de création est dans le mois
-              return reportDate.getMonth() === selectedMonth && reportYear === selectedYear;
-            } else if (kpiPeriodType === 'hebdomadaire') {
-              const selectedWeek = parseInt(kpiSelectedWeek);
-              // Pour les rapports hebdomadaires: vérifier semaine et année
-              if (r.report_type === 'hebdomadaire') {
-                return r.week_number === selectedWeek && reportYear === selectedYear;
-              }
-              // Pour les autres types: vérifier si la date de création est dans la semaine
-              const reportWeek = getWeek(reportDate, { weekStartsOn: 1 });
-              return reportWeek === selectedWeek && reportYear === selectedYear;
-            }
-            return false;
-          });
-          
-          // Agréger les statistiques selon le nouvel ordre
-          let culteSamediSoir = 0;
-          let culteDimancheMatin = 0;
-          let afterCulteDimanche = 0;
-          let tempsPriere = 0;
-          let tempsPartage = 0;
-          let nouveauxConvertis = 0;
-          let nouveauxArrivants = 0;
-          let sortiesEvangelisation = 0;
-          let personnesEvangelisees = 0;
-          let comFratDisciples = 0;
-          let veillee = 0;
-          let meditationBible = 0;
-          
-          rapportsFiltres.forEach(report => {
-            const stats = report.statistics_snapshot || {};
-            culteSamediSoir += stats.saturday_evening_count || 0;
-            culteDimancheMatin += stats.sunday_attendance_count || 0;
-            afterCulteDimanche += stats.after_culte_count || 0;
-            tempsPriere += stats.saturday_prayer_count || 0;
-            tempsPartage += stats.sunday_sharing_count || 0;
-            nouveauxConvertis += stats.nouveaux_convertis || 0;
-            nouveauxArrivants += stats.nouveaux_arrivants || 0;
-            sortiesEvangelisation += stats.evangelization || 0;
-            personnesEvangelisees += stats.evangelization || 0; // Même source pour l'instant
-            // Com Frat Disciples, Veillée, Méditation Bible - à implémenter si disponibles dans les rapports
-            comFratDisciples += stats.com_frat_disciples || 0;
-            veillee += stats.veillee || 0;
-            meditationBible += stats.meditation_bible || 0;
-          });
-          
-          kpiAnnuels = {
-            culteSamediSoir,
-            culteDimancheMatin,
-            afterCulteDimanche,
-            tempsPriere,
-            tempsPartage,
-            nouveauxConvertis,
-            nouveauxArrivants,
-            sortiesEvangelisation,
-            personnesEvangelisees,
-            comFratDisciples,
-            veillee,
-            meditationBible
-          };
 
-          // Générer les données pour les graphiques d'évolution (tous les rapports soumis)
-          await generateChartData(rapportsData || [], objectifTotal || 1);
-        }
+      if (rapportsData && rapportsData.length > 0) {
+        totalRapports = rapportsData.length;
+        rapportsHebdo = rapportsData.filter((r) => r.report_type === 'hebdomadaire').length;
+        rapportsMensuels = rapportsData.filter((r) => r.report_type === 'mensuel').length;
+        rapportsTrimestriels = rapportsData.filter((r) => r.report_type === 'trimestriel').length;
+        rapportsAnnuels = rapportsData.filter((r) => r.report_type === 'annuel').length;
+
+        const rapportsFiltres = rapportsData.filter((r) => {
+          const selectedYear = parseInt(kpiSelectedYearForPeriod, 10);
+          const reportDate = new Date(r.created_at);
+          const reportYear = r.year || reportDate.getFullYear();
+          if (kpiPeriodType === 'annuel') {
+            return reportYear === selectedYear;
+          }
+          if (kpiPeriodType === 'trimestriel') {
+            const selectedQuarter = parseInt(kpiSelectedQuarter, 10);
+            if (r.report_type === 'trimestriel') {
+              return r.quarter === selectedQuarter && reportYear === selectedYear;
+            }
+            return getQuarter(reportDate) === selectedQuarter && reportYear === selectedYear;
+          }
+          if (kpiPeriodType === 'mensuel') {
+            const selectedMonth = parseInt(kpiSelectedMonth, 10);
+            if (r.report_type === 'mensuel') {
+              return r.month === selectedMonth && reportYear === selectedYear;
+            }
+            return reportDate.getMonth() === selectedMonth && reportYear === selectedYear;
+          }
+          if (kpiPeriodType === 'hebdomadaire') {
+            const selectedWeek = parseInt(kpiSelectedWeek, 10);
+            if (r.report_type === 'hebdomadaire') {
+              return r.week_number === selectedWeek && reportYear === selectedYear;
+            }
+            return getWeek(reportDate, { weekStartsOn: 1 }) === selectedWeek && reportYear === selectedYear;
+          }
+          return false;
+        });
+
+        const breakdownByUser = {
+          personnesEvangelisees: {},
+          nouveauxConvertis: {},
+          nouveauxArrivants: {},
+          amesRevenues: {},
+          neRepondPlus: {}
+        };
+        rapportsFiltres.forEach((report) => {
+          const stats = report.statistics_snapshot || {};
+          const uid = report.user_id;
+          kpiAnnuels.culteSamediSoir += stats.saturday_evening_count || 0;
+          kpiAnnuels.culteDimancheMatin += stats.sunday_attendance_count || 0;
+          kpiAnnuels.afterCulteDimanche += stats.after_culte_count || 0;
+          kpiAnnuels.tempsPriere += stats.saturday_prayer_count || 0;
+          kpiAnnuels.tempsPartage += stats.sunday_sharing_count || 0;
+          kpiAnnuels.nouveauxConvertis += stats.nouveaux_convertis || 0;
+          kpiAnnuels.nouveauxArrivants += stats.nouveaux_arrivants || 0;
+          kpiAnnuels.amesRevenues += stats.ames_revenues || 0;
+          kpiAnnuels.neRepondPlus += stats.ne_repond_plus || 0;
+          kpiAnnuels.sortiesEvangelisation += stats.evangelization || 0;
+          kpiAnnuels.personnesEvangelisees += stats.evangelization || 0;
+          kpiAnnuels.comFratDisciples += stats.com_frat_disciples || 0;
+          kpiAnnuels.veillee += stats.veillee || 0;
+          kpiAnnuels.meditationBible += stats.meditation_bible || 0;
+          if (uid) {
+            breakdownByUser.personnesEvangelisees[uid] = (breakdownByUser.personnesEvangelisees[uid] || 0) + (stats.evangelization || 0);
+            breakdownByUser.nouveauxConvertis[uid] = (breakdownByUser.nouveauxConvertis[uid] || 0) + (stats.nouveaux_convertis || 0);
+            breakdownByUser.nouveauxArrivants[uid] = (breakdownByUser.nouveauxArrivants[uid] || 0) + (stats.nouveaux_arrivants || 0);
+            breakdownByUser.amesRevenues[uid] = (breakdownByUser.amesRevenues[uid] || 0) + (stats.ames_revenues || 0);
+            breakdownByUser.neRepondPlus[uid] = (breakdownByUser.neRepondPlus[uid] || 0) + (stats.ne_repond_plus || 0);
+          }
+        });
+
+        const toBreakdownArray = (byUser) =>
+          Object.entries(byUser)
+            .map(([userId, value]) => {
+              const f = (familles || []).find((x) => x.superviseur?.id === userId);
+              const familleNom = f?.famille?.nom || 'Famille';
+              const superviseurNom = f?.superviseur
+                ? `${f.superviseur.first_name || ''} ${f.superviseur.last_name || ''}`.trim() || '—'
+                : '—';
+              return { familleNom, superviseurNom, value };
+            })
+            .sort((a, b) => (b.value || 0) - (a.value || 0));
+
+        setKpiAnnuelsBreakdown({
+          personnesEvangelisees: toBreakdownArray(breakdownByUser.personnesEvangelisees),
+          nouveauxConvertis: toBreakdownArray(breakdownByUser.nouveauxConvertis),
+          nouveauxArrivants: toBreakdownArray(breakdownByUser.nouveauxArrivants),
+          amesRevenues: toBreakdownArray(breakdownByUser.amesRevenues),
+          neRepondPlus: toBreakdownArray(breakdownByUser.neRepondPlus)
+        });
+      } else {
+        setKpiAnnuelsBreakdown({
+          personnesEvangelisees: [],
+          nouveauxConvertis: [],
+          nouveauxArrivants: [],
+          amesRevenues: [],
+          neRepondPlus: []
+        });
       }
 
-      setGlobalStats({
-        totalSuperviseurs,
-        totalFamilles,
-        totalDisciples,
-        objectifTotal,
-        progressionGlobale: Math.min(progressionGlobale, 100),
-        famillesObjectifAtteint,
+      setGlobalStats((prev) => ({
+        ...prev,
         totalRapports,
         rapportsHebdo,
         rapportsMensuels,
         rapportsTrimestriels,
         rapportsAnnuels,
         kpiAnnuels
-      });
+      }));
 
+      await generateChartData(rapportsData || [], objectifTotal);
     } catch (error) {
-      handleError(error, { context: 'fetchPasteurData' }, "Impossible de charger les données du tableau de bord.");
+      handleError(error, { context: 'fetchKpiTabData' }, "Impossible de charger les KPI de la période.");
+      setKpiAnnuelsBreakdown({
+        personnesEvangelisees: [],
+        nouveauxConvertis: [],
+        nouveauxArrivants: [],
+        amesRevenues: [],
+        neRepondPlus: []
+      });
     } finally {
-      setLoading(false);
+      setLoadingKpiTab(false);
     }
   };
 
@@ -793,6 +888,57 @@ const PasteurDashboard = () => {
       setKpiParPasteurTotalFamilles(0);
     } finally {
       setKpiParPasteurLoading(false);
+    }
+  };
+
+  // Charger les familles d'un pasteur donné (pour affichage onglet Familles après clic sur une carte KPI)
+  const fetchFamillesForPasteur = async (pasteurId) => {
+    if (!pasteurId) {
+      setFamillesForSelectedPasteur([]);
+      return;
+    }
+    setLoadingFamillesForPasteur(true);
+    try {
+      const { data: superviseursData, error: supErr } = await supabase
+        .from('profils')
+        .select('id, first_name, last_name, email, identifiant_unique, avatar_url, pasteur_id')
+        .eq('pasteur_id', pasteurId)
+        .eq('role', 'superviseur')
+        .order('first_name', { ascending: true });
+      if (supErr) throw supErr;
+      const superviseursList = superviseursData || [];
+      const famillesAvecStats = await Promise.all(
+        superviseursList.map(async (superviseur) => {
+          const { data: famillesData, error: familleError } = await supabase
+            .from('familles_disciples')
+            .select('id, superviseur_id, nom, identifiant_famille, statut, objectif_disciples, nombre_disciples_actuels, created_at')
+            .eq('superviseur_id', superviseur.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (familleError || !famillesData?.length) {
+            return { superviseur, famille: null, stats: { nombreMembres: 0, objectif: 70, progression: 0, reste: 70 } };
+          }
+          const familleData = famillesData[0];
+          const { count: nombreDisciples } = await supabase
+            .from('profils')
+            .select('id', { count: 'exact', head: true })
+            .eq('famille_id', familleData.id);
+          const nombreMembres = nombreMembresPourStats(nombreDisciples ?? familleData.nombre_disciples_actuels ?? 0);
+          const objectif = familleData.objectif_disciples || 70;
+          const progression = Math.min((nombreMembres / objectif) * 100, 100);
+          return {
+            superviseur,
+            famille: familleData,
+            stats: { nombreMembres, objectif, progression, reste: Math.max(0, objectif - nombreMembres) },
+          };
+        })
+      );
+      setFamillesForSelectedPasteur(famillesAvecStats.filter(f => f.famille != null));
+    } catch (e) {
+      handleError(e, { context: 'fetchFamillesForPasteur' }, "Impossible de charger les familles de ce pasteur.");
+      setFamillesForSelectedPasteur([]);
+    } finally {
+      setLoadingFamillesForPasteur(false);
     }
   };
 
@@ -906,12 +1052,69 @@ const PasteurDashboard = () => {
   const [filtreRapportsMois, setFiltreRapportsMois] = useState(''); // '' = tous les mois
   const [rapportDetailModal, setRapportDetailModal] = useState(null); // { report, superviseurName }
   const [hoveredFamilleNameProgression, setHoveredFamilleNameProgression] = useState(null); // nom de famille au survol (graphique Progression Globale)
+  const [kpiAnnuelsBreakdown, setKpiAnnuelsBreakdown] = useState({ personnesEvangelisees: [], nouveauxConvertis: [], nouveauxArrivants: [], amesRevenues: [], neRepondPlus: [] });
+  const [kpiDetailModal, setKpiDetailModal] = useState(null); // { title, data: [{ familleNom, superviseurNom, value }] }
+  const [hoveredKpiBarName, setHoveredKpiBarName] = useState(null); // libellé Y au survol (graphique KPI période)
+  const [evolutionVisibleSeries, setEvolutionVisibleSeries] = useState({
+    culteSamediSoir: true,
+    culteDimancheMatin: true,
+    afterCulteDimanche: true,
+    tempsPriere: true,
+    tempsPartage: true,
+    nouveauxConvertis: true,
+    nouveauxArrivants: true,
+    sortiesEvangelisation: true,
+    personnesEvangelisees: true
+  });
+  const evolutionChartsRef = useRef(null);
+  const [evolutionChartsInView, setEvolutionChartsInView] = useState(false);
+  const overviewChartRef = useRef(null);
+  const [overviewChartInView, setOverviewChartInView] = useState(false);
+  const prefetchStartedRef = useRef({ kpi: false, reports: false });
+
+  // Prefetch au survol des onglets : charger les données en arrière-plan pour affichage immédiat au clic
+  const handleTabHover = (tabKey) => {
+    if (tabKey === TAB_KEYS.KPI && !prefetchStartedRef.current.kpi) {
+      prefetchStartedRef.current.kpi = true;
+      fetchKpiTabData();
+    }
+    if (tabKey === TAB_KEYS.REPORTS && !prefetchStartedRef.current.reports && superviseurs?.length) {
+      prefetchStartedRef.current.reports = true;
+      fetchRapportsRecus();
+    }
+  };
+
+  // Lazy load du graphique phare Vue d'ensemble (IntersectionObserver)
+  useEffect(() => {
+    if (activeTab !== TAB_KEYS.OVERVIEW) return;
+    const el = overviewChartRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry?.isIntersecting) setOverviewChartInView(true); },
+      { rootMargin: '100px', threshold: 0.1 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [activeTab]);
+
+  // Lazy load des graphiques d'évolution (IntersectionObserver)
+  useEffect(() => {
+    const el = evolutionChartsRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry?.isIntersecting) setEvolutionChartsInView(true); },
+      { rootMargin: '80px', threshold: 0.1 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [activeTab]);
 
   // KPI Globaux - Total Disciples par Pasteur (vue admin/super_admin)
   const [kpiParPasteur, setKpiParPasteur] = useState([]); // { id, nomAffichage, totalDisciples, totalFamilles }[]
   const [kpiParPasteurLoading, setKpiParPasteurLoading] = useState(false);
   const [kpiParPasteurTotalCumule, setKpiParPasteurTotalCumule] = useState(0);
   const [kpiParPasteurTotalFamilles, setKpiParPasteurTotalFamilles] = useState(0);
+  const [loadingKpiTab, setLoadingKpiTab] = useState(false);
 
   // Fonction pour générer les données historiques des graphiques
   const generateChartData = async (reportsData, objectifTotal = 1) => {
@@ -1145,12 +1348,13 @@ const PasteurDashboard = () => {
   };
 
   useEffect(() => {
-    if (!superviseurs?.length) {
+    if (activeTab !== TAB_KEYS.REPORTS || !superviseurs?.length) {
+      if (activeTab !== TAB_KEYS.REPORTS) return;
       setRapportsRecus([]);
       return;
     }
     fetchRapportsRecus();
-  }, [superviseurs?.length, filtreRapportsAnnee, filtreRapportsMois]);
+  }, [activeTab, superviseurs?.length, filtreRapportsAnnee, filtreRapportsMois]);
 
   // Fonction pour récupérer les mentors consolidés (disciples-mentors ayant des disciples, familles actives)
   const fetchMentorsConsolides = async () => {
@@ -1218,7 +1422,7 @@ const PasteurDashboard = () => {
               // Nombre de disciples du mentor : source = profils (mentor_id)
               const { count: nombreDisciples } = await supabase
                 .from('profils')
-                .select('*', { count: 'exact', head: true })
+                .select('id', { count: 'exact', head: true })
                 .eq('mentor_id', mentor.id);
               const nombreDisciplesTotal = nombreDisciples || 0;
               const objectif = 70;
@@ -1252,8 +1456,13 @@ const PasteurDashboard = () => {
     }
   };
 
+  // Liste des familles à afficher : du pasteur connecté (familles) ou du pasteur sélectionné via carte KPI (famillesForSelectedPasteur)
+  const famillesToShow = (selectedPasteurIdForFamilies && selectedPasteurIdForFamilies !== user?.id)
+    ? famillesForSelectedPasteur
+    : familles;
+
   // Filtrer les familles selon la recherche (insensible à la casse et aux accents)
-  const filteredFamilles = familles.filter(item => {
+  const filteredFamilles = famillesToShow.filter(item => {
     if (!searchTerm) return true;
     const search = normalizeString(searchTerm);
     const nomSuperviseur = normalizeString(`${item.superviseur.first_name} ${item.superviseur.last_name}`);
@@ -1261,6 +1470,26 @@ const PasteurDashboard = () => {
     const identifiantFamille = normalizeString(item.famille?.identifiant_famille || '');
     return nomSuperviseur.includes(search) || nomFamille.includes(search) || identifiantFamille.includes(search);
   });
+
+  const [progressionPage, setProgressionPage] = useState(0);
+  // Filtres et tri pour le graphique "Progression des familles" (onglet KPI)
+  const [progressionFilter, setProgressionFilter] = useState('toutes'); // 'toutes' | 'objectif_atteint' | 'en_cours'
+  const [progressionSort, setProgressionSort] = useState('progression'); // 'progression' | 'disciples' | 'nom'
+  const famillesForProgressionChart = React.useMemo(() => {
+    let list = familles.filter(f => f.famille != null);
+    if (progressionFilter === 'objectif_atteint') list = list.filter(f => (f.stats?.progression ?? 0) >= 100);
+    if (progressionFilter === 'en_cours') list = list.filter(f => (f.stats?.progression ?? 0) < 100);
+    list = [...list];
+    if (progressionSort === 'progression') list.sort((a, b) => (b.stats?.progression ?? 0) - (a.stats?.progression ?? 0));
+    else if (progressionSort === 'disciples') list.sort((a, b) => (b.stats?.nombreMembres ?? 0) - (a.stats?.nombreMembres ?? 0));
+    else if (progressionSort === 'nom') list.sort((a, b) => (a.famille?.nom || '').localeCompare(b.famille?.nom || ''));
+    return list;
+  }, [familles, progressionFilter, progressionSort]);
+
+  // Réinitialiser la page quand les filtres ou le tri changent
+  useEffect(() => {
+    setProgressionPage(0);
+  }, [progressionFilter, progressionSort]);
 
   // Uniquement les disciples qui ont des disciples (pas les superviseurs) : piliers / mentors
   const mentorsConsolidesSansSuperviseurs = mentorsConsolides.filter(m => (m.titre || '').toLowerCase() !== 'superviseur');
@@ -1399,7 +1628,7 @@ const PasteurDashboard = () => {
         </Button>
 
         {/* Bandeau de bienvenue */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-950 via-purple-950 to-purple-900 border border-gray-200 shadow-lg p-8 md:p-12">
+        <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-950 via-purple-950 to-purple-900 border border-gray-200 shadow-lg p-8 md:p-12" aria-label="Bienvenue et export du dashboard">
           <div className="relative z-10">
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
               <div className="flex-1">
@@ -1442,1008 +1671,129 @@ const PasteurDashboard = () => {
           {/* Background Decorative Circles */}
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
-        </div>
+        </section>
 
-        {/* KPI des Familles de [nom pasteur] – même fond gris que KPI Globaux */}
-        <div className="rounded-xl bg-gray-200 border border-gray-300 p-4 md:p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              KPI des Familles de {[pasteurNom.first_name, pasteurNom.last_name].filter(Boolean).join(' ') || pasteurNom.identifiant_unique || 'votre pasteur'}
-            </h2>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleRefreshDonnees}
-              disabled={refreshing || loading}
-              className="shrink-0 bg-blue-600 text-white border-0 hover:bg-purple-600 hover:text-white"
-            >
-              {refreshing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              Rafraîchir
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="bg-white border-gray-200 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                  <Users className="h-4 w-4 text-purple-600" />
-                  Superviseurs
-                </CardTitle>
-              </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600">
-                {globalStats.totalSuperviseurs}
-              </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  Sous votre responsabilité
-                </p>
-              </CardContent>
-            </Card>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" aria-label="Navigation du dashboard pasteur">
+          <TabsList className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 h-auto gap-2 p-2 bg-gray-200 border border-gray-300 rounded-xl" role="tablist" aria-label="Onglets : Vue d'ensemble, KPI et Période, Familles, Membres et Mentors, Rapports">
+            <TabsTrigger value={TAB_KEYS.OVERVIEW} className="flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-800 data-[state=active]:border-transparent data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <LayoutDashboard className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Vue d&apos;ensemble</span>
+            </TabsTrigger>
+            <TabsTrigger value={TAB_KEYS.KPI} className="flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-800 data-[state=active]:border-transparent data-[state=active]:bg-purple-600 data-[state=active]:text-white" onMouseEnter={() => handleTabHover(TAB_KEYS.KPI)}>
+              <BarChart3 className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">KPI & Période</span>
+            </TabsTrigger>
+            <TabsTrigger value={TAB_KEYS.FAMILIES} className="flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-800 data-[state=active]:border-transparent data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <Building2 className="h-4 w-4 shrink-0" />
+              Familles
+            </TabsTrigger>
+            <TabsTrigger value={TAB_KEYS.MEMBERS} className="flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-800 data-[state=active]:border-transparent data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <Users className="h-4 w-4 shrink-0" />
+              Membres & Mentors
+            </TabsTrigger>
+            <TabsTrigger value={TAB_KEYS.REPORTS} className="flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-gray-800 data-[state=active]:border-transparent data-[state=active]:bg-purple-600 data-[state=active]:text-white" onMouseEnter={() => handleTabHover(TAB_KEYS.REPORTS)}>
+              <Mail className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Rapports</span>
+            </TabsTrigger>
+          </TabsList>
 
-            <Card className="bg-white border-gray-200 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-purple-600" />
-                  Familles
-                </CardTitle>
-              </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600">
-                {globalStats.totalFamilles}
-              </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  Familles actives
-                </p>
-              </CardContent>
-            </Card>
+        {/* Onglet Vue d'ensemble */}
+        <TabsContent value={TAB_KEYS.OVERVIEW} className="space-y-6 mt-4">
+          <PasteurOverview
+            pasteurNom={pasteurNom}
+            globalStats={globalStats}
+            familles={familles}
+            setSelectedFamille={setSelectedFamille}
+            kpiParPasteur={kpiParPasteur}
+            kpiParPasteurLoading={kpiParPasteurLoading}
+            kpiParPasteurTotalCumule={kpiParPasteurTotalCumule}
+            kpiParPasteurTotalFamilles={kpiParPasteurTotalFamilles}
+            overviewChartRef={overviewChartRef}
+            overviewChartInView={overviewChartInView}
+            activeTab={activeTab}
+            famillesForProgressionChart={famillesForProgressionChart}
+            progressionFilter={progressionFilter}
+            setProgressionFilter={setProgressionFilter}
+            progressionSort={progressionSort}
+            setProgressionSort={setProgressionSort}
+            hoveredFamilleNameProgression={hoveredFamilleNameProgression}
+            setHoveredFamilleNameProgression={setHoveredFamilleNameProgression}
+            TAB_KEYS={TAB_KEYS}
+            setActiveTab={setActiveTab}
+            setSelectedPasteurIdForFamilies={setSelectedPasteurIdForFamilies}
+            navigate={navigate}
+            handleRefreshDonnees={handleRefreshDonnees}
+            refreshing={refreshing}
+            loading={loading}
+            role={role}
+          />
+        </TabsContent>
 
-            <Card className="bg-white border-gray-200 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                  <UserCheck className="h-4 w-4 text-purple-600" />
-                  Disciples
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-purple-600">
-                  {globalStats.totalDisciples}
-                </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  sur {globalStats.objectifTotal} objectif
-                </p>
-              </CardContent>
-            </Card>
+        {/* Onglet KPI & Période */}
+        <TabsContent value={TAB_KEYS.KPI} className="space-y-6 mt-4">
+          <PasteurKpiPeriod
+            pasteurNom={pasteurNom}
+            loadingKpiTab={loadingKpiTab}
+            filteredFamilles={filteredFamilles}
+            chartData={chartData}
+            famillesForProgressionChart={famillesForProgressionChart}
+            familles={familles}
+            progressionFilter={progressionFilter}
+            setProgressionFilter={setProgressionFilter}
+            progressionSort={progressionSort}
+            setProgressionSort={setProgressionSort}
+            hoveredFamilleNameProgression={hoveredFamilleNameProgression}
+            setHoveredFamilleNameProgression={setHoveredFamilleNameProgression}
+            setSelectedFamille={setSelectedFamille}
+            progressionPage={progressionPage}
+            setProgressionPage={setProgressionPage}
+            kpiPeriodType={kpiPeriodType}
+            setKpiPeriodType={setKpiPeriodType}
+            kpiSelectedYearForPeriod={kpiSelectedYearForPeriod}
+            setKpiSelectedYearForPeriod={setKpiSelectedYearForPeriod}
+            kpiSelectedQuarter={kpiSelectedQuarter}
+            setKpiSelectedQuarter={setKpiSelectedQuarter}
+            kpiSelectedMonth={kpiSelectedMonth}
+            setKpiSelectedMonth={setKpiSelectedMonth}
+            kpiSelectedWeek={kpiSelectedWeek}
+            setKpiSelectedWeek={setKpiSelectedWeek}
+            globalStats={globalStats}
+            kpiAnnuelsBreakdown={kpiAnnuelsBreakdown}
+            kpiDetailModal={kpiDetailModal}
+            setKpiDetailModal={setKpiDetailModal}
+            hoveredKpiBarName={hoveredKpiBarName}
+            setHoveredKpiBarName={setHoveredKpiBarName}
+            evolutionChartsRef={evolutionChartsRef}
+            evolutionChartsInView={evolutionChartsInView}
+            evolutionVisibleSeries={evolutionVisibleSeries}
+            setEvolutionVisibleSeries={setEvolutionVisibleSeries}
+          />
+        </TabsContent>
 
-            <Card className="bg-white border-gray-200 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                  <Target className="h-4 w-4 text-purple-600" />
-                  Progression
-                </CardTitle>
-              </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600">
-                {Math.round(globalStats.progressionGlobale)}%
-              </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  {globalStats.famillesObjectifAtteint} familles ont atteint l'objectif
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
 
-        {/* KPI Globaux - Total Disciples par Pasteur (visible pour pasteur, admin, super_admin) */}
-        {(role === 'pasteur' || role === 'admin' || role === 'super_admin') && (
-          <Card className="bg-gray-200 border-gray-300 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Users className="h-5 w-5 text-purple-600" />
-                KPI Globaux - Total Disciples par Pasteur
-              </CardTitle>
-              <CardDescription>
-                Vue d'ensemble du nombre total de disciples sous la tutelle de chaque pasteur ({kpiParPasteur.length} pasteur{kpiParPasteur.length !== 1 ? 's' : ''})
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {kpiParPasteurLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {kpiParPasteur.map((p) => (
-                    <div
-                      key={p.id}
-                      className="rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50 to-white p-4 shadow-sm hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <Church className="h-5 w-5 text-purple-600" />
-                        <span className="font-bold text-gray-900 text-sm uppercase tracking-wide">{p.nomAffichage}</span>
-                      </div>
-                      <div className="font-bold text-gray-900 text-sm mb-1">{p.totalFamilles ?? 0} Familles</div>
-                      <div className="mt-2">
-                        <span className="text-xs font-bold text-gray-900 uppercase">Total Disciples : </span>
-                        <span className="text-2xl font-bold text-purple-600">{p.totalDisciples}</span>
-                      </div>
-                      <p className="text-xs text-gray-600 mt-1">
-                        Sur {(p.totalFamilles ?? 0) * 70} Disciples attendus
-                      </p>
-                    </div>
-                  ))}
-                  <div
-                    className="rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <TrendingUp className="h-5 w-5 text-blue-600" />
-                      <span className="font-bold text-gray-900 text-sm">Cumul des Familles</span>
-                    </div>
-                    <div className="font-bold text-gray-900 text-sm mb-1">{kpiParPasteurTotalFamilles} Familles</div>
-                    <div className="mt-2">
-                      <span className="text-xs font-bold text-gray-900 uppercase">Cumul Disciples : </span>
-                      <span className="text-xl font-bold text-blue-600">{kpiParPasteurTotalCumule}</span>
-                    </div>
-                    <p className="text-xs text-gray-600 mt-1">
-                      Sur {kpiParPasteurTotalFamilles * 70} Disciples attendus
-                    </p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+        {/* Onglet Familles */}
+        <TabsContent value={TAB_KEYS.FAMILIES} className="space-y-6 mt-4">
+          <PasteurFamilies
+            selectedPasteurIdForFamilies={selectedPasteurIdForFamilies}
+            setSelectedPasteurIdForFamilies={setSelectedPasteurIdForFamilies}
+            kpiParPasteur={kpiParPasteur}
+            user={user}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            setSelectedFamille={setSelectedFamille}
+            famillesToShow={famillesToShow}
+            globalStats={globalStats}
+            loadingFamillesForPasteur={loadingFamillesForPasteur}
+            filteredFamilles={filteredFamilles}
+            formatFamilleName={formatFamilleName}
+            openCreateDialog={openCreateDialog}
+            showAllSuperviseursFamilles={showAllSuperviseursFamilles}
+            setShowAllSuperviseursFamilles={setShowAllSuperviseursFamilles}
+          />
+        </TabsContent>
 
-        {/* Graphiques de progression des familles du pasteur connecté */}
-        {(filteredFamilles.length > 0 || chartData.length > 0) && (
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Target className="h-5 w-5 text-purple-600" />
-                Progression Globale des Familles de <span className="text-purple-600 font-semibold">{[pasteurNom.first_name, pasteurNom.last_name].filter(Boolean).join(' ') || pasteurNom.identifiant_unique || 'votre pasteur'}</span>
-              </CardTitle>
-              <CardDescription>
-                Évolution dans le temps et progression par famille vers l'objectif 70
-              </CardDescription>
-            </CardHeader>
-            <CardContent
-              onMouseLeave={() => setHoveredFamilleNameProgression(null)}
-            >
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
-                {filteredFamilles.length > 0 && (
-                  <>
-                    <div className="w-full min-w-0">
-                      <div className="h-[400px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart
-                            data={filteredFamilles.slice(0, 6).map((f) => ({
-                              name: (f.famille?.nom || 'Famille'),
-                              progression: Math.round(f.stats.progression),
-                              disciples: f.stats?.nombreMembres ?? 0
-                            }))}
-                            layout="vertical"
-                            margin={{ top: 5, right: 20, left: 65, bottom: 5 }}
-                          >
-                            <XAxis type="number" domain={[0, 100]} unit="%" stroke="#888888" fontSize={11} />
-                            <YAxis
-                              type="category"
-                              dataKey="name"
-                              stroke="#888888"
-                              fontSize={11}
-                              width={55}
-                              tick={(props) => {
-                                const { x, y, payload } = props;
-                                const value = payload?.value ?? '';
-                                const item = filteredFamilles.find((f) => (f.famille?.nom || 'Famille') === value);
-                                const supName = item ? `${item.superviseur?.first_name || ''} ${item.superviseur?.last_name || ''}`.trim() : '';
-                                const isHovered = value === hoveredFamilleNameProgression;
-                                const familyNameFill = isHovered ? '#9333ea' : '#2563eb';
-                                return (
-                                  <g transform={`translate(${x},${y})`}>
-                                    <text textAnchor="end" x={0} y={0} fontWeight="bold" fontSize={11} fill={familyNameFill}>{value}</text>
-                                    {supName && <text textAnchor="end" x={0} y={14} fontSize={10} fill="#6b7280">{supName}</text>}
-                                  </g>
-                                );
-                              }}
-                            />
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
-                            <Tooltip
-                              cursor={<TooltipCursorBar />}
-                              content={({ active, payload }) => {
-                                queueMicrotask(() => {
-                                  setHoveredFamilleNameProgression(active && payload?.length ? payload[0].payload.name : null);
-                                });
-                                if (!active || !payload?.length) return null;
-                                const p = payload[0].payload;
-                                return (
-                                  <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
-                                    <div className="font-semibold text-purple-600">Progression : {p.progression}%</div>
-                                    <div className="text-gray-700">Soit {p.disciples ?? 0} Disciples</div>
-                                  </div>
-                                );
-                              }}
-                            />
-                            <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={18} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                    <div className="w-full min-w-0">
-                      <div className="h-[400px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart
-                            data={filteredFamilles.slice(6, 12).map((f) => ({
-                              name: (f.famille?.nom || 'Famille'),
-                              progression: Math.round(f.stats.progression),
-                              disciples: f.stats?.nombreMembres ?? 0
-                            }))}
-                            layout="vertical"
-                            margin={{ top: 5, right: 20, left: 90, bottom: 5 }}
-                          >
-                            <XAxis type="number" domain={[0, 100]} unit="%" stroke="#888888" fontSize={11} />
-                            <YAxis
-                              type="category"
-                              dataKey="name"
-                              stroke="#888888"
-                              fontSize={11}
-                              width={80}
-                              tick={(props) => {
-                                const { x, y, payload } = props;
-                                const value = payload?.value ?? '';
-                                const item = filteredFamilles.find((f) => (f.famille?.nom || 'Famille') === value);
-                                const supName = item ? `${item.superviseur?.first_name || ''} ${item.superviseur?.last_name || ''}`.trim() : '';
-                                const isHovered = value === hoveredFamilleNameProgression;
-                                const familyNameFill = isHovered ? '#9333ea' : '#2563eb';
-                                return (
-                                  <g transform={`translate(${x},${y})`}>
-                                    <text textAnchor="end" x={0} y={0} fontWeight="bold" fontSize={11} fill={familyNameFill}>{value}</text>
-                                    {supName && <text textAnchor="end" x={0} y={14} fontSize={10} fill="#6b7280">{supName}</text>}
-                                  </g>
-                                );
-                              }}
-                            />
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
-                            <Tooltip
-                              cursor={<TooltipCursorBar />}
-                              content={({ active, payload }) => {
-                                queueMicrotask(() => {
-                                  setHoveredFamilleNameProgression(active && payload?.length ? payload[0].payload.name : null);
-                                });
-                                if (!active || !payload?.length) return null;
-                                const p = payload[0].payload;
-                                return (
-                                  <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
-                                    <div className="font-semibold text-purple-600">Progression : {p.progression}%</div>
-                                    <div className="text-gray-700">Soit {p.disciples ?? 0} Disciples</div>
-                                  </div>
-                                );
-                              }}
-                            />
-                            <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={18} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </>
-                )}
-                {chartData.length > 0 && chartData.some((d) => d.progressionEstimee != null) && filteredFamilles.length === 0 && (
-                  <div className="w-full min-w-0">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Évolution de la progression (12 derniers mois)</h3>
-                    <p className="text-xs text-gray-500 mb-2">Estimation à partir des disciples déclarés dans les rapports</p>
-                    <div className="h-[400px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                          <XAxis dataKey="name" stroke="#888888" fontSize={11} tickLine={false} axisLine={false} />
-                          <YAxis domain={[0, 100]} unit="%" stroke="#888888" fontSize={11} tickLine={false} axisLine={false} />
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                          <Tooltip formatter={(v) => [`${v}%`, 'Progression estimée']} />
-                          <Line type="monotone" dataKey="progressionEstimee" name="Progression estimée (%)" stroke="#9333ea" strokeWidth={2} dot={{ r: 4 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* KPI avec sélection de période */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-purple-600" />
-                <CardTitle className="text-lg font-semibold text-gray-900">
-                  {(() => {
-                    const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-                    if (kpiPeriodType === 'annuel') {
-                      return `KPI Annuels ${kpiSelectedYearForPeriod}`;
-                    } else if (kpiPeriodType === 'trimestriel') {
-                      return `KPI Trimestriels T${kpiSelectedQuarter} ${kpiSelectedYearForPeriod}`;
-                    } else if (kpiPeriodType === 'mensuel') {
-                      const monthName = months[parseInt(kpiSelectedMonth)];
-                      return `KPI Mensuels ${monthName} ${kpiSelectedYearForPeriod}`;
-                    } else {
-                      // Pour hebdomadaire, calculer le mois de la semaine
-                      const selectedYear = parseInt(kpiSelectedYearForPeriod);
-                      const selectedWeek = parseInt(kpiSelectedWeek);
-                      // Créer une date pour le 1er janvier de l'année
-                      const jan1 = new Date(selectedYear, 0, 1);
-                      // Obtenir le début de la première semaine de l'année (lundi)
-                      const firstWeekStart = startOfWeek(jan1, { weekStartsOn: 1 });
-                      // Calculer le début de la semaine sélectionnée
-                      const targetWeekStart = new Date(firstWeekStart);
-                      targetWeekStart.setDate(firstWeekStart.getDate() + (selectedWeek - 1) * 7);
-                      // Obtenir le mois de cette date (0-indexed, donc Janvier = 0)
-                      const monthIndex = targetWeekStart.getMonth();
-                      const monthName = months[monthIndex];
-                      return `KPI Hebdomadaires Sem ${kpiSelectedWeek} ${monthName} ${kpiSelectedYearForPeriod}`;
-                    }
-                  })()}
-                </CardTitle>
-              </div>
-              <div className="flex flex-wrap gap-2 items-center">
-                <Select value={kpiPeriodType} onValueChange={setKpiPeriodType}>
-                  <SelectTrigger className="w-[140px] bg-gray-200 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900 hover:bg-gray-300">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200">
-                    <SelectItem value="hebdomadaire" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Hebdomadaire</SelectItem>
-                    <SelectItem value="mensuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Mensuel</SelectItem>
-                    <SelectItem value="trimestriel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestriel</SelectItem>
-                    <SelectItem value="annuel" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Annuel</SelectItem>
-                  </SelectContent>
-                </Select>
-                
-                {kpiPeriodType === 'annuel' && (
-                  <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
-                    <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200">
-                      {Array.from({ length: 5 }, (_, i) => {
-                        const year = new Date().getFullYear() - i;
-                        return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
-                      })}
-                    </SelectContent>
-                  </Select>
-                )}
-                
-                {kpiPeriodType === 'trimestriel' && (
-                  <>
-                    <Select value={kpiSelectedQuarter} onValueChange={setKpiSelectedQuarter}>
-                      <SelectTrigger className="w-[140px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        <SelectItem value="1" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestre 1</SelectItem>
-                        <SelectItem value="2" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestre 2</SelectItem>
-                        <SelectItem value="3" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestre 3</SelectItem>
-                        <SelectItem value="4" className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Trimestre 4</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
-                      <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        {Array.from({ length: 7 }, (_, i) => {
-                          const year = 2025 + i;
-                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
-                        })}
-                      </SelectContent>
-                    </Select>
-                  </>
-                )}
-                
-                {kpiPeriodType === 'mensuel' && (
-                  <>
-                    <Select value={kpiSelectedMonth} onValueChange={setKpiSelectedMonth}>
-                      <SelectTrigger className="w-[140px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        {["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"].map((month, index) => (
-                          <SelectItem key={index} value={index.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{month}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
-                      <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        {Array.from({ length: 7 }, (_, i) => {
-                          const year = 2025 + i;
-                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
-                        })}
-                      </SelectContent>
-                    </Select>
-                  </>
-                )}
-                
-                {kpiPeriodType === 'hebdomadaire' && (
-                  <>
-                    <Select value={kpiSelectedWeek} onValueChange={setKpiSelectedWeek}>
-                      <SelectTrigger className="w-[120px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200 max-h-[200px]">
-                        {Array.from({ length: 52 }, (_, i) => (
-                          <SelectItem key={i + 1} value={(i + 1).toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">Semaine {i + 1}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={kpiSelectedYearForPeriod} onValueChange={setKpiSelectedYearForPeriod}>
-                      <SelectTrigger className="w-[100px] bg-gray-100 border-0 text-gray-900 focus:ring-0 focus:ring-offset-0 focus:outline-none [&>span]:text-gray-900">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-gray-200">
-                        {Array.from({ length: 7 }, (_, i) => {
-                          const year = 2025 + i;
-                          return <SelectItem key={year} value={year.toString()} className="text-gray-900 hover:bg-gray-100 hover:text-gray-500">{year}</SelectItem>;
-                        })}
-                      </SelectContent>
-                    </Select>
-                  </>
-                )}
-              </div>
-            </div>
-            <CardDescription className="mt-2">
-              Indicateurs de performance agrégés pour la période sélectionnée
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* 3 rangées de 4 cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Ligne 1 */}
-              <div className="group text-center p-4 bg-gradient-to-br from-indigo-200 to-indigo-300 hover:bg-purple-600 rounded-lg border-2 border-indigo-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-800 group-hover:from-indigo-600 group-hover:to-indigo-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.culteSamediSoir || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Culte du Samedi Soir</div>
-                <Moon className="h-4 w-4 mx-auto mt-2 text-indigo-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-blue-200 to-blue-300 hover:bg-purple-600 rounded-lg border-2 border-blue-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 group-hover:from-blue-600 group-hover:to-blue-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.culteDimancheMatin || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Culte du Dimanche Matin</div>
-                <Church className="h-4 w-4 mx-auto mt-2 text-blue-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-cyan-200 to-cyan-300 hover:bg-purple-600 rounded-lg border-2 border-cyan-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-cyan-600 to-cyan-800 group-hover:from-cyan-600 group-hover:to-cyan-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.afterCulteDimanche || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">After Culte du Dimanche</div>
-                <Users className="h-4 w-4 mx-auto mt-2 text-cyan-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-amber-200 to-amber-300 hover:bg-purple-600 rounded-lg border-2 border-amber-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 group-hover:from-amber-600 group-hover:to-amber-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.tempsPriere || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Temps de Prière</div>
-                <Heart className="h-4 w-4 mx-auto mt-2 text-amber-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-pink-200 to-pink-300 hover:bg-purple-600 rounded-lg border-2 border-pink-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-pink-600 to-pink-800 group-hover:from-pink-600 group-hover:to-pink-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.personnesEvangelisees || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Personnes évangélisées</div>
-                <Target className="h-4 w-4 mx-auto mt-2 text-pink-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-emerald-200 to-emerald-300 hover:bg-purple-600 rounded-lg border-2 border-emerald-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-emerald-600 to-emerald-800 group-hover:from-emerald-600 group-hover:to-emerald-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.nouveauxConvertis || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Nouveaux Convertis</div>
-                <Heart className="h-4 w-4 mx-auto mt-2 text-emerald-700 group-hover:text-white transition-colors" />
-              </div>
-              
-              {/* Ligne 2 */}
-              <div className="group text-center p-4 bg-gradient-to-br from-rose-200 to-rose-300 hover:bg-purple-600 rounded-lg border-2 border-rose-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-rose-600 to-rose-800 group-hover:from-rose-600 group-hover:to-rose-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.nouveauxArrivants || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Nouveaux Arrivants</div>
-                <UserPlus className="h-4 w-4 mx-auto mt-2 text-rose-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-teal-200 to-teal-300 hover:bg-purple-600 rounded-lg border-2 border-teal-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-teal-600 to-teal-800 group-hover:from-teal-600 group-hover:to-teal-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.sortiesEvangelisation || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Sorties d'Évangélisation</div>
-                <Megaphone className="h-4 w-4 mx-auto mt-2 text-teal-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-purple-200 to-purple-300 hover:bg-purple-600 rounded-lg border-2 border-purple-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 group-hover:from-amber-500 group-hover:to-amber-700 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.comFratDisciples || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Com Frat Disciples</div>
-                <UserCheck className="h-4 w-4 mx-auto mt-2 text-purple-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-violet-200 to-violet-300 hover:bg-purple-600 rounded-lg border-2 border-violet-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-violet-600 to-violet-800 group-hover:from-amber-500 group-hover:to-amber-700 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.veillee || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Veillée</div>
-                <Moon className="h-4 w-4 mx-auto mt-2 text-violet-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-orange-200 to-orange-300 hover:bg-purple-600 rounded-lg border-2 border-orange-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-orange-800 group-hover:from-orange-600 group-hover:to-orange-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.meditationBible || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Méditation Bible</div>
-                <Book className="h-4 w-4 mx-auto mt-2 text-orange-700 group-hover:text-white transition-colors" />
-              </div>
-              <div className="group text-center p-4 bg-gradient-to-br from-green-200 to-green-300 hover:bg-purple-600 rounded-lg border-2 border-green-400 hover:border-purple-600 transition-colors cursor-pointer">
-                <div className="text-2xl font-bold bg-gradient-to-r from-green-600 to-green-800 group-hover:from-green-600 group-hover:to-green-800 bg-clip-text text-transparent">
-                  {globalStats.kpiAnnuels?.tempsPartage || 0}
-                </div>
-                <div className="text-xs text-gray-900 group-hover:text-gray-900 mt-1 font-medium transition-colors uppercase">Temps de Partage</div>
-                <HeartHandshake className="h-4 w-4 mx-auto mt-2 text-green-700 group-hover:text-white transition-colors" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Graphiques d'évolution des KPI */}
-        {chartData.length > 0 && (
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-purple-600" />
-                Évolution des KPI (12 derniers mois)
-              </CardTitle>
-              <CardDescription>
-                Tendances des indicateurs clés de performance sur les 12 derniers mois
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Graphique Présences aux Cultes */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Présences aux Cultes</h3>
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="colorCulteSamedi" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorCulteDimanche" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorAfterCulte" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                        <Tooltip />
-                        <Legend />
-                        <Area type="monotone" dataKey="culteSamediSoir" name="Culte Samedi Soir" stroke="#6366f1" fillOpacity={1} fill="url(#colorCulteSamedi)" />
-                        <Area type="monotone" dataKey="culteDimancheMatin" name="Culte Dimanche Matin" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCulteDimanche)" />
-                        <Area type="monotone" dataKey="afterCulteDimanche" name="After Culte" stroke="#14b8a6" fillOpacity={1} fill="url(#colorAfterCulte)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Graphique Temps de Prière et Partage */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Temps de Prière et Partage</h3>
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="tempsPriere" name="Temps de Prière" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
-                        <Line type="monotone" dataKey="tempsPartage" name="Temps de Partage" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Graphique Nouveaux Convertis et Arrivants */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Nouveaux Convertis et Arrivants</h3>
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="colorNouveauxConvertis" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="colorNouveauxArrivants" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                        <Tooltip />
-                        <Legend />
-                        <Area type="monotone" dataKey="nouveauxConvertis" name="Nouveaux Convertis" stroke="#ec4899" fillOpacity={1} fill="url(#colorNouveauxConvertis)" />
-                        <Area type="monotone" dataKey="nouveauxArrivants" name="Nouveaux Arrivants" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorNouveauxArrivants)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Graphique Évangélisation */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Évangélisation</h3>
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="sortiesEvangelisation" name="Sorties d'Évangélisation" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
-                        <Line type="monotone" dataKey="personnesEvangelisees" name="Personnes Évangélisées" stroke="#f97316" strokeWidth={2} dot={{ r: 4 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Recherche et filtres */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900">Recherche et Filtres</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Rechercher par superviseur, famille ou identifiant..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-10 bg-gray-100 border-gray-200 focus:ring-0 focus:ring-offset-0 focus:outline-none focus:border-gray-200 hover:border-gray-200 active:border-gray-200 text-gray-900"
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500 hover:text-red-700 transition-colors"
-                    type="button"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              <Button
-                onClick={() => {
-                  setSelectedFamille(null);
-                  setSearchTerm('');
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white focus:ring-0 focus:ring-offset-0 focus:outline-none hover:border-0 border-0"
-              >
-                <Filter className="h-4 w-4 mr-2" />
-                Toutes les familles
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Rapports Reçus (avant Liste des Familles) */}
-        <Card className="bg-gradient-to-br from-blue-50 to-sky-50 border-blue-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Mail className="h-5 w-5 text-purple-600" />
-              Rapports Reçus
-            </CardTitle>
-            <CardDescription>
-              Vue d'ensemble des rapports envoyés par vos superviseurs
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
-                <div className="text-2xl font-bold text-purple-700">{globalStats.totalRapports || 0}</div>
-                <div className="text-xs text-purple-600 mt-1 font-medium">Total Rapports</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-                <div className="text-2xl font-bold text-blue-700">{globalStats.rapportsHebdo || 0}</div>
-                <div className="text-xs text-blue-600 mt-1 font-medium">Hebdomadaires</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
-                <div className="text-2xl font-bold text-green-700">{globalStats.rapportsMensuels || 0}</div>
-                <div className="text-xs text-green-600 mt-1 font-medium">Mensuels</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
-                <div className="text-2xl font-bold text-amber-700">{globalStats.rapportsTrimestriels || 0}</div>
-                <div className="text-xs text-amber-600 mt-1 font-medium">Trimestriels</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200">
-                <div className="text-2xl font-bold text-red-700">{globalStats.rapportsAnnuels || 0}</div>
-                <div className="text-xs text-red-600 mt-1 font-medium">Annuels</div>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <Button
-                onClick={() => navigate('/admin/reports')}
-                className="w-full bg-blue-600 hover:bg-purple-600 text-white border-0 hover:border-0 transition-colors"
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                Voir tous les rapports
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Liste des Familles */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <Building2 className="h-5 w-5 text-purple-600" />
-                  Liste des Familles
-                </CardTitle>
-                <CardDescription>
-                  Vue d'ensemble de toutes les familles sous votre supervision ({globalStats.totalFamilles} familles)
-                </CardDescription>
-              </div>
-              <Button
-                onClick={openCreateDialog}
-                className="bg-gray-200 hover:bg-purple-600 text-gray-900 hover:text-white border-0 transition-colors"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Ajouter Nouvelle Famille
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {filteredFamilles.length === 0 ? (
-              <div className="text-center py-12">
-                <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">
-                  {searchTerm ? 'Aucun résultat trouvé pour votre recherche.' : 'Aucune famille assignée pour le moment.'}
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredFamilles.map((item) => (
-                  <div
-                    key={item.superviseur.id}
-                    className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                          <Building2 className="h-5 w-5 text-purple-600" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900 text-sm">
-                            {formatFamilleName(item.famille?.nom || 'Sans nom')}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {item.famille?.identifiant_famille || 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2 mb-3">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-600">Superviseur:</span>
-                        <span className="font-medium text-gray-900">
-                          {item.superviseur.first_name} {item.superviseur.last_name}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-600">Membres:</span>
-                        <span className="font-semibold text-gray-900">{item.stats.nombreMembres} / {item.stats.objectif}</span>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="text-gray-600">Progression</span>
-                        <span className="font-medium text-gray-900">{Math.round(item.stats.progression)}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${
-                            item.stats.progression >= 100
-                              ? 'bg-green-500'
-                              : item.stats.progression >= 50
-                              ? 'bg-purple-600'
-                              : 'bg-amber-500'
-                          }`}
-                          style={{ width: `${Math.min(item.stats.progression, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                    
-                    {item.stats.progression >= 100 && (
-                      <div className="mt-2 flex items-center gap-1 text-xs text-green-600">
-                        <CheckCircle2 className="h-3 w-3" />
-                        <span>Objectif atteint</span>
-                      </div>
-                    )}
-
-                    {/* Bouton Voir détails */}
-                    <div className="mt-4 pt-3 border-t border-gray-200">
-                      <Button
-                        size="sm"
-                        className="w-full bg-purple-600 text-white hover:bg-blue-600 border-0"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedFamille(item);
-                        }}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        Voir détails
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Tableau des superviseurs et familles */}
-        <Card className="bg-white border-gray-200 shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between gap-4">
-            <div>
-              <CardTitle className="text-lg font-semibold text-gray-900">Mes Superviseurs et Familles</CardTitle>
-              <CardDescription>
-                Statistiques agrégées par famille et superviseur – vue détaillée avec progression vers l'objectif 70
-              </CardDescription>
-            </div>
-            {filteredFamilles.length > 5 && (
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={() => setShowAllSuperviseursFamilles((v) => !v)}
-                className="shrink-0 bg-blue-600 text-white hover:bg-blue-700"
-              >
-                {showAllSuperviseursFamilles ? (
-                  <>
-                    <ChevronUp className="h-4 w-4 mr-1" />
-                    Voir moins
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4 mr-1" />
-                    Voir plus
-                  </>
-                )}
-              </Button>
-            )}
-          </CardHeader>
-          <CardContent>
-            {filteredFamilles.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">
-                  {searchTerm ? 'Aucun résultat trouvé pour votre recherche.' : 'Aucun superviseur assigné pour le moment.'}
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="group bg-purple-200 hover:bg-purple-300 transition-colors cursor-pointer">
-                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Superviseur</TableHead>
-                      <TableHead className="font-semibold text-gray-900 group-hover:text-gray-900 transition-colors">Famille</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Disciples</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Objectif</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Progression</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Statut</TableHead>
-                      <TableHead className="font-semibold text-center text-gray-900 group-hover:text-gray-900 transition-colors">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(showAllSuperviseursFamilles ? filteredFamilles : filteredFamilles.slice(0, 5)).map((item, index) => (
-                      <TableRow key={item.superviseur.id} className="hover:bg-gray-50 transition-colors">
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                              <Users className="h-5 w-5 text-purple-600" />
-                            </div>
-                            <div>
-                              <p className="font-semibold text-gray-900">
-                                {item.superviseur.first_name} {item.superviseur.last_name}
-                              </p>
-                              <p className="text-sm text-gray-500">{item.superviseur.email}</p>
-                              {item.superviseur.titre && (
-                                <p className="text-xs text-gray-400">{item.superviseur.titre}</p>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {item.famille ? (
-                            <div>
-                              <p className="font-medium text-gray-900">{formatFamilleName(item.famille.nom)}</p>
-                              <p className="text-sm text-gray-500">{item.famille.identifiant_famille}</p>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 italic">Aucune famille assignée</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="font-semibold text-gray-900">{item.stats.nombreMembres}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="text-gray-600">{item.stats.objectif}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="w-24 bg-gray-200 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full ${
-                                  item.stats.progression >= 100
-                                    ? 'bg-green-500'
-                                    : item.stats.progression >= 50
-                                    ? 'bg-purple-600'
-                                    : 'bg-amber-500'
-                                }`}
-                                style={{ width: `${Math.min(item.stats.progression, 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-sm font-medium text-gray-700 w-12 text-left">
-                              {Math.round(item.stats.progression)}%
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {item.stats.nombreMembres >= item.stats.objectif ? (
-                            <Badge className="bg-green-500 text-white">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Objectif atteint
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="border-amber-500 text-amber-600">
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              En cours
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Ouvrir le modal avec les détails de la famille
-                              setSelectedFamille(item);
-                            }}
-                            disabled={!item.famille}
-                            className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 hover:border-0 border-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            Voir détails
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
+        {/* Onglet Membres & Mentors */}
+        <TabsContent value={TAB_KEYS.MEMBERS} className="space-y-6 mt-4">
         {/* Tableau « Membres des familles » (même structure que superviseur) */}
         {loadingPasteurMembers ? (
           <Card className="bg-white border-gray-200 shadow-sm">
@@ -2630,80 +1980,235 @@ const PasteurDashboard = () => {
             )}
           </CardContent>
         </Card>
+        </TabsContent>
 
-        {/* Arbre généalogique - toutes les familles (DR mode) */}
-        {user?.id && (
-          <ArbreGenealogiqueEmbed
-            mode="pasteur"
-            pasteurId={user.id}
-            title="Arbre généalogique - toutes les familles (DR mode)"
-            description="Lignée spirituelle de toutes vos familles : Pasteur → Superviseurs → Mentors → Disciples."
-            compactHeight={480}
-          />
+        {/* Onglet Rapports */}
+        <TabsContent value={TAB_KEYS.REPORTS} className="space-y-6 mt-4">
+        {/* Rapports Reçus — l'arbre généalogique est sur la page dédiée /arbre-genealogique */}
+        <Card className="bg-gradient-to-br from-blue-50 to-sky-50 border-blue-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Mail className="h-5 w-5 text-purple-600" />
+              Rapports Reçus
+            </CardTitle>
+            <CardDescription>
+              Vue d&apos;ensemble des rapports envoyés par vos superviseurs
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-gray-200">
+                <div className="text-2xl font-bold text-purple-700">{globalStats.totalRapports || 0}</div>
+                <div className="text-xs text-purple-600 mt-1 font-medium">Total Rapports</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                <div className="text-2xl font-bold text-blue-700">{globalStats.rapportsHebdo || 0}</div>
+                <div className="text-xs text-blue-600 mt-1 font-medium">Hebdomadaires</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
+                <div className="text-2xl font-bold text-green-700">{globalStats.rapportsMensuels || 0}</div>
+                <div className="text-xs text-green-600 mt-1 font-medium">Mensuels</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                <div className="text-2xl font-bold text-amber-700">{globalStats.rapportsTrimestriels || 0}</div>
+                <div className="text-xs text-amber-600 mt-1 font-medium">Trimestriels</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200">
+                <div className="text-2xl font-bold text-red-700">{globalStats.rapportsAnnuels || 0}</div>
+                <div className="text-xs text-red-600 mt-1 font-medium">Annuels</div>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <Button
+                onClick={() => navigate('/admin/reports')}
+                className="w-full bg-blue-600 hover:bg-purple-600 text-white border-0 hover:border-0 transition-colors"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Voir tous les rapports
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Rapports reçus : liste par superviseur, filtres mois/année (onglet Rapports uniquement) */}
+        <Card className="bg-white border-gray-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold flex items-center gap-2 text-black">
+              <FileText className="h-5 w-5" />
+              Rapports reçus
+            </CardTitle>
+            <CardDescription>
+              Rapports soumis par vos superviseurs. Filtrez par année et mois.
+            </CardDescription>
+            <div className="flex flex-wrap gap-2 mt-5 items-center">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-[180px] justify-start text-left font-normal bg-gray-100 border-gray-300 text-gray-900 hover:bg-violet-100 hover:border-violet-400 hover:text-black"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 text-gray-600" />
+                    {format(
+                      new Date(parseInt(filtreRapportsAnnee, 10) || new Date().getFullYear(), (filtreRapportsMois === '' || filtreRapportsMois === '__tous__' ? 0 : parseInt(filtreRapportsMois, 10)) || 0, 1),
+                      'MMMM yyyy',
+                      { locale: fr }
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 bg-white border-gray-200 [&_select]:text-gray-800 [&_select_option]:text-gray-800 [&_select_option]:bg-white" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={new Date(parseInt(filtreRapportsAnnee, 10) || new Date().getFullYear(), (filtreRapportsMois === '' || filtreRapportsMois === '__tous__' ? 0 : parseInt(filtreRapportsMois, 10)) || 0, 1)}
+                    onSelect={(d) => {
+                      if (d) {
+                        setFiltreRapportsAnnee(String(d.getFullYear()));
+                        setFiltreRapportsMois(String(d.getMonth()));
+                      }
+                    }}
+                    captionLayout="dropdown"
+                    fromYear={2025}
+                    toYear={2035}
+                    initialFocus
+                    labels={{
+                      labelMonthDropdown: () => 'Mois : ',
+                      labelYearDropdown: () => 'Année : ',
+                    }}
+                    classNames={{
+                      caption_label: "hidden",
+                      head_cell: "text-gray-700 rounded-md w-9 font-normal text-[0.8rem]",
+                      dropdown_month: "text-gray-800 bg-white border border-gray-300 rounded-md px-2 py-1 text-sm font-medium",
+                      dropdown_year: "text-gray-800 bg-white border border-gray-300 rounded-md px-2 py-1 text-sm font-medium",
+                      day: "h-9 w-9 p-0 font-normal text-gray-800 aria-selected:opacity-100",
+                      day_outside: "text-gray-500 opacity-70 aria-selected:bg-accent/50 aria-selected:text-gray-800 aria-selected:opacity-100",
+                      day_today: "bg-gray-200 text-gray-900 font-medium",
+                      day_selected: "bg-gray-800 text-white hover:bg-gray-800 hover:text-white focus:bg-gray-800 focus:text-white",
+                      day_disabled: "text-gray-500 opacity-60",
+                      nav_button_previous: "absolute left-1 text-gray-700",
+                      nav_button_next: "absolute right-1 text-gray-700",
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
+              <Select value={filtreRapportsMois || '__tous__'} onValueChange={(v) => setFiltreRapportsMois(v === '__tous__' ? '' : v)}>
+                <SelectTrigger className="w-[160px] bg-gray-100 border-gray-300 text-gray-900 hover:bg-violet-100 hover:border-violet-400 [&>svg]:text-gray-600">
+                  <SelectValue placeholder="Tous les mois" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-100 text-gray-900 border-gray-200">
+                  <SelectItem value="__tous__" className="text-gray-900 hover:bg-gray-400 hover:text-gray-900 data-[highlighted]:bg-gray-400 data-[highlighted]:text-gray-900 focus:bg-gray-400 focus:text-gray-900 cursor-pointer">Tous les mois</SelectItem>
+                  {['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'].map((m, i) => (
+                    <SelectItem key={i} value={String(i)} className="text-gray-900 hover:bg-gray-400 hover:text-gray-900 data-[highlighted]:bg-gray-400 data-[highlighted]:text-gray-900 focus:bg-gray-400 focus:text-gray-900 cursor-pointer">{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchRapportsRecus}
+                disabled={loadingRapportsRecus}
+                className="bg-gray-200 text-gray-900 border-gray-300 hover:bg-gray-300 hover:text-gray-900"
+              >
+                {loadingRapportsRecus ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Actualiser
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingRapportsRecus ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
+            ) : rapportsRecus.length === 0 ? (
+              <div className="text-center py-8">
+                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm mb-2">Aucun rapport reçu pour les critères sélectionnés.</p>
+                <p className="text-xs text-gray-400">Modifiez l&apos;année ou le mois dans les filtres ci-dessus pour élargir la recherche.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Superviseur</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rapportsRecus.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-medium">{r.superviseurName}</TableCell>
+                        <TableCell>
+                          <Badge variant={r.report_type === 'annuel' ? 'default' : 'secondary'}>
+                            {r.report_type === 'hebdomadaire' ? 'Hebdo' : r.report_type === 'mensuel' ? 'Mensuel' : r.report_type === 'trimestriel' ? 'Trim.' : r.report_type === 'annuel' ? 'Annuel' : r.report_type || '—'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{r.created_at ? format(new Date(r.created_at), 'dd/MM/yyyy HH:mm', { locale: fr }) : '—'}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" onClick={() => setRapportDetailModal({ report: r, superviseurName: r.superviseurName })}>
+                            <Eye className="h-4 w-4 mr-1" />
+                            Voir
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Rapports manquants (onglet Rapports uniquement) */}
+        {missingReports.length > 0 && (
+          <Card className="bg-amber-50 border-amber-200 shadow-sm">
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="flex-1">
+                  <CardTitle className="text-lg font-semibold text-amber-900 flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-amber-600" />
+                    Rapports manquants ({missingReports.length})
+                  </CardTitle>
+                  <CardDescription className="text-amber-700 mt-2">
+                    {(() => {
+                      const now = new Date();
+                      const previousMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+                      const previousYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+                      const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+                      const previousMonthName = monthNames[previousMonth];
+                      return `Les superviseurs suivants n'ont pas encore envoyé leur rapport mensuel pour ${previousMonthName} ${previousYear} :`;
+                    })()}
+                  </CardDescription>
+                </div>
+                {missingReports.length > 4 && (
+                  <Button
+                    onClick={() => setShowAllMissingReports(!showAllMissingReports)}
+                    className="bg-amber-400 text-white border-amber-500 hover:bg-amber-600 hover:text-black shrink-0 transition-colors"
+                  >
+                    {showAllMissingReports ? 'Voir moins' : 'Voir Tout'}
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {(showAllMissingReports ? missingReports : missingReports.slice(0, 4)).map((superviseur) => (
+                  <div key={superviseur.id} className="flex items-center justify-between p-2 bg-white rounded border border-amber-200">
+                    <div>
+                      <p className="font-medium text-gray-900">{superviseur.name}</p>
+                      {superviseur.email && (
+                        <p className="text-sm text-gray-600">{superviseur.email}</p>
+                      )}
+                    </div>
+                    <Badge className="bg-amber-400 text-white font-medium border border-amber-500 hover:bg-amber-600 hover:text-black transition-colors cursor-default">Rapport manquant</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         )}
-
-        {/* Actions rapides */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => navigate('/statistics')}>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-purple-600" />
-                Statistiques Détaillées
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-600">
-                Consultez les statistiques complètes et les graphiques de progression
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => navigate('/admin/reports')}>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                <Mail className="h-5 w-5 text-purple-600" />
-                Rapports Reçus
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-600">
-                Consultez tous les rapports envoyés par vos superviseurs
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => navigate('/familles')}>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-purple-600" />
-                Gérer les Familles
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-600">
-                Gérez et assignez les familles aux superviseurs
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => navigate('/arbre-genealogique')}>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                <GitBranch className="h-5 w-5 text-amber-600" />
-                Arbre généalogique
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-600">
-                Vue complète des familles : Pasteur → Superviseurs → Mentors → Disciples
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        </TabsContent>
+        </Tabs>
 
         {/* Modal de détails de la famille */}
         <Dialog open={selectedFamille !== null} onOpenChange={(open) => !open && setSelectedFamille(null)}>
@@ -2726,7 +2231,7 @@ const PasteurDashboard = () => {
                         )}
                         {selectedFamille.famille?.created_at && (
                           <span className="text-xs text-black flex items-center gap-1">
-                            <Calendar className="h-3.5 w-3.5" />
+                            <CalendarIcon className="h-3.5 w-3.5" />
                             Créée le {format(new Date(selectedFamille.famille.created_at), 'd MMMM yyyy', { locale: fr })}
                           </span>
                         )}
@@ -2737,7 +2242,7 @@ const PasteurDashboard = () => {
 
                 <div className="space-y-6 py-4">
                   {/* Informations du superviseur */}
-                  <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                  <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-gray-200">
                     <CardHeader>
                       <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                         <Users className="h-5 w-5 text-purple-600" />
@@ -3001,7 +2506,7 @@ const PasteurDashboard = () => {
 
         {/* Dialog création famille */}
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-lg">
+          <DialogContent className="bg-gray-100 border-gray-200 text-gray-900 max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-gray-900">Créer une nouvelle famille de 70</DialogTitle>
             </DialogHeader>
@@ -3114,93 +2619,12 @@ const PasteurDashboard = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Vue Pasteur « Rapports reçus » : liste par superviseur, filtres mois/année */}
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Rapports reçus
-            </CardTitle>
-            <CardDescription>
-              Rapports soumis par vos superviseurs. Filtrez par année et mois.
-            </CardDescription>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <Select value={filtreRapportsAnnee} onValueChange={setFiltreRapportsAnnee}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Année" />
-                </SelectTrigger>
-                <SelectContent>
-                  {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map((y) => (
-                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={filtreRapportsMois || '__tous__'} onValueChange={(v) => setFiltreRapportsMois(v === '__tous__' ? '' : v)}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Tous les mois" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__tous__">Tous les mois</SelectItem>
-                  {['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'].map((m, i) => (
-                    <SelectItem key={i} value={String(i)}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="sm" onClick={fetchRapportsRecus} disabled={loadingRapportsRecus}>
-                {loadingRapportsRecus ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Actualiser
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loadingRapportsRecus ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-              </div>
-            ) : rapportsRecus.length === 0 ? (
-              <p className="text-gray-500 text-sm py-4">Aucun rapport reçu pour les critères sélectionnés.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Superviseur</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rapportsRecus.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="font-medium">{r.superviseurName}</TableCell>
-                        <TableCell>
-                          <Badge variant={r.report_type === 'annuel' ? 'default' : 'secondary'}>
-                            {r.report_type === 'hebdomadaire' ? 'Hebdo' : r.report_type === 'mensuel' ? 'Mensuel' : r.report_type === 'trimestriel' ? 'Trim.' : r.report_type === 'annuel' ? 'Annuel' : r.report_type || '—'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{r.created_at ? format(new Date(r.created_at), 'dd/MM/yyyy HH:mm', { locale: fr }) : '—'}</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" onClick={() => setRapportDetailModal({ report: r, superviseurName: r.superviseurName })}>
-                            <Eye className="h-4 w-4 mr-1" />
-                            Voir
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Modal détail d'un rapport */}
         <Dialog open={!!rapportDetailModal} onOpenChange={() => setRapportDetailModal(null)}>
-          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-gray-100 text-gray-900 border-gray-200">
             <DialogHeader>
-              <DialogTitle>Détail du rapport</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-gray-900">Détail du rapport</DialogTitle>
+              <DialogDescription className="text-gray-700">
                 {rapportDetailModal && (
                   <>Rapport {rapportDetailModal.report.report_type} – {rapportDetailModal.superviseurName} – {rapportDetailModal.report.created_at && format(new Date(rapportDetailModal.report.created_at), 'dd/MM/yyyy', { locale: fr })}</>
                 )}
@@ -3224,55 +2648,6 @@ const PasteurDashboard = () => {
             )}
           </DialogContent>
         </Dialog>
-
-        {/* Notifications pour rapports manquants - En fin de page */}
-        {missingReports.length > 0 && (
-          <Card className="bg-amber-50 border-amber-200 shadow-sm mb-4">
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                <div className="flex-1">
-                  <CardTitle className="text-lg font-semibold text-amber-900 flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5 text-amber-600" />
-                    Rapports manquants ({missingReports.length})
-                  </CardTitle>
-                  <CardDescription className="text-amber-700 mt-2">
-                    {(() => {
-                      const now = new Date();
-                      const previousMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-                      const previousYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-                      const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-                      const previousMonthName = monthNames[previousMonth];
-                      return `Les superviseurs suivants n'ont pas encore envoyé leur rapport mensuel pour ${previousMonthName} ${previousYear} :`;
-                    })()}
-                  </CardDescription>
-                </div>
-                {missingReports.length > 4 && (
-                  <Button
-                    onClick={() => setShowAllMissingReports(!showAllMissingReports)}
-                    className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
-                  >
-                    {showAllMissingReports ? 'Voir moins' : 'Voir Tout'}
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {(showAllMissingReports ? missingReports : missingReports.slice(0, 4)).map((superviseur) => (
-                  <div key={superviseur.id} className="flex items-center justify-between p-2 bg-white rounded border border-amber-200">
-                    <div>
-                      <p className="font-medium text-gray-900">{superviseur.name}</p>
-                      {superviseur.email && (
-                        <p className="text-sm text-gray-600">{superviseur.email}</p>
-                      )}
-                    </div>
-                    <Badge className="bg-amber-500 text-white">Rapport manquant</Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
     </>
   );
