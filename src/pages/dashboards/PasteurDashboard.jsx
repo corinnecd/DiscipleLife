@@ -223,15 +223,15 @@ const PasteurDashboard = () => {
 
   // Charger les détails (membres, rapports) lorsque le modal famille s'ouvre
   useEffect(() => {
-    if (!selectedFamille?.famille?.id || !selectedFamille?.superviseur?.id) {
+    const famId = selectedFamille?.famille?.id;
+    const supId = selectedFamille?.superviseur?.id;
+    if (!famId || !supId) {
       setFamilleModalDetails({ members: [], reports: [], loading: false });
       return;
     }
     let cancelled = false;
     setFamilleModalDetails((prev) => ({ ...prev, loading: true }));
     const fetchDetails = async () => {
-      const famId = selectedFamille.famille.id;
-      const supId = selectedFamille.superviseur.id;
       const [membersRes, reportsRes] = await Promise.all([
         supabase
           .from('profils')
@@ -257,6 +257,13 @@ const PasteurDashboard = () => {
     fetchDetails();
     return () => { cancelled = true; };
   }, [selectedFamille?.famille?.id, selectedFamille?.superviseur?.id]);
+
+  const safeFormatDate = (dateVal, fmt, opts) => {
+    if (dateVal == null || dateVal === '') return '—';
+    const d = new Date(dateVal);
+    if (Number.isNaN(d.getTime())) return '—';
+    return format(d, fmt, opts);
+  };
 
   // Clé stable des familles pour éviter de recharger les membres quand seul le tableau familles change de référence (même ids)
   const familleIdsKey = (familles || []).map((f) => f.famille?.id).filter(Boolean).slice().sort().join(',');
@@ -352,9 +359,9 @@ const PasteurDashboard = () => {
         });
       }
 
-      // 2. Récupérer tous les superviseurs sous sa responsabilité
+      // 2. Récupérer tous les superviseurs sous sa responsabilité (sans limite artificielle pour afficher toutes les familles)
       // Méthode principale : Directement via pasteur_id (comme dans la migration SQL)
-      // Note: Ne pas inclure 'titre' dans la requête principale car la colonne peut ne pas exister
+      // Note: .limit(1000) explicite pour éviter qu'un paramètre API projet (ex. 10) ne tronque la liste
       const superviseursData = await getOrSetCache(
         `${cacheKeyBase}_superviseurs`,
         async () => {
@@ -363,7 +370,8 @@ const PasteurDashboard = () => {
             .select('id, first_name, last_name, email, identifiant_unique, avatar_url, pasteur_id')
             .eq('pasteur_id', user.id)
             .eq('role', 'superviseur')
-            .order('first_name', { ascending: true });
+            .order('first_name', { ascending: true })
+            .limit(1000);
           if (error) {
             devError('Erreur lors de la récupération des superviseurs:', error);
             throw error;
@@ -402,11 +410,12 @@ const PasteurDashboard = () => {
       if (!superviseursAvecTitres || superviseursAvecTitres.length === 0) {
         devLog('Aucun superviseur trouvé via pasteur_id, tentative via familles...');
         
-        // Récupérer toutes les familles avec leurs superviseurs
+        // Récupérer toutes les familles avec leurs superviseurs (limite haute pour ne pas en oublier)
         const { data: famillesData, error: famillesError } = await supabase
           .from('familles_disciples')
           .select('superviseur_id')
-          .not('superviseur_id', 'is', null);
+          .not('superviseur_id', 'is', null)
+          .limit(1000);
         
         if (!famillesError && famillesData && famillesData.length > 0) {
           const superviseurIds = [...new Set(famillesData.map(f => f.superviseur_id).filter(id => id))];
@@ -418,7 +427,8 @@ const PasteurDashboard = () => {
               .select('id, first_name, last_name, email, identifiant_unique, avatar_url, pasteur_id')
               .in('id', superviseurIds)
               .eq('role', 'superviseur')
-              .order('first_name', { ascending: true });
+              .order('first_name', { ascending: true })
+              .limit(1000);
             
             if (!superviseursViaFamillesError && superviseursViaFamilles) {
               // Filtrer uniquement ceux qui ont le pasteur_id correspondant
@@ -1468,7 +1478,6 @@ const PasteurDashboard = () => {
     return nomSuperviseur.includes(search) || nomFamille.includes(search) || identifiantFamille.includes(search);
   });
 
-  const [progressionPage, setProgressionPage] = useState(0);
   // Filtres et tri pour le graphique "Progression des familles" (onglet KPI)
   const [progressionFilter, setProgressionFilter] = useState('toutes'); // 'toutes' | 'objectif_atteint' | 'en_cours'
   const [progressionSort, setProgressionSort] = useState('progression'); // 'progression' | 'disciples' | 'nom'
@@ -1482,11 +1491,6 @@ const PasteurDashboard = () => {
     else if (progressionSort === 'nom') list.sort((a, b) => (a.famille?.nom || '').localeCompare(b.famille?.nom || ''));
     return list;
   }, [familles, progressionFilter, progressionSort]);
-
-  // Réinitialiser la page quand les filtres ou le tri changent
-  useEffect(() => {
-    setProgressionPage(0);
-  }, [progressionFilter, progressionSort]);
 
   // Uniquement les disciples qui ont des disciples (pas les superviseurs) : piliers / mentors
   const mentorsConsolidesSansSuperviseurs = mentorsConsolides.filter(m => (m.titre || '').toLowerCase() !== 'superviseur');
@@ -1582,7 +1586,7 @@ const PasteurDashboard = () => {
       'Vidéos terminées': pasteurMembersProgression[m.id]?.videos || 0,
       'Total progression': pasteurMembersProgression[m.id]?.total || 0,
       'Suivi par': pasteurMembersSuiviPar[m.id]?.name || '-',
-      "Date d'inscription": m.created_at ? format(new Date(m.created_at), 'dd/MM/yyyy', { locale: fr }) : '',
+      "Date d'inscription": m.created_at ? safeFormatDate(m.created_at, 'dd/MM/yyyy', { locale: fr }) : '',
     }));
     const filename = `membres_familles_pasteur_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
     if (formatExport === 'pdf') {
@@ -1590,7 +1594,7 @@ const PasteurDashboard = () => {
       const tempDiv = document.createElement('div');
       tempDiv.id = uniqueId;
       tempDiv.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
-      tempDiv.innerHTML = `<div style="font-family:Arial"><h2>Membres des familles - Pasteur</h2><p>Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p><p>Total: ${list.length} membre(s)</p><table style="width:100%;border-collapse:collapse;border:1px solid #ddd"><thead><tr style="background:#f3f4f6">${['Prénom','Nom','Email','Statut','Disciples','Progression','Suivi par','Date'].map(h=>`<th style="padding:10px;border:1px solid #ddd">${h}</th>`).join('')}</tr></thead><tbody>${list.map(m=>`<tr><td style="padding:8px;border:1px solid #ddd">${m.first_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.last_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.email||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.statut_spirituel==='inactif'?'Inactif':'Actif'}</td><td style="padding:8px;border:1px solid #ddd">${m.nombreDisciples||0}</td><td style="padding:8px;border:1px solid #ddd">${pasteurMembersProgression[m.id]?.total||0}</td><td style="padding:8px;border:1px solid #ddd">${pasteurMembersSuiviPar[m.id]?.name||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.created_at?format(new Date(m.created_at),'dd/MM/yyyy',{locale:fr}):'-'}</td></tr>`).join('')}</tbody></table></div>`;
+      tempDiv.innerHTML = `<div style="font-family:Arial"><h2>Membres des familles - Pasteur</h2><p>Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p><p>Total: ${list.length} membre(s)</p><table style="width:100%;border-collapse:collapse;border:1px solid #ddd"><thead><tr style="background:#f3f4f6">${['Prénom','Nom','Email','Statut','Disciples','Progression','Suivi par','Date'].map(h=>`<th style="padding:10px;border:1px solid #ddd">${h}</th>`).join('')}</tr></thead><tbody>${list.map(m=>`<tr><td style="padding:8px;border:1px solid #ddd">${m.first_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.last_name||''}</td><td style="padding:8px;border:1px solid #ddd">${m.email||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.statut_spirituel==='inactif'?'Inactif':'Actif'}</td><td style="padding:8px;border:1px solid #ddd">${m.nombreDisciples||0}</td><td style="padding:8px;border:1px solid #ddd">${pasteurMembersProgression[m.id]?.total||0}</td><td style="padding:8px;border:1px solid #ddd">${pasteurMembersSuiviPar[m.id]?.name||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.created_at?safeFormatDate(m.created_at,'dd/MM/yyyy',{locale:fr}):'-'}</td></tr>`).join('')}</tbody></table></div>`;
       document.body.appendChild(tempDiv);
       exportElementToPDF(uniqueId, `${filename}.pdf`, { title: 'Membres des familles', subtitle: 'Pasteur', showHeader: true, showFooter: true }).finally(() => { try { document.getElementById(uniqueId)?.remove(); } catch (_) {} });
     } else {
@@ -1742,8 +1746,6 @@ const PasteurDashboard = () => {
             hoveredFamilleNameProgression={hoveredFamilleNameProgression}
             setHoveredFamilleNameProgression={setHoveredFamilleNameProgression}
             setSelectedFamille={setSelectedFamille}
-            progressionPage={progressionPage}
-            setProgressionPage={setProgressionPage}
             kpiPeriodType={kpiPeriodType}
             setKpiPeriodType={setKpiPeriodType}
             kpiSelectedYearForPeriod={kpiSelectedYearForPeriod}
@@ -1853,7 +1855,7 @@ const PasteurDashboard = () => {
                         {selectedFamille.famille?.created_at && (
                           <span className="text-xs text-black flex items-center gap-1">
                             <CalendarIcon className="h-3.5 w-3.5" />
-                            Créée le {format(new Date(selectedFamille.famille.created_at), 'd MMMM yyyy', { locale: fr })}
+                            Créée le {safeFormatDate(selectedFamille.famille.created_at, 'd MMMM yyyy', { locale: fr })}
                           </span>
                         )}
                       </span>
@@ -1873,28 +1875,28 @@ const PasteurDashboard = () => {
                     <CardContent>
                       <div className="flex items-start gap-4 flex-wrap">
                         <div className="w-12 h-12 rounded-full bg-purple-200 flex items-center justify-center overflow-hidden shrink-0">
-                          {selectedFamille.superviseur.avatar_url ? (
+                          {selectedFamille.superviseur?.avatar_url ? (
                             <img src={selectedFamille.superviseur.avatar_url} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-lg font-semibold text-purple-600">
-                              {(selectedFamille.superviseur.first_name || '')[0]}{(selectedFamille.superviseur.last_name || '')[0]}
+                              {(selectedFamille.superviseur?.first_name || '')[0]}{(selectedFamille.superviseur?.last_name || '')[0]}
                             </span>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 text-lg">
-                            {selectedFamille.superviseur.first_name} {selectedFamille.superviseur.last_name}
+                            {selectedFamille.superviseur?.first_name} {selectedFamille.superviseur?.last_name}
                           </p>
-                          {selectedFamille.superviseur.titre && (
+                          {selectedFamille.superviseur?.titre && (
                             <p className="text-xs text-gray-500">{selectedFamille.superviseur.titre}</p>
                           )}
-                          {selectedFamille.superviseur.email && (
+                          {selectedFamille.superviseur?.email && (
                             <p className="text-sm text-gray-600 mt-1 flex items-center gap-1">
                               <Mail className="h-4 w-4 shrink-0" />
                               {selectedFamille.superviseur.email}
                             </p>
                           )}
-                          {selectedFamille.superviseur.email && (
+                          {selectedFamille.superviseur?.email && (
                             <a
                               href={`mailto:${selectedFamille.superviseur.email}`}
                               className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-purple-600 hover:text-purple-700 hover:underline"
@@ -1917,24 +1919,25 @@ const PasteurDashboard = () => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="text-center p-4 bg-blue-50 rounded-lg">
                           <div className="text-3xl font-bold text-blue-600">
-                            {selectedFamille.stats.nombreMembres}
+                            {selectedFamille.stats?.nombreMembres ?? '—'}
                           </div>
                           <div className="text-sm text-gray-600 mt-1">Membres actuels</div>
                         </div>
                         <div className="text-center p-4 bg-purple-50 rounded-lg">
                           <div className="text-3xl font-bold text-purple-600">
-                            {selectedFamille.stats.objectif}
+                            {selectedFamille.stats?.objectif ?? '—'}
                           </div>
                           <div className="text-sm text-gray-600 mt-1">Objectif</div>
                         </div>
                         <div className="text-center p-4 bg-green-50 rounded-lg">
                           <div className="text-3xl font-bold text-green-600">
-                            {Math.round(selectedFamille.stats.progression)}%
+                            {selectedFamille.stats != null ? `${Math.round(selectedFamille.stats.progression)}%` : '—'}
                           </div>
                           <div className="text-sm text-gray-600 mt-1">Progression</div>
                         </div>
                       </div>
                       
+                      {(selectedFamille.stats != null) && (
                       <div className="mt-4">
                         <div className="flex items-center justify-between text-sm mb-2">
                           <span className="text-gray-600">Barre de progression</span>
@@ -1945,21 +1948,22 @@ const PasteurDashboard = () => {
                         <div className="w-full bg-gray-200 rounded-full h-4 relative">
                           <div
                             className={`h-4 rounded-full ${
-                              selectedFamille.stats.progression >= 100
+                              (selectedFamille.stats.progression ?? 0) >= 100
                                 ? 'bg-green-500'
-                                : selectedFamille.stats.progression >= 50
+                                : (selectedFamille.stats.progression ?? 0) >= 50
                                 ? 'bg-purple-600'
                                 : 'bg-amber-500'
                             }`}
-                            style={{ width: `${Math.min(selectedFamille.stats.progression, 100)}%` }}
+                            style={{ width: `${Math.min(selectedFamille.stats.progression ?? 0, 100)}%` }}
                           />
                           <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-900">
-                            {Math.round(selectedFamille.stats.progression)}%
+                            {Math.round(selectedFamille.stats.progression ?? 0)}%
                           </span>
                         </div>
                       </div>
+                      )}
 
-                      {selectedFamille.stats.progression >= 100 && (
+                      {(selectedFamille.stats?.progression ?? 0) >= 100 && (
                         <div className="mt-4 flex items-center gap-2 text-green-600">
                           <CheckCircle2 className="h-5 w-5" />
                           <span className="font-medium">Objectif atteint !</span>
@@ -2050,7 +2054,7 @@ const PasteurDashboard = () => {
                                   {period && <span className="text-xs text-gray-500">— {period}</span>}
                                 </div>
                                 <span className="text-xs text-gray-500">
-                                  {format(new Date(r.created_at), 'd MMM yyyy', { locale: fr })}
+                                  {safeFormatDate(r.created_at, 'd MMM yyyy', { locale: fr })}
                                 </span>
                               </li>
                             );
@@ -2069,7 +2073,7 @@ const PasteurDashboard = () => {
                           Derniers indicateurs
                         </CardTitle>
                         <CardDescription className="text-gray-600">
-                          Extrait du rapport du {format(new Date(familleModalDetails.reports[0].created_at), "d MMMM yyyy", { locale: fr })}
+                          Extrait du rapport du {safeFormatDate(familleModalDetails.reports[0].created_at, "d MMMM yyyy", { locale: fr })}
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
@@ -2247,7 +2251,7 @@ const PasteurDashboard = () => {
               <DialogTitle className="text-gray-900">Détail du rapport</DialogTitle>
               <DialogDescription className="text-gray-700">
                 {rapportDetailModal && (
-                  <>Rapport {rapportDetailModal.report.report_type} – {rapportDetailModal.superviseurName} – {rapportDetailModal.report.created_at && format(new Date(rapportDetailModal.report.created_at), 'dd/MM/yyyy', { locale: fr })}</>
+                  <>Rapport {rapportDetailModal.report?.report_type ?? '—'} – {rapportDetailModal.superviseurName ?? '—'} – {safeFormatDate(rapportDetailModal.report?.created_at, 'dd/MM/yyyy', { locale: fr })}</>
                 )}
               </DialogDescription>
             </DialogHeader>

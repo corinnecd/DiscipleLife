@@ -1,19 +1,12 @@
 import React from 'react';
 import {
   Users, Target, UserCheck, Building2, BarChart3, Mail, Loader2, RefreshCw,
-  Church, TrendingUp, GitBranch,
+  Church, TrendingUp, GitBranch, Info,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-
-/** Curseur de survol du Tooltip pour BarChart vertical */
-const TooltipCursorBar = (props) => {
-  const h = 14;
-  const y = (props.y ?? 0) + ((props.height ?? 40) - h) / 2;
-  return <rect x={props.x ?? 0} y={y} width={props.width ?? 0} height={h} fill="#f9fafb" fillOpacity={0.95} />;
-};
 
 /**
  * Vue d'ensemble du dashboard pasteur : KPI 4 cartes, graphique Progression vers objectif 70, KPI par pasteur, actions rapides.
@@ -164,8 +157,35 @@ const PasteurOverview = ({
             </div>
           )}
           {(overviewChartInView || activeTab === TAB_KEYS.OVERVIEW) && famillesForProgressionChart.length > 0 ? (
-            <div className="w-full overflow-visible" style={{ minHeight: 320, height: Math.max(320, famillesForProgressionChart.length * 48) }}>
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="w-full overflow-visible">
+              {/* Zone fixe au-dessus du graphique : infobulle toujours visible + détail au survol (position absolue pour éviter le sursaut) */}
+              <div className="relative min-h-[4.5rem] mb-3">
+                <p className="flex items-center gap-2 text-sm text-gray-600" role="status" aria-live="polite">
+                  <Info className="h-4 w-4 shrink-0 text-purple-500" aria-hidden />
+                  Survoler les barres de progression, pour afficher plus de détails.
+                </p>
+                {hoveredFamilleNameProgression && (() => {
+                  const item = famillesForProgressionChart.find((f) => (f.famille?.nom || 'Famille') === hoveredFamilleNameProgression);
+                  const progression = Math.round(item?.stats?.progression ?? 0);
+                  const disciples = item?.stats?.nombreMembres ?? 0;
+                  return (
+                    <div
+                      className="absolute right-0 top-0 z-10 rounded-lg border border-gray-200 bg-white shadow-sm px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 hover:border-purple-300 transition-colors"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => item && setSelectedFamille(item)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); item && setSelectedFamille(item); } }}
+                      aria-label={`Voir la fiche famille ${hoveredFamilleNameProgression}`}
+                    >
+                      <span className="font-semibold text-purple-600">{hoveredFamilleNameProgression} — Progression : {progression}%</span>
+                      <span className="text-gray-700"> — Soit {disciples} Disciples. </span>
+                      <span className="text-xs text-purple-600">Cliquez pour voir la fiche famille</span>
+                    </div>
+                  );
+                })()}
+              </div>
+              <div style={{ minHeight: 320, height: Math.max(320, famillesForProgressionChart.length * 36) }}>
+                <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={famillesForProgressionChart.map((f) => ({
                     name: (f.famille?.nom || 'Famille'),
@@ -174,7 +194,7 @@ const PasteurOverview = ({
                   }))}
                   layout="vertical"
                   margin={{ top: 10, right: 24, left: 130, bottom: 16 }}
-                  barCategoryGap={12}
+                  barCategoryGap={4}
                   onClick={(chartData) => {
                     const payload = chartData?.activePayload?.[0]?.payload;
                     if (!payload?.name) return;
@@ -207,25 +227,18 @@ const PasteurOverview = ({
                   />
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
                   <Tooltip
-                    cursor={<TooltipCursorBar />}
+                    cursor={false}
                     content={({ active, payload }) => {
                       queueMicrotask(() => {
                         setHoveredFamilleNameProgression(active && payload?.length ? payload[0].payload.name : null);
                       });
-                      if (!active || !payload?.length) return null;
-                      const p = payload[0].payload;
-                      return (
-                        <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
-                          <div className="font-semibold text-purple-600">Progression : {p.progression}%</div>
-                          <div className="text-gray-700">Soit {p.disciples ?? 0} Disciples</div>
-                          <div className="text-xs text-purple-600 mt-1">Cliquez pour voir la fiche famille</div>
-                        </div>
-                      );
+                      return null;
                     }}
                   />
-                  <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={14} />
+                  <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={10} />
                 </BarChart>
-              </ResponsiveContainer>
+                </ResponsiveContainer>
+              </div>
             </div>
           ) : (overviewChartInView || activeTab === TAB_KEYS.OVERVIEW) && famillesForProgressionChart.length === 0 && familles.length > 0 ? (
             <p className="text-sm text-gray-500 py-6 text-center">Aucune famille ne correspond à ce filtre. Essayez « Toutes » ou « En cours ».</p>

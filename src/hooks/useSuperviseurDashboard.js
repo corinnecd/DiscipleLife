@@ -55,6 +55,9 @@ export function useSuperviseurDashboard(user) {
     membresSuiviPar,
   });
 
+  const handleErrorRef = useRef(handleError);
+  handleErrorRef.current = handleError;
+
   const {
     filteredMembres,
     paginatedMembres,
@@ -79,11 +82,17 @@ export function useSuperviseurDashboard(user) {
     membresSuiviPar: _msp,
   } = tableState;
 
-  // Charger membres + stats quand famille est disponible
+  // Superviseurs de la famille (même pasteur)
+  const [superviseursFamille, setSuperviseursFamille] = useState([]);
+  const [nombreMembresParSuperviseur, setNombreMembresParSuperviseur] = useState({});
+
+  // Phase 2 regroupée : 1 appel RPC (membres + stats + progressions + disciples + suivi_par) + 1 RPC (superviseurs + nombre par superviseur)
   useEffect(() => {
-    if (!famille?.id) {
+    if (!famille?.id || !userId) {
       setMembres([]);
       setStats((s) => ({ ...s, nombreMembres: 0, progression: 0, reste: s.objectif || 70 }));
+      setSuperviseursFamille([]);
+      setNombreMembresParSuperviseur({});
       setLoading(false);
       return;
     }
@@ -91,57 +100,132 @@ export function useSuperviseurDashboard(user) {
     setLoading(true);
     (async () => {
       try {
-        const { data: membresData, error: membresError } = await supabase
-          .from('profils')
-          .select('id, first_name, last_name, email, role, titre, created_at, avatar_url, mentor_id, nb_disciples, date_entree_famille')
-          .eq('famille_id', famille.id);
-        if (membresError) throw membresError;
+        const pasteurId = pasteur?.id ?? famille.pasteur_id ?? null;
+        const [phase2Res, phase2ExtraRes] = await Promise.all([
+          supabase.rpc('get_superviseur_dashboard_phase2', { p_user_id: userId, p_famille_id: famille.id }),
+          supabase.rpc('get_superviseur_dashboard_phase2_extra', { p_user_id: userId, p_pasteur_id: pasteurId }),
+        ]);
+
         if (cancelled) return;
-        const list = (membresData || []).map((m) => ({ ...m, statut_spirituel: m.statut_spirituel ?? 'actif' }));
-        setMembres(list);
-        const objectif = Number(famille.objectif_disciples) || 70;
-        const nombreMembres = list.length;
-        const progression = objectif > 0 ? Math.min(100, Math.round((nombreMembres / objectif) * 100)) : 0;
-        const reste = Math.max(0, objectif - nombreMembres);
-        setStats({
-          nombreMembres,
-          objectif,
-          progression,
-          reste,
-          disciples: list.filter((m) => m.role === 'disciple' || m.role === 'mentor' || m.role === 'pilier').length,
-          sunday_attendance_count: 0,
-          evangelization: 0,
-        });
-        setMembresProgression({});
-        setMembresDisciplesCount(list.reduce((acc, m) => ({ ...acc, [m.id]: m.nb_disciples ?? 0 }), {}));
-        setMembresSuiviPar({});
+
+        // RPC phase2 : membres + stats + progressions + disciples_count + suivi_par
+        if (phase2Res.error) throw phase2Res.error;
+        const phase2 = phase2Res.data;
+        if (phase2) {
+          const rawMembres = phase2.membres || [];
+          const disciplesCountMap = phase2.membres_disciples_count || {};
+          const suiviParMap = phase2.membres_suivi_par || {};
+          const list = rawMembres.map((m) => {
+            const id = m.id;
+            return {
+              id,
+              first_name: m.first_name,
+              last_name: m.last_name,
+              email: m.email,
+              role: m.role || 'disciple',
+              titre: m.titre,
+              created_at: m.created_at,
+              avatar_url: m.avatar_url,
+              mentor_id: suiviParMap[id]?.id ?? null,
+              nb_disciples: typeof disciplesCountMap[id] === 'number' ? disciplesCountMap[id] : 0,
+              date_entree_famille: m.date_entree_famille,
+              statut_spirituel: m.statut_spirituel ?? 'actif',
+            };
+          });
+          setMembres(list);
+          const objectif = Number(phase2.stats?.objectif) ?? Number(famille.objectif_disciples) ?? 70;
+          const nombreMembres = phase2.stats?.nombreMembres ?? list.length;
+          const progression = Number(phase2.stats?.progression) ?? (objectif > 0 ? Math.min(100, Math.round((nombreMembres / objectif) * 100)) : 0);
+          const reste = Number(phase2.stats?.reste) ?? Math.max(0, objectif - nombreMembres);
+          setStats({
+            nombreMembres,
+            objectif,
+            progression,
+            reste,
+            disciples: list.filter((m) => ['disciple', 'mentor', 'pilier'].includes(m.role)).length,
+            sunday_attendance_count: 0,
+            evangelization: 0,
+          });
+          setMembresProgression(phase2.membres_progression || {});
+          setMembresDisciplesCount(
+            Object.fromEntries(list.map((m) => [m.id, m.nb_disciples ?? 0]))
+          );
+          setMembresSuiviPar(phase2.membres_suivi_par || {});
+        }
+
+        // RPC phase2_extra : superviseurs (même pasteur) + nombre de membres par superviseur
+        if (!cancelled && phase2ExtraRes.data && !phase2ExtraRes.error) {
+          const extra = phase2ExtraRes.data;
+          const sups = extra.superviseurs_famille || [];
+          setSuperviseursFamille(
+            sups.map((s) => ({
+              id: s.id,
+              superviseur_id: s.id,
+              nom: [s.first_name, s.last_name].filter(Boolean).join(' ').trim() || 'Superviseur',
+            }))
+          );
+          setNombreMembresParSuperviseur(extra.nombre_membres_par_superviseur || {});
+        } else if (!cancelled && phase2ExtraRes.error) {
+          // Repli : requête directe si la RPC phase2_extra n'existe pas ou échoue
+          const { data: fdData } = await supabase
+            .from('familles_disciples')
+            .select('id, superviseur_id, nom')
+            .eq('pasteur_id', pasteurId);
+          const data = fdData || [];
+          setSuperviseursFamille(data);
+          const counts = {};
+          data.forEach((f) => {
+            if (f.superviseur_id) counts[f.superviseur_id] = 0;
+          });
+          setNombreMembresParSuperviseur(counts);
+        }
       } catch (err) {
-        if (!cancelled) handleError(err, { context: 'useSuperviseurDashboard.membres' }, 'Impossible de charger les membres.');
+        if (!cancelled) {
+          handleErrorRef.current(err, { context: 'useSuperviseurDashboard.phase2' }, 'Impossible de charger les données du dashboard.');
+          // Repli : requêtes directes (profils + familles_disciples)
+          try {
+            const { data: membresData, error: membresError } = await supabase
+              .from('profils')
+              .select('id, first_name, last_name, email, role, titre, created_at, avatar_url, mentor_id, nb_disciples, date_entree_famille')
+              .eq('famille_id', famille.id);
+            if (!cancelled && !membresError) {
+              const list = (membresData || []).map((m) => ({ ...m, statut_spirituel: m.statut_spirituel ?? 'actif' }));
+              setMembres(list);
+              const objectif = Number(famille.objectif_disciples) || 70;
+              const nombreMembres = list.length;
+              setStats({
+                nombreMembres,
+                objectif,
+                progression: objectif > 0 ? Math.min(100, Math.round((nombreMembres / objectif) * 100)) : 0,
+                reste: Math.max(0, objectif - nombreMembres),
+                disciples: list.filter((m) => m.role === 'disciple' || m.role === 'mentor' || m.role === 'pilier').length,
+                sunday_attendance_count: 0,
+                evangelization: 0,
+              });
+              setMembresProgression({});
+              setMembresDisciplesCount(list.reduce((acc, m) => ({ ...acc, [m.id]: m.nb_disciples ?? 0 }), {}));
+              setMembresSuiviPar({});
+            }
+            const pasteurId = pasteur?.id ?? famille.pasteur_id;
+            if (pasteurId) {
+              const { data: fdData } = await supabase
+                .from('familles_disciples')
+                .select('id, superviseur_id, nom')
+                .eq('pasteur_id', pasteurId);
+              const data = fdData || [];
+              setSuperviseursFamille(data || []);
+              const counts = {};
+              (data || []).forEach((f) => { if (f.superviseur_id) counts[f.superviseur_id] = 0; });
+              setNombreMembresParSuperviseur(counts);
+            }
+          } catch (_) {}
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [famille?.id, famille?.objectif_disciples, handleError]);
-
-  // Superviseurs de la famille (même famille = même pasteur)
-  const [superviseursFamille, setSuperviseursFamille] = useState([]);
-  const [nombreMembresParSuperviseur, setNombreMembresParSuperviseur] = useState({});
-  useEffect(() => {
-    if (!famille?.id) return;
-    supabase
-      .from('familles_disciples')
-      .select('id, superviseur_id, nom')
-      .eq('pasteur_id', pasteur?.id ?? famille.pasteur_id)
-      .then(({ data }) => {
-        setSuperviseursFamille(data || []);
-        const counts = {};
-        (data || []).forEach((f) => {
-          if (f.superviseur_id) counts[f.superviseur_id] = 0;
-        });
-        setNombreMembresParSuperviseur(counts);
-      });
-  }, [famille?.id, famille?.pasteur_id, pasteur?.id]);
+  }, [famille?.id, famille?.objectif_disciples, famille?.pasteur_id, pasteur?.id, userId]);
 
   const initialLoading = Boolean(userId && phase1Loading);
 

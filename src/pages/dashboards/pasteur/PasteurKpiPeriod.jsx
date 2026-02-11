@@ -1,6 +1,6 @@
 import React from 'react';
 import { startOfWeek } from 'date-fns';
-import { Target, BarChart3, Loader2, TrendingUp } from 'lucide-react';
+import { Target, BarChart3, Loader2, TrendingUp, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -17,15 +17,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-
-const PROGRESSION_PAGE_SIZE = 10;
-
-/** Curseur de survol du Tooltip pour BarChart vertical */
-const TooltipCursorBar = (props) => {
-  const h = 14;
-  const y = (props.y ?? 0) + ((props.height ?? 40) - h) / 2;
-  return <rect x={props.x ?? 0} y={y} width={props.width ?? 0} height={h} fill="#f9fafb" fillOpacity={0.95} />;
-};
 
 /**
  * Onglet KPI & Période du dashboard pasteur : sommaire, progression familles, KPI période, modal détail, graphiques d'évolution.
@@ -44,8 +35,6 @@ const PasteurKpiPeriod = ({
   hoveredFamilleNameProgression,
   setHoveredFamilleNameProgression,
   setSelectedFamille,
-  progressionPage,
-  setProgressionPage,
   kpiPeriodType,
   setKpiPeriodType,
   kpiSelectedYearForPeriod,
@@ -136,95 +125,91 @@ const PasteurKpiPeriod = ({
                 </div>
 
                 <div className="space-y-4">
-                  {famillesForProgressionChart.length > 0 && (() => {
-                    const totalPages = Math.max(1, Math.ceil(famillesForProgressionChart.length / PROGRESSION_PAGE_SIZE));
-                    const pageData = famillesForProgressionChart.slice(
-                      progressionPage * PROGRESSION_PAGE_SIZE,
-                      (progressionPage + 1) * PROGRESSION_PAGE_SIZE
-                    );
-                    return (
-                      <>
-                        <div className="h-[400px] w-full min-w-0">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart
-                              data={pageData.map((f) => ({
-                                name: (f.famille?.nom || 'Famille'),
-                                progression: Math.round(f.stats?.progression ?? 0),
-                                disciples: f.stats?.nombreMembres ?? 0,
-                              }))}
-                              layout="vertical"
-                              margin={{ top: 5, right: 20, left: 90, bottom: 5 }}
-                              onClick={(chartDataClick) => {
-                                const payload = chartDataClick?.activePayload?.[0]?.payload;
-                                if (!payload?.name) return;
-                                const item = famillesForProgressionChart.find((f) => (f.famille?.nom || 'Famille') === payload.name);
-                                if (item) setSelectedFamille(item);
-                              }}
-                              style={{ cursor: 'pointer' }}
-                            >
-                              <XAxis type="number" domain={[0, 100]} unit="%" stroke="#888888" fontSize={11} />
-                              <YAxis
-                                type="category"
-                                dataKey="name"
-                                stroke="#888888"
-                                fontSize={11}
-                                width={85}
-                                tick={(props) => {
-                                  const { x, y, payload } = props;
-                                  const value = payload?.value ?? '';
-                                  const item = famillesForProgressionChart.find((f) => (f.famille?.nom || 'Famille') === value);
-                                  const supName = item ? `${item.superviseur?.first_name || ''} ${item.superviseur?.last_name || ''}`.trim() : '';
-                                  const isHovered = value === hoveredFamilleNameProgression;
-                                  const familyNameFill = isHovered ? '#9333ea' : '#2563eb';
-                                  return (
-                                    <g transform={`translate(${x},${y})`}>
-                                      <text textAnchor="end" x={0} y={0} fontWeight="bold" fontSize={11} fill={familyNameFill}>{value}</text>
-                                      {supName && <text textAnchor="end" x={0} y={14} fontSize={10} fill="#6b7280">{supName}</text>}
-                                    </g>
-                                  );
-                                }}
-                              />
-                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
-                              <Tooltip
-                                cursor={<TooltipCursorBar />}
-                                content={({ active, payload }) => {
-                                  queueMicrotask(() => {
-                                    setHoveredFamilleNameProgression(active && payload?.length ? payload[0].payload.name : null);
-                                  });
-                                  if (!active || !payload?.length) return null;
-                                  const p = payload[0].payload;
-                                  return (
-                                    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm">
-                                      <div className="font-semibold text-purple-600">Progression : {p.progression}%</div>
-                                      <div className="text-gray-700">Soit {p.disciples ?? 0} Disciples</div>
-                                      <div className="text-xs text-purple-600 mt-1">Cliquez pour voir la fiche famille</div>
-                                    </div>
-                                  );
-                                }}
-                              />
-                              <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={12} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                        {totalPages > 1 && (
-                          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-3">
-                            <span className="text-sm text-gray-600">
-                              Familles {progressionPage * PROGRESSION_PAGE_SIZE + 1}–{Math.min((progressionPage + 1) * PROGRESSION_PAGE_SIZE, famillesForProgressionChart.length)} sur {famillesForProgressionChart.length}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <Button type="button" size="sm" variant="outline" disabled={progressionPage <= 0} onClick={() => setProgressionPage((p) => Math.max(0, p - 1))} className="bg-gray-100 border-gray-300">
-                                Précédent
-                              </Button>
-                              <span className="text-sm font-medium text-gray-700 px-2">Page {progressionPage + 1} / {totalPages}</span>
-                              <Button type="button" size="sm" variant="outline" disabled={progressionPage >= totalPages - 1} onClick={() => setProgressionPage((p) => Math.min(totalPages - 1, p + 1))} className="bg-gray-100 border-gray-300">
-                                Suivant
-                              </Button>
-                            </div>
+                  {/* Même graphique complet que Vue d'ensemble : Progression vers l'objectif 70 (toutes les familles) */}
+                  {famillesForProgressionChart.length > 0 && (
+                      <div className="w-full overflow-visible">
+                          <div className="relative min-h-[4.5rem] mb-3">
+                            <p className="flex items-center gap-2 text-sm text-gray-600" role="status" aria-live="polite">
+                              <Info className="h-4 w-4 shrink-0 text-purple-500" aria-hidden />
+                              Survoler les barres de progression, pour afficher plus de détails.
+                            </p>
+                            {hoveredFamilleNameProgression && (() => {
+                              const item = famillesForProgressionChart.find((f) => (f.famille?.nom || 'Famille') === hoveredFamilleNameProgression);
+                              const progression = Math.round(item?.stats?.progression ?? 0);
+                              const disciples = item?.stats?.nombreMembres ?? 0;
+                              return (
+                                <div
+                                  className="absolute right-0 top-0 z-10 rounded-lg border border-gray-200 bg-white shadow-sm px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 hover:border-purple-300 transition-colors"
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => item && setSelectedFamille(item)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); item && setSelectedFamille(item); } }}
+                                  aria-label={`Voir la fiche famille ${hoveredFamilleNameProgression}`}
+                                >
+                                  <span className="font-semibold text-purple-600">{hoveredFamilleNameProgression} — Progression : {progression}%</span>
+                                  <span className="text-gray-700"> — Soit {disciples} Disciples. </span>
+                                  <span className="text-xs text-purple-600">Cliquez pour voir la fiche famille</span>
+                                </div>
+                              );
+                            })()}
                           </div>
-                        )}
-                      </>
-                    );
-                  })()}
+                          <div style={{ minHeight: 320, height: Math.max(320, famillesForProgressionChart.length * 36) }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart
+                                data={famillesForProgressionChart.map((f) => ({
+                                  name: (f.famille?.nom || 'Famille'),
+                                  progression: Math.round(f.stats?.progression ?? 0),
+                                  disciples: f.stats?.nombreMembres ?? 0,
+                                }))}
+                                layout="vertical"
+                                margin={{ top: 10, right: 24, left: 130, bottom: 16 }}
+                                barCategoryGap={4}
+                                onClick={(chartDataClick) => {
+                                  const payload = chartDataClick?.activePayload?.[0]?.payload;
+                                  if (!payload?.name) return;
+                                  const item = famillesForProgressionChart.find((f) => (f.famille?.nom || 'Famille') === payload.name);
+                                  if (item) setSelectedFamille(item);
+                                }}
+                                style={{ cursor: 'pointer' }}
+                              >
+                                <XAxis type="number" domain={[0, 100]} unit="%" stroke="#888888" fontSize={11} />
+                                <YAxis
+                                  type="category"
+                                  dataKey="name"
+                                  stroke="#888888"
+                                  fontSize={11}
+                                  width={120}
+                                  tick={(props) => {
+                                    const { x, y, payload } = props;
+                                    const value = payload?.value ?? '';
+                                    const item = famillesForProgressionChart.find((f) => (f.famille?.nom || 'Famille') === value);
+                                    const supName = item ? `${item.superviseur?.first_name || ''} ${item.superviseur?.last_name || ''}`.trim() : '';
+                                    const isHovered = value === hoveredFamilleNameProgression;
+                                    const familyNameFill = isHovered ? '#9333ea' : '#2563eb';
+                                    return (
+                                      <g transform={`translate(${x},${y})`}>
+                                        <text textAnchor="end" x={0} y={0} fontWeight="bold" fontSize={11} fill={familyNameFill}>{value}</text>
+                                        {supName && <text textAnchor="end" x={0} y={14} fontSize={10} fill="#6b7280">{supName}</text>}
+                                      </g>
+                                    );
+                                  }}
+                                />
+                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                                <Tooltip
+                                  cursor={false}
+                                  content={({ active, payload }) => {
+                                    queueMicrotask(() => {
+                                      setHoveredFamilleNameProgression(active && payload?.length ? payload[0].payload.name : null);
+                                    });
+                                    return null;
+                                  }}
+                                />
+                                <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={10} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                  )}
                   {famillesForProgressionChart.length === 0 && familles.length > 0 && (
                     <div className="py-8 text-center text-gray-500 text-sm">Aucune famille ne correspond à ce filtre. Essayez « Toutes » ou « En cours ».</div>
                   )}
