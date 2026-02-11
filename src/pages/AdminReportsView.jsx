@@ -140,6 +140,15 @@ const AdminReportsView = () => {
     fetchReports();
   };
 
+  const getReportPeriodLabel = (r) => {
+    if (!r) return '';
+    if (r.report_type === 'hebdomadaire' && r.week_number != null && r.year != null) return `S${r.week_number} ${r.year}`;
+    if (r.report_type === 'trimestriel' && r.quarter != null && r.year != null) return `T${r.quarter} ${r.year}`;
+    if (r.report_type === 'annuel' && r.year != null) return String(r.year);
+    if (r.month != null && r.year != null) return `${r.month}/${r.year}`;
+    return r.year ? String(r.year) : '';
+  };
+
   const handleViewReport = async (report) => {
     setSelectedReport(report);
     setIsModalOpen(true);
@@ -155,6 +164,18 @@ const AdminReportsView = () => {
         if (!error) {
           // Update local state
           setReports(prev => prev.map(r => r.id === report.id ? { ...r, is_read: true } : r));
+          // Notifier le superviseur (auteur) que le pasteur a consulté son rapport
+          if (role === 'pasteur' && report.user_id) {
+            const typeLabel = { hebdomadaire: 'hebdomadaire', mensuel: 'mensuel', trimestriel: 'trimestriel', annuel: 'annuel' }[report.report_type] || report.report_type || 'rapport';
+            const period = getReportPeriodLabel(report);
+            await supabase.from('notifications').insert({
+              user_id: report.user_id,
+              type: 'report_consulted',
+              title: 'Rapport consulté',
+              content: `Votre rapport ${typeLabel}${period ? ` (${period})` : ''} a été consulté par le pasteur.`,
+              read: false,
+            });
+          }
         }
       } catch (err) {
         handleError(err, { context: 'handleViewReport', reportId: report.id }, "Impossible de marquer le rapport comme lu.");

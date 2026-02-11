@@ -74,10 +74,14 @@ export const ExportUtils = {
           headers.map(header => {
             let cell = row[header];
             
-            // Format dates
+            // Format dates (ne pas reformater si déjà au format dd/MM/yyyy ou chaîne lisible)
             if (cell && (header === 'created_at' || header === 'dateEntreeFamille' || header.includes('date'))) {
               try {
-                cell = format(new Date(cell), 'dd/MM/yyyy', { locale: fr });
+                const isAlreadyFormatted = typeof cell === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(cell.trim());
+                const isIsoOrTimestamp = typeof cell === 'number' || (typeof cell === 'string' && (/^\d{4}-\d{2}-\d{2}/.test(cell) || /^\d+$/.test(cell)));
+                if (!isAlreadyFormatted && (isIsoOrTimestamp || cell instanceof Date)) {
+                  cell = format(new Date(cell), 'dd/MM/yyyy', { locale: fr });
+                }
               } catch (e) {
                 cell = cell;
               }
@@ -156,6 +160,10 @@ export const ExportUtils = {
         // Couleur par défaut si aucun gradient n'est trouvé
         return '#6366f1'; // Violet par défaut
       };
+
+      // Placer l'élément dans la vue avant capture (évite canvas vide si hors écran)
+      element.scrollIntoView({ block: 'start', behavior: 'instant' });
+      await new Promise(r => setTimeout(r, 150));
 
       const canvas = await html2canvas(element, {
         scale: 2,

@@ -2,12 +2,15 @@
  * Hook useSuperviseurDashboard – Données et état pour le tableau de bord superviseur.
  * Agrège phase 1 (famille, superviseur, pasteur), stats, membres, filtres et handlers.
  */
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { useToast } from '@/components/ui/use-toast';
 import { useSuperviseurData } from '@/hooks/useSuperviseurData';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { useMembersTable } from '@/hooks/useMembersTable';
 import { supabase } from '@/lib/customSupabaseClient';
+import { exportToExcel, exportElementToPDF } from '@/lib/ExportUtils';
 
 const devLog = (...args) => { if (import.meta.env.DEV) console.log(...args); };
 
@@ -280,10 +283,76 @@ export function useSuperviseurDashboard(user) {
   const [showAllInactifs, setShowAllInactifs] = useState(false);
   const [showAllSansProgression, setShowAllSansProgression] = useState(false);
 
-  // Tableaux détaillés
-  const [disciplesDetaille, setDisciplesDetaille] = useState([]);
+  // Tableau détaillé « Mes disciples » (10 colonnes) : dérivé des membres + suivi par
+  const disciplesDetaille = useMemo(() => {
+    const list = membres || [];
+    const suiviPar = membresSuiviPar || {};
+    const progression = membresProgression || {};
+    return list.map((m) => {
+      const suivi = suiviPar[m.id];
+      const nameParts = (suivi?.name || '').trim().split(/\s+/);
+      const mentorPrenom = nameParts[0] || '—';
+      const mentorNom = nameParts.length > 1 ? nameParts.slice(1).join(' ') : (nameParts[0] ? '—' : '—');
+      const dateEntree = m.date_entree_famille || m.created_at;
+      const dateAjout = dateEntree
+        ? (() => { try { return format(new Date(dateEntree), 'dd/MM/yyyy', { locale: fr }); } catch (_) { return '—'; } })()
+        : '—';
+      const totalProg = progression[m.id]?.total ?? 0;
+      const niveauEngagement = totalProg > 5 ? 'Élevé' : totalProg > 0 ? 'Moyen' : 'À évaluer';
+      return {
+        disciple_id: m.id,
+        mentor_prenom: suivi ? mentorPrenom : '—',
+        mentor_nom: suivi ? mentorNom : '—',
+        disciple_prenom: m.first_name ?? '',
+        disciple_nom: m.last_name ?? '',
+        statut_spirituel: m.statut_spirituel || m.spiritual_stage || 'Non renseigné',
+        date_ajout: dateAjout,
+        date_derniere_presence: '—',
+        niveau_engagement: niveauEngagement,
+        statut_actif: m.statut_spirituel !== 'inactif',
+        presence_dernier_culte: false,
+      };
+    });
+  }, [membres, membresSuiviPar, membresProgression]);
+
   const [loadingDisciplesDetaille, setLoadingDisciplesDetaille] = useState(false);
-  const [mentorsConsolides, setMentorsConsolides] = useState([]);
+
+  // Vue consolidée des mentors (piliers) : membres avec au moins 1 disciple ou rôle mentor/pilier
+  const mentorsConsolides = useMemo(() => {
+    const list = membres || [];
+    const counts = membresDisciplesCount || {};
+    const suiviPar = membresSuiviPar || {};
+    const nomFamille = famille?.nom ?? '—';
+    const objectif = 70;
+    return list
+      .filter((m) => {
+        const nb = counts[m.id] ?? m.nb_disciples ?? 0;
+        const role = (m.role || '').toLowerCase();
+        return nb > 0 || role === 'mentor' || role === 'pilier';
+      })
+      .map((m) => {
+        const nb = counts[m.id] ?? m.nb_disciples ?? 0;
+        const avancement = objectif > 0 ? Math.min(100, Math.round((Number(nb) / objectif) * 100)) : 0;
+        const suivi = suiviPar[m.id];
+        const role = m.role || 'disciple';
+        const statutLabel = role === 'pilier' ? 'Pilier' : role === 'mentor' ? 'Mentor' : nb > 0 ? 'Mentor' : 'Disciple';
+        return {
+          mentor_id: m.id,
+          nom: m.last_name ?? '',
+          prenom: m.first_name ?? '',
+          suivi_par: suivi?.name ?? '—',
+          eglise: nomFamille,
+          nombre_disciples: nb,
+          avancement_pourcentage: avancement,
+          presence_culte_samedi: null,
+          disciples_presents: null,
+          taux_participation_semaine: null,
+          statut: statutLabel,
+        };
+      })
+      .sort((a, b) => (b.nombre_disciples ?? 0) - (a.nombre_disciples ?? 0));
+  }, [membres, membresDisciplesCount, membresSuiviPar, famille?.nom]);
+
   const [loadingMentorsConsolides, setLoadingMentorsConsolides] = useState(false);
 
   // Lazy loading charts
@@ -297,6 +366,221 @@ export function useSuperviseurDashboard(user) {
 
   const noop = useCallback(() => {}, []);
   const noopAsync = useCallback(async () => {}, []);
+
+  const handleExportDisciplesDetailleExcel = useCallback(() => {
+    if (!disciplesDetaille?.length) {
+      toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucun disciple à exporter.' });
+      return;
+    }
+    try {
+      const exportData = disciplesDetaille.map((d) => ({
+        'Prénom pilier (mentor)': d.mentor_prenom,
+        'Nom pilier (mentor)': d.mentor_nom,
+        'Prénom disciple': d.disciple_prenom,
+        'Nom disciple': d.disciple_nom,
+        'Statut spirituel': d.statut_spirituel,
+        "Date d'ajout": d.date_ajout,
+        'Date dernière présence': d.date_derniere_presence,
+        "Niveau d'engagement": d.niveau_engagement,
+        'Statut (Actif/Inactif)': d.statut_actif ? 'Actif' : 'Inactif',
+        'Présence dernier culte': d.presence_dernier_culte ? 'Oui' : 'Non',
+      }));
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      exportToExcel(exportData, `superviseur_tableau_disciples_${timestamp}`, {
+        title: 'Tableau détaillé des disciples – Superviseur',
+        description: 'Prénom/Nom pilier (mentor), Prénom/Nom disciple, Statut spirituel, Date d\'ajout, Date dernière présence, Niveau d\'engagement, Statut Actif/Inactif, Présence dernier culte',
+        author: 'DiscipleLife',
+      });
+      toast({ title: 'Export réussi', description: `${exportData.length} disciple(s) exporté(s).` });
+    } catch (err) {
+      handleError(err, { context: 'handleExportDisciplesDetailleExcel' }, 'Impossible d\'exporter le tableau des disciples.');
+    }
+  }, [disciplesDetaille, toast, handleError]);
+
+  const handleExportMentorsConsolidesExcel = useCallback(() => {
+    if (!mentorsConsolides?.length) {
+      toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucun mentor à exporter.' });
+      return;
+    }
+    try {
+      const exportData = mentorsConsolides.map((m) => ({
+        'Nom': m.nom,
+        'Prénom': m.prenom,
+        'Suivi par': m.suivi_par ?? '—',
+        'Famille (Église)': m.eglise,
+        'Nombre de disciples': m.nombre_disciples ?? 0,
+        'Avancement % (objectif 70)': m.avancement_pourcentage ?? 0,
+        'Nombre de disciples présents': m.disciples_presents != null ? m.disciples_presents : '—',
+        'Taux participation semaine (%)': m.taux_participation_semaine != null ? m.taux_participation_semaine : '—',
+        'Statut': m.statut ?? '—',
+      }));
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      exportToExcel(exportData, `superviseur_mentors_piliers_${timestamp}`, {
+        title: 'Tableau consolidé des mentors (Piliers) – Superviseur',
+        description: 'Nom, Prénom, Suivi par, Famille, Nombre de disciples, Avancement %, Disciples présents, Taux participation, Statut',
+        author: 'DiscipleLife',
+      });
+      toast({ title: 'Export réussi', description: `${exportData.length} mentor(s) exporté(s).` });
+    } catch (err) {
+      handleError(err, { context: 'handleExportMentorsConsolidesExcel' }, 'Impossible d\'exporter le tableau des mentors.');
+    }
+  }, [mentorsConsolides, toast, handleError]);
+
+  const safeFormatDate = useCallback((dateVal, fmt, opts) => {
+    try { if (!dateVal) return ''; return format(new Date(dateVal), fmt, opts); } catch (_) { return ''; }
+  }, []);
+
+  const handleExportPDF = useCallback(async () => {
+    setExporting(true);
+    try {
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+      await exportElementToPDF('superviseur-dashboard-content', `dashboard_superviseur_${timestamp}.pdf`);
+      toast({ title: 'Export PDF réussi', description: 'Le tableau de bord a été exporté en PDF.' });
+    } catch (err) {
+      handleError(err, { context: 'handleExportPDF' }, 'Impossible d\'exporter le tableau de bord en PDF.');
+    } finally {
+      setExporting(false);
+    }
+  }, [toast, handleError]);
+
+  const handleExportExcel = useCallback(() => {
+    const list = filteredMembres || [];
+    if (!list.length) {
+      toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucun membre à exporter avec les filtres actuels.' });
+      return;
+    }
+    const exportData = list.map((m) => ({
+      'Prénom': m.first_name || '',
+      'Nom': m.last_name || '',
+      'Email': m.email || '',
+      'Statut': m.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
+      'Nombre de Disciples': membresDisciplesCount[m.id] ?? m.nb_disciples ?? 0,
+      'Formations terminées': membresProgression[m.id]?.formations ?? 0,
+      'Vidéos terminées': membresProgression[m.id]?.videos ?? 0,
+      'Total progression': membresProgression[m.id]?.total ?? 0,
+      'Suivi par': membresSuiviPar[m.id]?.name || '—',
+      "Date d'inscription": m.created_at ? safeFormatDate(m.created_at, 'dd/MM/yyyy', { locale: fr }) : '',
+    }));
+    const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+    try {
+      exportToExcel(exportData, `superviseur_membres_famille_${timestamp}`, {
+        title: 'Membres de la famille – Superviseur',
+        description: 'Liste des membres (filtres appliqués)',
+        additionalInfo: { 'Nombre de membres': list.length.toString() },
+      });
+      toast({ title: 'Export réussi', description: `${list.length} membre(s) exporté(s).` });
+    } catch (err) {
+      handleError(err, { context: 'handleExportExcel' }, 'Impossible d\'exporter la liste des membres.');
+    }
+  }, [filteredMembres, membresDisciplesCount, membresProgression, membresSuiviPar, toast, handleError, safeFormatDate]);
+
+  const handleExportFilteredList = useCallback((formatExport) => {
+    const list = filteredMembres || [];
+    if (!list.length) {
+      toast({ variant: 'destructive', title: 'Aucune donnée', description: 'Aucun membre ne correspond aux filtres.' });
+      return;
+    }
+    const exportData = list.map((m) => ({
+      'Prénom': m.first_name || '',
+      'Nom': m.last_name || '',
+      'Email': m.email || '',
+      'Statut': m.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
+      'Nombre de Disciples': membresDisciplesCount[m.id] ?? m.nb_disciples ?? 0,
+      'Total progression': membresProgression[m.id]?.total ?? 0,
+      'Suivi par': membresSuiviPar[m.id]?.name || '—',
+      "Date d'inscription": m.created_at ? safeFormatDate(m.created_at, 'dd/MM/yyyy', { locale: fr }) : '',
+    }));
+    const filename = `superviseur_membres_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
+    if (formatExport === 'pdf') {
+      const uniqueId = `pdf-superviseur-members-${Date.now()}`;
+      const tempDiv = document.createElement('div');
+      tempDiv.id = uniqueId;
+      tempDiv.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+      tempDiv.innerHTML = `<div style="font-family:Arial"><h2>Membres de la famille - Superviseur</h2><p>Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p><p>Total: ${list.length} membre(s)</p><table style="width:100%;border-collapse:collapse;border:1px solid #ddd"><thead><tr style="background:#f3f4f6">${['Prénom','Nom','Email','Statut','Disciples','Progression','Suivi par','Date'].map(h=>`<th style="padding:10px;border:1px solid #ddd">${h}</th>`).join('')}</tr></thead><tbody>${list.map(m=>`<tr><td style="padding:8px;border:1px solid #ddd">${(m.first_name||'')}</td><td style="padding:8px;border:1px solid #ddd">${(m.last_name||'')}</td><td style="padding:8px;border:1px solid #ddd">${(m.email||'-')}</td><td style="padding:8px;border:1px solid #ddd">${m.statut_spirituel==='inactif'?'Inactif':'Actif'}</td><td style="padding:8px;border:1px solid #ddd">${membresDisciplesCount[m.id]??m.nb_disciples??0}</td><td style="padding:8px;border:1px solid #ddd">${membresProgression[m.id]?.total??0}</td><td style="padding:8px;border:1px solid #ddd">${membresSuiviPar[m.id]?.name||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.created_at?safeFormatDate(m.created_at,'dd/MM/yyyy',{locale:fr}):'-'}</td></tr>`).join('')}</tbody></table></div>`;
+      document.body.appendChild(tempDiv);
+      exportElementToPDF(uniqueId, `${filename}.pdf`, { title: 'Membres de la famille', subtitle: 'Superviseur', showHeader: true, showFooter: true }).finally(() => { try { document.getElementById(uniqueId)?.remove(); } catch (_) {} });
+    } else {
+      try {
+        exportToExcel(exportData, filename, { title: 'Membres de la famille', description: 'Superviseur', additionalInfo: { 'Nombre de membres': list.length.toString() } });
+        toast({ title: 'Export réussi', description: `${list.length} membre(s) exporté(s).` });
+      } catch (err) {
+        handleError(err, { context: 'handleExportFilteredList' }, 'Impossible d\'exporter la liste.');
+      }
+    }
+  }, [filteredMembres, membresDisciplesCount, membresProgression, membresSuiviPar, toast, handleError, safeFormatDate]);
+
+  const handleExportDisciplesList = useCallback((formatExport) => {
+    const list = disciplesList || [];
+    if (!list.length) {
+      toast({ variant: 'destructive', title: 'Aucune donnée', description: 'Aucun disciple dans cette liste.' });
+      return;
+    }
+    const exportData = list.map((m) => ({
+      'Prénom': m.first_name || '',
+      'Nom': m.last_name || '',
+      'Email': m.email || '',
+      "Date d'inscription": m.created_at ? safeFormatDate(m.created_at, 'dd/MM/yyyy', { locale: fr }) : '',
+    }));
+    const filename = `superviseur_disciples_membre_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}`;
+    if (formatExport === 'pdf') {
+      const uniqueId = `pdf-superviseur-disciples-${Date.now()}`;
+      const tempDiv = document.createElement('div');
+      tempDiv.id = uniqueId;
+      tempDiv.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+      tempDiv.innerHTML = `<div style="font-family:Arial"><h2>Disciples du membre - Superviseur</h2><p>Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p><p>Total: ${list.length}</p><table style="width:100%;border-collapse:collapse;border:1px solid #ddd"><thead><tr style="background:#f3f4f6"><th style="padding:10px;border:1px solid #ddd">Prénom</th><th style="padding:10px;border:1px solid #ddd">Nom</th><th style="padding:10px;border:1px solid #ddd">Email</th><th style="padding:10px;border:1px solid #ddd">Date</th></tr></thead><tbody>${list.map(m=>`<tr><td style="padding:8px;border:1px solid #ddd">${(m.first_name||'')}</td><td style="padding:8px;border:1px solid #ddd">${(m.last_name||'')}</td><td style="padding:8px;border:1px solid #ddd">${(m.email||'-')}</td><td style="padding:8px;border:1px solid #ddd">${m.created_at?safeFormatDate(m.created_at,'dd/MM/yyyy',{locale:fr}):'-'}</td></tr>`).join('')}</tbody></table></div>`;
+      document.body.appendChild(tempDiv);
+      exportElementToPDF(uniqueId, `${filename}.pdf`, { title: 'Disciples du membre', subtitle: 'Superviseur', showHeader: true, showFooter: true }).finally(() => { try { document.getElementById(uniqueId)?.remove(); } catch (_) {} });
+    } else {
+      try {
+        exportToExcel(exportData, filename, { title: 'Disciples du membre', description: 'Superviseur', additionalInfo: { 'Nombre': list.length.toString() } });
+        toast({ title: 'Export réussi', description: `${list.length} disciple(s) exporté(s).` });
+      } catch (err) {
+        handleError(err, { context: 'handleExportDisciplesList' }, 'Impossible d\'exporter la liste des disciples.');
+      }
+    }
+  }, [disciplesList, toast, handleError, safeFormatDate]);
+
+  const handleExportSelectedExcel = useCallback(() => {
+    const list = (filteredMembres || []).filter((m) => selectedMembres.includes(m.id));
+    if (!list.length) {
+      toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucun membre sélectionné.' });
+      return;
+    }
+    const exportData = list.map((m) => ({
+      'Prénom': m.first_name || '',
+      'Nom': m.last_name || '',
+      'Email': m.email || '',
+      'Statut': m.statut_spirituel === 'inactif' ? 'Inactif' : 'Actif',
+      'Nombre de Disciples': membresDisciplesCount[m.id] ?? m.nb_disciples ?? 0,
+      'Suivi par': membresSuiviPar[m.id]?.name || '—',
+      "Date d'inscription": m.created_at ? safeFormatDate(m.created_at, 'dd/MM/yyyy', { locale: fr }) : '',
+    }));
+    const timestamp = format(new Date(), 'yyyy-MM-dd_HH-mm-ss');
+    try {
+      exportToExcel(exportData, `superviseur_selection_${timestamp}`, {
+        title: 'Membres sélectionnés – Superviseur',
+        additionalInfo: { 'Nombre': list.length.toString() },
+      });
+      toast({ title: 'Export réussi', description: `${list.length} membre(s) exporté(s).` });
+    } catch (err) {
+      handleError(err, { context: 'handleExportSelectedExcel' }, 'Impossible d\'exporter la sélection.');
+    }
+  }, [filteredMembres, selectedMembres, membresDisciplesCount, membresSuiviPar, toast, handleError, safeFormatDate]);
+
+  const handleExportSelectedPdf = useCallback(() => {
+    const list = (filteredMembres || []).filter((m) => selectedMembres.includes(m.id));
+    if (!list.length) {
+      toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucun membre sélectionné.' });
+      return;
+    }
+    const uniqueId = `pdf-superviseur-selection-${Date.now()}`;
+    const tempDiv = document.createElement('div');
+    tempDiv.id = uniqueId;
+    tempDiv.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+    tempDiv.innerHTML = `<div style="font-family:Arial"><h2>Membres sélectionnés - Superviseur</h2><p>Exporté le ${format(new Date(), 'dd MMMM yyyy', { locale: fr })}</p><p>Total: ${list.length}</p><table style="width:100%;border-collapse:collapse;border:1px solid #ddd"><thead><tr style="background:#f3f4f6">${['Prénom','Nom','Email','Statut','Disciples','Suivi par','Date'].map(h=>`<th style="padding:10px;border:1px solid #ddd">${h}</th>`).join('')}</tr></thead><tbody>${list.map(m=>`<tr><td style="padding:8px;border:1px solid #ddd">${(m.first_name||'')}</td><td style="padding:8px;border:1px solid #ddd">${(m.last_name||'')}</td><td style="padding:8px;border:1px solid #ddd">${(m.email||'-')}</td><td style="padding:8px;border:1px solid #ddd">${m.statut_spirituel==='inactif'?'Inactif':'Actif'}</td><td style="padding:8px;border:1px solid #ddd">${membresDisciplesCount[m.id]??m.nb_disciples??0}</td><td style="padding:8px;border:1px solid #ddd">${membresSuiviPar[m.id]?.name||'-'}</td><td style="padding:8px;border:1px solid #ddd">${m.created_at?safeFormatDate(m.created_at,'dd/MM/yyyy',{locale:fr}):'-'}</td></tr>`).join('')}</tbody></table></div>`;
+    document.body.appendChild(tempDiv);
+    exportElementToPDF(uniqueId, `superviseur_selection_${format(new Date(), 'yyyy-MM-dd', { locale: fr })}.pdf`, { title: 'Membres sélectionnés', subtitle: 'Superviseur', showHeader: true, showFooter: true }).finally(() => { try { document.getElementById(uniqueId)?.remove(); } catch (_) {} });
+  }, [filteredMembres, selectedMembres, membresDisciplesCount, membresSuiviPar, safeFormatDate]);
 
   return {
     phase1Loading,
@@ -392,10 +676,10 @@ export function useSuperviseurDashboard(user) {
     totalPages,
     paginatedMembres,
     toast,
-    handleExportPDF: noop,
-    handleExportExcel: noop,
-    handleExportDisciplesDetailleExcel: noop,
-    handleExportMentorsConsolidesExcel: noop,
+    handleExportPDF,
+    handleExportExcel,
+    handleExportDisciplesDetailleExcel,
+    handleExportMentorsConsolidesExcel,
     toggleSelectMembre,
     toggleSelectAll,
     handleFamilleAvatarChange: (e) => {
@@ -409,10 +693,10 @@ export function useSuperviseurDashboard(user) {
     uploadFamilleAvatar: noopAsync,
     uploadPasteurAvatar: noopAsync,
     fetchDisciplesOfMembre: noopAsync,
-    handleExportFilteredList: noop,
-    handleExportDisciplesList: noop,
-    handleExportSelectedExcel: noop,
-    handleExportSelectedPdf: noop,
+    handleExportFilteredList,
+    handleExportDisciplesList,
+    handleExportSelectedExcel,
+    handleExportSelectedPdf,
     fetchDisciplesDetaille: noopAsync,
     fetchMentorsConsolides: noopAsync,
     generateFormationVideoChartData: noopAsync,
@@ -422,8 +706,6 @@ export function useSuperviseurDashboard(user) {
     chartsLoadedRef,
     handleError,
     devLog,
-    setDisciplesDetaille,
-    setMentorsConsolides,
     setFormationVideoChartData,
     setStatutsSpirituelsData,
     setActiviteRecente,

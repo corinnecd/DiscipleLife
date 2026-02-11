@@ -544,10 +544,40 @@ const PasteurDashboard = () => {
           return {
             ...f,
             stats: {
+              ...f.stats,
               nombreMembres: nb,
               objectif: obj,
               progression: pct,
               reste: Math.max(0, obj - nb),
+            },
+          };
+        });
+      }
+
+      // Enrichir avec dernier rapport par superviseur (disciples présents, taux participation) pour tableau consolidé 7 colonnes
+      const superviseurIds = famillesValides.map((f) => f.superviseur?.id).filter(Boolean);
+      if (superviseurIds.length > 0) {
+        const { data: lastReports } = await supabase
+          .from('reports')
+          .select('user_id, statistics_snapshot')
+          .in('user_id', superviseurIds)
+          .eq('status', 'submitted')
+          .order('created_at', { ascending: false });
+        const lastBySuperviseur = {};
+        (lastReports || []).forEach((r) => {
+          if (r.user_id && lastBySuperviseur[r.user_id] == null) lastBySuperviseur[r.user_id] = r.statistics_snapshot || {};
+        });
+        famillesValides = famillesValides.map((f) => {
+          const snap = lastBySuperviseur[f.superviseur?.id];
+          if (!snap) return f;
+          const disciples_presents = snap.sunday_attendance_count != null ? snap.sunday_attendance_count : undefined;
+          const taux_participation_semaine = snap.taux_participation_semaine != null ? snap.taux_participation_semaine : undefined;
+          return {
+            ...f,
+            stats: {
+              ...f.stats,
+              ...(disciples_presents != null && { disciples_presents }),
+              ...(taux_participation_semaine != null && { taux_participation_semaine }),
             },
           };
         });
@@ -1207,19 +1237,26 @@ const PasteurDashboard = () => {
     }
   };
 
-  // Fonction pour exporter en Excel (CSV) – tableau des familles
+  // Fonction pour exporter en Excel (CSV) – tableau des familles (aligné tableau consolidé 7 colonnes)
   const handleExportExcel = () => {
     try {
-      const exportData = filteredFamilles.map(item => ({
-        'Superviseur': `${item.superviseur.first_name} ${item.superviseur.last_name}`,
-        'Email': item.superviseur.email || '',
-        'Famille': item.famille?.nom || 'Non assignée',
-        'Identifiant': item.famille?.identifiant_famille || '',
-        'Membres actuels': item.stats.nombreMembres,
-        'Objectif': item.stats.objectif,
-        'Progression (%)': Math.round(item.stats.progression),
-        'Statut': item.stats.progression >= 100 ? 'Objectif atteint' : 'En cours'
-      }));
+      const exportData = filteredFamilles.map(item => {
+        const sup = item.superviseur;
+        const st = item.stats || {};
+        return {
+          'Nom': sup?.last_name ?? '',
+          'Prénom (superviseur)': sup?.first_name ?? '',
+          'Église (famille)': item.famille?.nom ?? 'Non assignée',
+          'Nombre de disciples': st.nombreMembres ?? 0,
+          'Avancement % vers objectif 70': typeof st.progression === 'number' ? Math.round(st.progression) : '',
+          'Nombre de disciples présents': st.disciples_presents != null ? st.disciples_presents : '',
+          'Taux de participation de la semaine': st.taux_participation_semaine != null ? `${st.taux_participation_semaine} %` : '',
+          'Email': sup?.email ?? '',
+          'Identifiant famille': item.famille?.identifiant_famille ?? '',
+          'Objectif': st.objectif ?? 70,
+          'Statut': (st.progression ?? 0) >= 100 ? 'Objectif atteint' : 'En cours',
+        };
+      });
 
       if (exportData.length === 0) {
         toast({ variant: 'destructive', title: 'Export impossible', description: 'Aucune famille à exporter avec les filtres actuels.' });

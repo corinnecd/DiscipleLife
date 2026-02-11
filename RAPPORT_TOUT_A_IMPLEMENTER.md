@@ -231,11 +231,11 @@ Selon les documents, l’Objectif 3 est soit « 0 % » (vue OKR structuré), soi
 
 | Élément | Statut | Détail |
 |--------|--------|--------|
-| Flux Superviseur → Pasteur | À implémenter | Envoi de rapports mensuels, pré-remplissage du pasteur de tutelle, validation et envoi. |
-| Vue Pasteur « Rapports reçus » | À implémenter | Liste des rapports par superviseur, filtres par mois/année. |
-| Notifications | À implémenter | Notifier le pasteur à l’envoi, le superviseur à la consultation. |
+| Flux Superviseur → Pasteur | **Implémenté** | Envoi avec `pasteur_id`, bandeau « Votre pasteur de tutelle » sur SendReport, validation et envoi. |
+| Vue Pasteur « Rapports reçus » | **Implémenté** | Liste des rapports par superviseur, filtres par mois/année (PasteurReports + AdminReportsView). |
+| Notifications | **Implémenté** | Pasteur notifié à l'envoi (type `report_received`) ; superviseur notifié à la consultation par le pasteur (type `report_consulted`, premier passage à « lu »). |
 
-**Estimation :** 2–3 h.
+**Estimation :** 2–3 h (réalisé).
 
 ---
 
@@ -430,7 +430,7 @@ Référence : **`RAPPORT_FEEDBACK_ANALYSE_CLAUDE_ET_COMPARAISON.md`**, section 2
 | 2 | Dashboard Pasteur (tableau 7 colonnes, exports, redirection) | À créer / compléter | 3–4 h |
 | 3 | Dashboard Superviseur (tableaux détaillé + consolidé, exports, refactor) | Partiel + critique technique | 3–4 h + refactor |
 | 4 | Arbre généalogique (recherche, ascendants, vue complète, panneau détails) | Partiel | 15–19 h |
-| 5 | Rapports (flux superviseur→pasteur, vue pasteur, notifications) | À implémenter | 2–3 h |
+| 5 | Rapports (flux superviseur→pasteur, vue pasteur, notifications) | **Implémenté** | 2–3 h (réalisé) |
 | — | Présence / Disciples 70 (9 activités, KPI superviseur/mentor, nouveaux convertis) | Partiel | Variable |
 | — | Notation semestrielle | À implémenter | ~40 h |
 | — | Bilans périodiques | À implémenter | ~62 h |
@@ -462,6 +462,8 @@ Pour **tenir compte de la performance dès le début**, démarrer dans cet ordre
 | **8** | Métier prioritaire (Dashboard Pasteur, rapports, etc.) puis reste du plan | Une fois la base stable et performante. | — |
 
 **Résumé :** commencer par **0 → 1 → 2 → 3** (données + stabilité + perf SuperviseurDashboard), puis **4, 5** (cache + monitoring), puis **6, 7, 8**.
+
+**État récent (suite des livraisons) :** Rapports (§ 3.5) : **implémenté**. Formulaire d’inscription : une seule route `/signup` + rôle en query, redirects anciennes routes ; SignupDisciple étendu (rôle, famille, date d’entrée, suivi par, statut spirituel, etc.). SuperviseurDashboard : requêtes regroupées (RPC phase2 / phase2_extra + repli) ; plus de setInterval sur stats comparatives (chargement à la demande). **Prochaine étape recommandée :** exécuter **075** (et 092/093 si besoin), puis Phase 3 CRUD (lecture depuis profils uniquement) ou étendre le cache (étape 4).
 
 ---
 

@@ -234,13 +234,13 @@ const PasteurFamilies = ({
         </CardContent>
       </Card>
 
-      {/* Tableau des superviseurs et familles */}
+      {/* Tableau consolidé 7 colonnes (rapport § 3.2) */}
       <Card id="familles-tableau" className="bg-white border-gray-200 shadow-sm scroll-mt-4">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
-            <CardTitle className="text-lg font-semibold text-gray-900">Mes Superviseurs et Familles</CardTitle>
+            <CardTitle className="text-lg font-semibold text-gray-900">Tableau consolidé – Familles</CardTitle>
             <CardDescription>
-              Statistiques agrégées par famille et superviseur – vue détaillée avec progression vers l&apos;objectif 70
+              Nom, Prénom (superviseur), Église (famille), Nombre de disciples, Avancement % vers objectif 70, Disciples présents, Taux de participation de la semaine
             </CardDescription>
           </div>
           {filteredFamilles.length > 5 && (
@@ -278,47 +278,34 @@ const PasteurFamilies = ({
               <Table>
                 <TableHeader>
                   <TableRow className="group bg-purple-200 hover:bg-purple-300 transition-colors cursor-pointer">
-                    <TableHead className="font-semibold text-gray-900">Superviseur</TableHead>
-                    <TableHead className="font-semibold text-gray-900">Famille</TableHead>
-                    <TableHead className="font-semibold text-center text-gray-900">Disciples</TableHead>
-                    <TableHead className="font-semibold text-center text-gray-900">Objectif</TableHead>
-                    <TableHead className="font-semibold text-center text-gray-900">Progression</TableHead>
-                    <TableHead className="font-semibold text-center text-gray-900">Statut</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Nom</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Prénom (superviseur)</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Église (famille)</TableHead>
+                    <TableHead className="font-semibold text-center text-gray-900">Nombre de disciples</TableHead>
+                    <TableHead className="font-semibold text-center text-gray-900">Avancement % vers objectif 70</TableHead>
+                    <TableHead className="font-semibold text-center text-gray-900">Nombre de disciples présents</TableHead>
+                    <TableHead className="font-semibold text-center text-gray-900">Taux de participation de la semaine</TableHead>
                     <TableHead className="font-semibold text-center text-gray-900">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(showAllSuperviseursFamilles ? filteredFamilles : filteredFamilles.slice(0, 5)).map((item) => (
                     <TableRow key={item.superviseur.id} className="hover:bg-gray-50 transition-colors">
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                            <Users className="h-5 w-5 text-purple-600" />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">
-                              {item.superviseur.first_name} {item.superviseur.last_name}
-                            </p>
-                            <p className="text-sm text-gray-500">{item.superviseur.email}</p>
-                            {item.superviseur.titre && <p className="text-xs text-gray-400">{item.superviseur.titre}</p>}
-                          </div>
-                        </div>
+                      <TableCell className="font-medium text-gray-900">
+                        {item.superviseur.last_name || '—'}
+                      </TableCell>
+                      <TableCell className="text-gray-900">
+                        {item.superviseur.first_name || '—'}
                       </TableCell>
                       <TableCell>
                         {item.famille ? (
-                          <div>
-                            <p className="font-medium text-gray-900">{formatFamilleName(item.famille.nom)}</p>
-                            <p className="text-sm text-gray-500">{item.famille.identifiant_famille}</p>
-                          </div>
+                          <span className="font-medium text-gray-900">{formatFamilleName(item.famille.nom)}</span>
                         ) : (
-                          <span className="text-gray-400 italic">Aucune famille assignée</span>
+                          <span className="text-gray-400 italic">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-center">
                         <span className="font-semibold text-gray-900">{item.stats.nombreMembres}</span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="text-gray-600">{item.stats.objectif}</span>
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -333,18 +320,11 @@ const PasteurFamilies = ({
                           <span className="text-sm font-medium text-gray-700 w-12 text-left">{Math.round(item.stats.progression)}%</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-center">
-                        {item.stats.nombreMembres >= item.stats.objectif ? (
-                          <Badge className="bg-green-500 text-white">
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
-                            Objectif atteint
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="border-amber-500 text-amber-600">
-                            <AlertCircle className="h-3 w-3 mr-1" />
-                            En cours
-                          </Badge>
-                        )}
+                      <TableCell className="text-center text-gray-700">
+                        {item.stats.disciples_presents != null ? item.stats.disciples_presents : '—'}
+                      </TableCell>
+                      <TableCell className="text-center text-gray-700">
+                        {item.stats.taux_participation_semaine != null ? `${item.stats.taux_participation_semaine} %` : '—'}
                       </TableCell>
                       <TableCell className="text-center">
                         <Button

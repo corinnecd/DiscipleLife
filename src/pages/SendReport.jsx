@@ -75,12 +75,48 @@ const SendReport = () => {
   const [chartData, setChartData] = useState([]);
   const [successMessage, setSuccessMessage] = useState(null);
   const [showEmptyReportConfirm, setShowEmptyReportConfirm] = useState(false);
+  const [pasteurTutelle, setPasteurTutelle] = useState(null);
+  const [pasteurId, setPasteurId] = useState(null);
+  const [superviseurNom, setSuperviseurNom] = useState('');
 
   useEffect(() => {
     if (user) {
       fetchData();
       fetchPreviousReports();
       checkReportReminder();
+      (async () => {
+        try {
+          const { data: profil } = await supabase
+            .from('profils')
+            .select('first_name, last_name, pasteur_id')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (profil) {
+            setSuperviseurNom([profil.first_name, profil.last_name].filter(Boolean).join(' ').trim() || 'Superviseur');
+          }
+          const pid = profil?.pasteur_id;
+          setPasteurId(pid || null);
+          if (pid) {
+            const { data: pasteur } = await supabase
+              .from('profils')
+              .select('first_name, last_name')
+              .eq('id', pid)
+              .maybeSingle();
+            if (pasteur) {
+              setPasteurTutelle({
+                nom: [pasteur.first_name, pasteur.last_name].filter(Boolean).join(' ').trim() || 'Pasteur',
+              });
+            } else {
+              setPasteurTutelle(null);
+            }
+          } else {
+            setPasteurTutelle(null);
+          }
+        } catch (_) {
+          setPasteurTutelle(null);
+          setPasteurId(null);
+        }
+      })();
     }
   }, [user, reportType, reportMonth, reportYear, reportWeek, reportYearWeek, reportQuarter, reportYearQuarter, reportYearAnnual]);
 
@@ -464,6 +500,18 @@ const SendReport = () => {
 
       if (error) throw error;
 
+      // Notifier le pasteur de tutelle
+      if (pasteurId) {
+        const notifContent = `${superviseurNom || 'Un superviseur'} a envoyé un rapport ${getReportTitle().toLowerCase()} (${getReportPeriod()}).`;
+        await supabase.from('notifications').insert({
+          user_id: pasteurId,
+          type: 'report_received',
+          title: 'Nouveau rapport',
+          content: notifContent,
+          read: false,
+        });
+      }
+
       // Récupérer l'email du pasteur de tutelle pour le message de confirmation
       let pasteurEmail = '';
       if (pasteurId) {
@@ -836,6 +884,11 @@ const SendReport = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{getReportTitle()}</h1>
             <p className="text-gray-600 mt-1">{getReportDescription()}</p>
+            {pasteurTutelle && (
+              <p className="text-sm text-gray-600 mt-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 inline-block">
+                Votre pasteur de tutelle : <strong>{pasteurTutelle.nom}</strong>. Ce rapport lui sera transmis.
+              </p>
+            )}
           </div>
           {/* Bouton Historique */}
           <Button 

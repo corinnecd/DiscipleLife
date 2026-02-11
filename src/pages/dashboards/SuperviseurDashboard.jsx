@@ -156,8 +156,6 @@ const SuperviseurDashboard = () => {
     chartsLoadedRef,
     handleError,
     devLog,
-    setDisciplesDetaille,
-    setMentorsConsolides,
     setFormationVideoChartData,
     setStatutsSpirituelsData,
     setActiviteRecente,
