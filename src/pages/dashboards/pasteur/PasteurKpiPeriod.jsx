@@ -202,7 +202,7 @@ const PasteurKpiPeriod = ({
                                   );
                                 }}
                               />
-                              <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={18} />
+                              <Bar dataKey="progression" name="Progression (%)" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={12} />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>

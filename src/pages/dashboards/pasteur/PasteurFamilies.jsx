@@ -38,6 +38,20 @@ const PasteurFamilies = ({
 }) => {
   return (
     <div className="space-y-6">
+      {/* Sommaire / Sur cette page */}
+      <Card className="bg-gray-100 border-gray-200 shadow-sm">
+        <CardContent className="py-3">
+          <p className="text-sm font-medium text-gray-700 mb-2">Sur cette page :</p>
+          <nav className="flex flex-wrap gap-2" aria-label="Navigation dans l'onglet Familles">
+            <a href="#familles-recherche" className="text-sm text-purple-600 hover:text-purple-800 underline font-medium">Recherche et filtres</a>
+            <span className="text-gray-400">·</span>
+            <a href="#familles-liste" className="text-sm text-purple-600 hover:text-purple-800 underline font-medium">Liste des familles</a>
+            <span className="text-gray-400">·</span>
+            <a href="#familles-tableau" className="text-sm text-purple-600 hover:text-purple-800 underline font-medium">Tableau superviseurs et familles</a>
+          </nav>
+        </CardContent>
+      </Card>
+
       {/* Bannière : familles du pasteur sélectionné */}
       {selectedPasteurIdForFamilies && (() => {
         const pasteur = kpiParPasteur.find((x) => x.id === selectedPasteurIdForFamilies);
@@ -64,7 +78,7 @@ const PasteurFamilies = ({
       })()}
 
       {/* Recherche et filtres */}
-      <Card className="bg-white border-gray-200 shadow-sm">
+      <Card id="familles-recherche" className="bg-white border-gray-200 shadow-sm scroll-mt-4">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-gray-900">Recherche et Filtres</CardTitle>
         </CardHeader>
@@ -105,7 +119,7 @@ const PasteurFamilies = ({
       </Card>
 
       {/* Liste des Familles */}
-      <Card className="bg-white border-gray-200 shadow-sm">
+      <Card id="familles-liste" className="bg-white border-gray-200 shadow-sm scroll-mt-4">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -221,7 +235,7 @@ const PasteurFamilies = ({
       </Card>
 
       {/* Tableau des superviseurs et familles */}
-      <Card className="bg-white border-gray-200 shadow-sm">
+      <Card id="familles-tableau" className="bg-white border-gray-200 shadow-sm scroll-mt-4">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
             <CardTitle className="text-lg font-semibold text-gray-900">Mes Superviseurs et Familles</CardTitle>
