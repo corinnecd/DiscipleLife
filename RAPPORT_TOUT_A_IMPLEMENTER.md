@@ -75,11 +75,11 @@ Référence : **`MODELE_CIBLE_DONNEES.md`**.
 |-------|---------|-------------------------|
 | **Phase 1** | Modèle de données : schéma profils complet (092, 093), politique d’écriture “une seule source”, trigger `handle_new_user` alimenté par metadata. | Prérequis |
 | **Phase 2** | Formulaire unique : composant réutilisable (inscription + ajout membre), une seule route `/signup` avec rôle dans le formulaire, dépréciation des 4 routes signup/pasteur|superviseur|mentor|disciple. | Haute |
-| **Phase 3** | Lecture depuis profils uniquement : listes “Mes disciples” / “Membres famille” depuis profils (plus depuis cercle_personnes), RPC et KPI basées sur profils uniquement, suppression logique hybride (ex. 091). | Haute |
+| **Phase 3** | Lecture depuis profils uniquement : listes “Mes disciples” / “Membres famille” depuis profils (plus depuis cercle_personnes), RPC et KPI basées sur profils uniquement, suppression logique hybride (ex. 091). | **Implémenté (côté code)** |
 | **Phase 4** | Cercles : uniquement comptages par catégorie ; optionnel vue/agrégat alimentée depuis profils. | Moyenne |
 | **Phase 5** | CRUD cohérent : Create/Read/Update/Delete tous via profils ; pas de fiche membre dans cercle_personnes. | Haute |
 
-**Actions immédiates déjà réalisées :** formulaire SignupDisciple étendu (rôle, date d’entrée, suivi par, statut spirituel, formations PCNC, nombre de disciples, téléphone, ville de résidence) ; migrations 092 (date_entree_famille), 093 (phone, ville_residence) ; rapport de comparaison profils/formulaires à jour. **À faire ensuite :** exécuter 092/093 si besoin, puis Phase 2 (formulaire unique réutilisable + une route), puis Phase 3 (lecture tout depuis profils).
+**Actions immédiates déjà réalisées :** formulaire SignupDisciple étendu (rôle, date d’entrée, suivi par, statut spirituel, formations PCNC, nombre de disciples, téléphone, ville de résidence) ; migrations 092 (date_entree_famille), 093 (phone, ville_residence) ; rapport de comparaison profils/formulaires à jour. **À faire ensuite :** exécuter 092/093/075 si besoin ; Phase 2 restant : réutiliser le formulaire pour l’ajout de membre (mentor/superviseur/admin) si prévu . **Phase 3 (lecture depuis profils) :** réalisée côté code — frontend ne lit que profils ; RPC 098 (superviseur) et 096/087 (pasteur) = lecture 100 % profils ; exécuter 096 et 098 en base si pas encore fait.
 
 ---
 
@@ -463,7 +463,7 @@ Pour **tenir compte de la performance dès le début**, démarrer dans cet ordre
 
 **Résumé :** commencer par **0 → 1 → 2 → 3** (données + stabilité + perf SuperviseurDashboard), puis **4, 5** (cache + monitoring), puis **6, 7, 8**.
 
-**État récent (suite des livraisons) :** Rapports (§ 3.5) : **implémenté**. Formulaire d’inscription : une seule route `/signup` + rôle en query, redirects anciennes routes ; SignupDisciple étendu (rôle, famille, date d’entrée, suivi par, statut spirituel, etc.). SuperviseurDashboard : requêtes regroupées (RPC phase2 / phase2_extra + repli) ; plus de setInterval sur stats comparatives (chargement à la demande). **Prochaine étape recommandée :** exécuter **075** (et 092/093 si besoin), puis Phase 3 CRUD (lecture depuis profils uniquement) ou étendre le cache (étape 4).
+**État récent (suite des livraisons) :** Rapports (§ 3.5) : **implémenté**. Formulaire d’inscription : une seule route `/signup` + rôle en query, redirects anciennes routes ; SignupDisciple étendu (rôle, famille, date d’entrée, suivi par, statut spirituel, etc.). SuperviseurDashboard : requêtes regroupées (RPC phase2 / phase2_extra + repli) ; plus de setInterval sur stats comparatives (chargement à la demande). **Prochaine étape recommandée :** exécuter **075** (et 092/093 si besoin) via `sql/run_migrations_092_093_075.sql` ; prérequis `cercle_personnes` documenté dans le guide. Cache (étape 4) : **en place** — getOrSetCache sur les RPC phase2/phase2_extra (TTL 90 s). Étape 5 : **SuperviseurDashboard** enregistré dans PerformanceMonitor (startPageLoad/endPageLoad) ; visible sur `/admin/performance`.
 
 ---
 

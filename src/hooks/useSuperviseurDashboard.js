@@ -10,7 +10,10 @@ import { useSuperviseurData } from '@/hooks/useSuperviseurData';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
 import { useMembersTable } from '@/hooks/useMembersTable';
 import { supabase } from '@/lib/customSupabaseClient';
+import { getOrSetCache } from '@/lib/CacheUtils';
 import { exportToExcel, exportElementToPDF } from '@/lib/ExportUtils';
+
+const PHASE2_CACHE_TTL_MS = 90 * 1000; // 1 min 30 — données dashboard superviseur
 
 const devLog = (...args) => { if (import.meta.env.DEV) console.log(...args); };
 
@@ -104,15 +107,23 @@ export function useSuperviseurDashboard(user) {
     (async () => {
       try {
         const pasteurId = pasteur?.id ?? famille.pasteur_id ?? null;
-        const [phase2Res, phase2ExtraRes] = await Promise.all([
-          supabase.rpc('get_superviseur_dashboard_phase2', { p_user_id: userId, p_famille_id: famille.id }),
-          supabase.rpc('get_superviseur_dashboard_phase2_extra', { p_user_id: userId, p_pasteur_id: pasteurId }),
-        ]);
+        const cacheKey = `superviseur_dashboard_phase2_${userId}_${famille.id}_${pasteurId ?? 'null'}`;
+        const { phase2Res, phase2ExtraRes } = await getOrSetCache(
+          cacheKey,
+          async () => {
+            const [p2, p2e] = await Promise.all([
+              supabase.rpc('get_superviseur_dashboard_phase2', { p_user_id: userId, p_famille_id: famille.id }),
+              supabase.rpc('get_superviseur_dashboard_phase2_extra', { p_user_id: userId, p_pasteur_id: pasteurId }),
+            ]);
+            if (p2.error) throw p2.error;
+            return { phase2Res: p2, phase2ExtraRes: p2e };
+          },
+          PHASE2_CACHE_TTL_MS
+        );
 
         if (cancelled) return;
 
         // RPC phase2 : membres + stats + progressions + disciples_count + suivi_par
-        if (phase2Res.error) throw phase2Res.error;
         const phase2 = phase2Res.data;
         if (phase2) {
           const rawMembres = phase2.membres || [];

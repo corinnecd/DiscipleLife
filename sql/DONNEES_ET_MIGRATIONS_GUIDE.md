@@ -15,8 +15,12 @@ Exécuter dans l’ordre suivant dans le **SQL Editor** de Supabase (ou votre cl
 | 3 | **075** | Modèle cible : lien `cercle_personnes.profil_id` + trigger sync → profils. |
 | 4 | **074** | **Ne pas exécuter** — Seed de données de test ; tous les tests se font avec les **vraies données** dans `profils`. |
 
+**Option « tout en un » (étape 0) :** exécuter le script **`sql/run_migrations_092_093_075.sql`** — il enchaîne 092, 093 et 075 en une seule fois. Puis lancer **`sql/verification_migrations_092_093_075.sql`** pour contrôler le résultat.
+
 **Pourquoi 092 et 093 avant 075 ?**  
 075 touche à `cercle_personnes` et `profils`. 092/093 n’ajoutent que des colonnes sur `profils` avec `ADD COLUMN IF NOT EXISTS`, sans impact sur 075. Les faire en premier garantit que le formulaire et l’app ont bien `date_entree_famille`, `phone`, `ville_residence` avant toute évolution du modèle.
+
+**Prérequis table `cercle_personnes` :** la migration 075 suppose que la table **`cercle_personnes`** existe déjà. Elle n’est **pas créée** par les migrations de ce dépôt (033, 076, 077, etc. la référencent mais aucune ne fait `CREATE TABLE cercle_personnes`). Si votre base n’a pas cette table, exécuter uniquement 092 et 093 ; la partie 075 échouera avec « relation cercle_personnes does not exist ».
 
 ---
 
@@ -104,3 +108,17 @@ Si un résultat est **vide** alors qu’une ligne est attendue, la migration cor
 - `075b_fix_trigger_mentor_optionnel.sql` – Ajustement du trigger (mentor optionnel).
 
 Exécuter ces fichiers seulement si vous en avez besoin (backfill ou correctif), après avoir appliqué `075_modele_cible_sync_cercle_vers_profils.sql`.
+
+---
+
+## Phase 3 CRUD – Lecture 100 % profils
+
+Pour que les listes « Mes disciples » / « Membres famille » et les KPI pasteur/superviseur s’appuient **uniquement sur la table `profils`** (plus sur `cercle_personnes`), exécuter en base les migrations suivantes si ce n’est pas déjà fait :
+
+| Fichier | Rôle |
+|---------|------|
+| **098** | `sql/migrations/098_rpc_superviseur_dashboard_100_profils.sql` — RPC dashboard superviseur (membres, stats, disciples count) 100 % profils. Remplace les versions qui lisaient `cercle_personnes`. |
+| **096** | `sql/migrations/096_rpc_effectifs_100_profils_sans_cercle.sql` — RPC KPI pasteur (effectifs par famille, progression, mentors avec disciples, etc.) 100 % profils. |
+| **087** | `sql/migrations/087_rpc_kpi_disciples_par_pasteur_profils.sql` — KPI disciples par pasteur basé sur profils. |
+
+**Ordre :** 087, 096, 098 (ou selon dépendances existantes). Après exécution, le frontend (déjà branché sur ces RPC) utilisera uniquement `profils` pour les listes et tableaux de bord.

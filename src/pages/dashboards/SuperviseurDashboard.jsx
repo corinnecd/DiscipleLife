@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import performanceMonitor from '@/lib/PerformanceMonitor';
 import { 
   Users, Target, TrendingUp, UserCheck, Activity, 
   Church, ChevronRight, Loader2, UserCircle, Eye, Camera, Sparkles, Zap, Trophy, Star, AlertCircle,
@@ -34,10 +35,13 @@ import { ChartsSupplementaires } from './superviseur/ChartsSupplementaires';
 import { ArbreGenealogiqueEmbed } from '@/components/ArbreGenealogiqueEmbed';
 import { ReportReminderCard } from './superviseur/ReportReminderCard';
 import { SuperviseurDashboardHeader } from './superviseur/SuperviseurDashboardHeader';
+const PAGE_NAME = 'SuperviseurDashboard';
+
 const SuperviseurDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const dashboard = useSuperviseurDashboard(user);
+  const hasStartedLoad = useRef(false);
   const {
     phase1Loading,
     loading,
@@ -160,6 +164,19 @@ const SuperviseurDashboard = () => {
     setStatutsSpirituelsData,
     setActiviteRecente,
   } = dashboard;
+
+  // PerformanceMonitor : enregistrer le temps de chargement pour /admin/performance
+  useEffect(() => {
+    if (user && !hasStartedLoad.current) {
+      hasStartedLoad.current = true;
+      performanceMonitor.startPageLoad(PAGE_NAME);
+    }
+  }, [user]);
+  useEffect(() => {
+    if (user && hasStartedLoad.current && !loading) {
+      performanceMonitor.endPageLoad(PAGE_NAME);
+    }
+  }, [user, loading]);
 
   // Hook pour détecter la visibilité d'un élément (IntersectionObserver) - Lazy loading des graphiques
   useEffect(() => {
