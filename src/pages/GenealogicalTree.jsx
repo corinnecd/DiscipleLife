@@ -52,12 +52,14 @@ const LEGEND_ROLES = [
   { key: 'disciple', label: 'Disciple', border: 'border-slate-300', bg: 'bg-slate-100' },
 ];
 
-// --- Couleurs par rôle (Pasteur, Superviseur, Mentor, Disciple) ---
+// --- Couleurs par rôle (Pasteur, Superviseur, Mentor, Pilier, Berger, Disciple) ---
 const getRoleStyles = (role) => {
   const r = (role || 'disciple').toLowerCase();
   if (r === 'pasteur') return { border: 'border-violet-500', bg: 'bg-violet-50', badge: 'bg-violet-600' };
   if (r === 'superviseur') return { border: 'border-blue-500', bg: 'bg-blue-50', badge: 'bg-blue-600' };
   if (r === 'mentor') return { border: 'border-emerald-500', bg: 'bg-emerald-50', badge: 'bg-emerald-600' };
+  if (r === 'pilier') return { border: 'border-indigo-500', bg: 'bg-indigo-50', badge: 'bg-indigo-600' };
+  if (r === 'berger') return { border: 'border-amber-500', bg: 'bg-amber-50', badge: 'bg-amber-600' };
   return { border: 'border-slate-300', bg: 'bg-slate-50', badge: 'bg-slate-600' };
 };
 
@@ -463,6 +465,7 @@ function buildTreeFromArbreRows(rows) {
       role: r.role_niveau || 'Disciple',
       nb_disciples: r.nb_disciples ?? 0,
       parent_id: r.parent_id,
+      avatar_url: r.avatar_url,
       children: [],
     };
   });
@@ -574,6 +577,9 @@ const GenealogicalTree = () => {
   const LIST_PAGE_SIZE = 15;
 
   const isPasteur = userProfile?.role === 'pasteur';
+  const isMentor = userProfile?.role === 'mentor';
+  // Mentor : 'mon_arbre' = moi + mes disciples | 'ma_place_famille' = chemin Superviseur → moi → mes disciples
+  const [mentorViewMode, setMentorViewMode] = useState('mon_arbre');
 
   const toggleRoleFilter = (roleKey) => {
     setRoleFilter((prev) => {
@@ -807,10 +813,82 @@ const GenealogicalTree = () => {
     return () => { cancelled = true; };
   }, [selectedFamilleId]);
 
-  // Fetch Tree Data : par famille (selectedFamilleId) ou DR mode (?pasteur=). Pas de "Ma lignée".
+  // Fetch Tree Data : mentor = arbre centré sur lui ; pasteur = DR mode (?pasteur=) ; superviseur = arbre de sa famille
   useEffect(() => {
     const fetchTree = async () => {
       const hasPasteurUrl = urlPasteurId && urlPasteurId.length > 0;
+
+      // --- Mentor : mon arbre (moi + disciples) ou ma place dans la famille (Superviseur → moi → disciples) ---
+      // Utilise la RPC get_arbre_mentor (SECURITY DEFINER) pour contourner les restrictions RLS
+      if (isMentor && user?.id) {
+        setLoading(true);
+        setTreeData(null);
+        try {
+          const { data: arbreRows, error: rpcError } = await supabase.rpc('get_arbre_mentor', {
+            p_mentor_id: user.id,
+            p_mode: mentorViewMode === 'ma_place_famille' ? 'ma_place_famille' : 'mon_arbre',
+          });
+          if (rpcError) throw rpcError;
+          const root = buildTreeFromArbreRows(arbreRows || []);
+          setTreeData(root);
+        } catch (err) {
+          console.error('Error building mentor tree:', err);
+          // Fallback : requêtes directes si la RPC n'existe pas encore
+          try {
+            const { data: mentorData } = await supabase
+              .from('profils')
+              .select('id, first_name, last_name, prenom, nom, avatar_url, role, famille_id, mentor_id')
+              .eq('id', user.id)
+              .maybeSingle();
+            if (mentorData) {
+              const familleId = mentorData.famille_id;
+              let dataList = [];
+              if (familleId) {
+                const { data: membresData } = await supabase
+                  .from('profils')
+                  .select('id, first_name, last_name, prenom, nom, avatar_url, mentor_id, role')
+                  .eq('famille_id', familleId);
+                dataList = membresData || [];
+              }
+              const toName = (d) => {
+                const n = d?.first_name || d?.prenom;
+                const ln = d?.last_name || d?.nom;
+                return [n, ln].filter(Boolean).join(' ').trim() || 'Sans nom';
+              };
+              const buildHierarchy = (parentId) =>
+                (dataList || [])
+                  .filter((d) => d.mentor_id === parentId)
+                  .map((d) => ({
+                    id: d.id,
+                    name: toName(d),
+                    first_name: d.first_name || d.prenom,
+                    last_name: d.last_name || d.nom,
+                    avatar_url: d.avatar_url,
+                    role: d.role || 'Disciple',
+                    parent_id: parentId,
+                    children: buildHierarchy(d.id),
+                  }));
+              const root = {
+                id: mentorData.id,
+                name: toName(mentorData),
+                first_name: mentorData.first_name || mentorData.prenom,
+                last_name: mentorData.last_name || mentorData.nom,
+                avatar_url: mentorData.avatar_url,
+                role: mentorData.role || 'Mentor',
+                parent_id: null,
+                children: buildHierarchy(user.id),
+              };
+              setTreeData(root);
+            }
+          } catch (fallbackErr) {
+            console.error('Fallback mentor tree failed:', fallbackErr);
+          }
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
       if (!selectedFamilleId && !hasPasteurUrl) return;
       setLoading(true);
       setTreeData(null);
@@ -925,7 +1003,7 @@ const GenealogicalTree = () => {
     };
 
     fetchTree();
-  }, [selectedFamilleId, familles, urlPasteurId]);
+  }, [selectedFamilleId, familles, urlPasteurId, isMentor, user?.id, mentorViewMode, userProfile]);
 
   return (
     <>
@@ -941,14 +1019,44 @@ const GenealogicalTree = () => {
               Arbre Généalogique
             </h1>
             <p className="text-slate-500 dark:text-slate-400">
-              {urlPasteurId
-                ? 'Vue : toutes les familles (DR mode) – Pasteur → Superviseurs → Mentors → Disciples.'
-                : isPasteur
-                  ? 'Choisissez une famille pour afficher son arbre.'
-                  : 'Arbre de votre famille.'}
-              {selectedFamilleId && nombreDisciplesFamille !== null && !urlPasteurId && (
+              {isMentor
+                ? (mentorViewMode === 'mon_arbre'
+                    ? 'Votre arbre : vous et vos disciples directs.'
+                    : 'Votre place dans l\'arbre de la famille : Superviseur → vous → vos disciples.')
+                : urlPasteurId
+                  ? 'Vue : toutes les familles (DR mode) – Pasteur → Superviseurs → Mentors → Disciples.'
+                  : isPasteur
+                    ? 'Choisissez une famille pour afficher son arbre.'
+                    : 'Arbre de votre famille.'}
+              {isMentor && treeData && (
+                <span className="ml-2 font-semibold text-primary">
+                  — {flattenTree(treeData).length} disciple{flattenTree(treeData).length !== 1 ? 's' : ''}
+                </span>
+              )}
+              {!isMentor && selectedFamilleId && nombreDisciplesFamille !== null && !urlPasteurId && (
                 <span className="ml-2 font-semibold text-primary">
                   — {nombreDisciplesFamille} disciple{nombreDisciplesFamille !== 1 ? 's' : ''}
+                </span>
+              )}
+              {isMentor && (
+                <span className="ml-2">
+                  {mentorViewMode === 'mon_arbre' ? (
+                    <button
+                      type="button"
+                      onClick={() => setMentorViewMode('ma_place_famille')}
+                      className="text-primary hover:underline text-sm font-medium"
+                    >
+                      Voir ma place dans la famille
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setMentorViewMode('mon_arbre')}
+                      className="text-primary hover:underline text-sm font-medium"
+                    >
+                      Revenir à mon arbre
+                    </button>
+                  )}
                 </span>
               )}
             </p>
@@ -1070,9 +1178,11 @@ const GenealogicalTree = () => {
           <div className="flex flex-col items-center justify-center py-16 text-slate-500">
             <Users className="h-12 w-12 mb-4 opacity-50" />
             <p>
-              {selectedFamilleId
-                ? 'Aucune donnée pour cette famille.'
-                : 'Connectez-vous pour voir votre lignée.'}
+              {isMentor
+                ? 'Votre profil ou votre famille n\'est pas configuré. Assurez-vous d\'être assigné à une famille par votre superviseur.'
+                : selectedFamilleId
+                  ? 'Aucune donnée pour cette famille.'
+                  : 'Connectez-vous pour voir votre lignée.'}
             </p>
           </div>
         ) : (
@@ -1102,9 +1212,46 @@ const GenealogicalTree = () => {
               </button>
             </div>
 
-            {/* Barre de recherche avec suggestions / autocomplétion */}
-            <div className="flex items-center gap-2 border-b border-slate-200 pb-3 mb-3">
-              <div className="relative flex-1 max-w-md">
+            {/* Barre de filtres : Descendants / Ascendants / Vue complète / Recherche ; puis Vue Liste / Organigramme à droite */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+              <button
+                type="button"
+                onClick={() => { setViewFilter('descendants'); setViewMode('tree'); setDisplayedTreeRoot(null); }}
+                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  viewFilter === 'descendants'
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <ArrowDown className="h-4 w-4" />
+                Descendants
+              </button>
+              <button
+                type="button"
+                onClick={() => { setViewFilter('ascendants'); setViewMode('tree'); setDisplayedTreeRoot(null); }}
+                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  viewFilter === 'ascendants'
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <ArrowUp className="h-4 w-4" />
+                Ascendants
+              </button>
+              <button
+                type="button"
+                onClick={() => { setViewFilter('full'); setViewMode('tree'); setDisplayedTreeRoot(null); }}
+                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  viewFilter === 'full'
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <Network className="h-4 w-4" />
+                Vue complète
+              </button>
+              {/* Barre de recherche à droite de Vue complète */}
+              <div className="relative w-64 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none z-10" />
                 <input
                   type="text"
@@ -1167,46 +1314,6 @@ const GenealogicalTree = () => {
                   </ul>
                 )}
               </div>
-            </div>
-
-            {/* Barre de filtres : Descendants / Ascendants / Vue complète à gauche ; Vue Liste / Vue organigramme tout à droite */}
-            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
-              <button
-                type="button"
-                onClick={() => { setViewFilter('descendants'); setViewMode('tree'); setDisplayedTreeRoot(null); }}
-                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                  viewFilter === 'descendants'
-                    ? 'bg-green-600 text-white shadow-sm'
-                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <ArrowDown className="h-4 w-4" />
-                Descendants
-              </button>
-              <button
-                type="button"
-                onClick={() => { setViewFilter('ascendants'); setViewMode('tree'); setDisplayedTreeRoot(null); }}
-                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                  viewFilter === 'ascendants'
-                    ? 'bg-green-600 text-white shadow-sm'
-                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <ArrowUp className="h-4 w-4" />
-                Ascendants
-              </button>
-              <button
-                type="button"
-                onClick={() => { setViewFilter('full'); setViewMode('tree'); setDisplayedTreeRoot(null); }}
-                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                  viewFilter === 'full'
-                    ? 'bg-green-600 text-white shadow-sm'
-                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <Network className="h-4 w-4" />
-                Vue complète
-              </button>
               <div className="ml-auto flex items-center gap-2 flex-wrap">
                 {isMobile && viewMode === 'tree' && (
                   <Button
@@ -1220,7 +1327,7 @@ const GenealogicalTree = () => {
                     {mobileOrganigrammeMode ? 'Liste' : 'Organigramme complet'}
                   </Button>
                 )}
-                {viewMode === 'tree' && user?.id && (
+                {viewMode === 'tree' && user?.id && !isMentor && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1229,7 +1336,7 @@ const GenealogicalTree = () => {
                     title="Centrer l'arbre sur votre position"
                   >
                     <Crosshair className="h-4 w-4 mr-1" />
-                    Superviseur
+                    Centrer sur moi
                   </Button>
                 )}
                 <Button

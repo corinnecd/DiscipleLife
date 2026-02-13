@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,9 @@ const Auth = () => {
   const { role } = useRole();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const redirectUrl = searchParams.get('redirect');
 
   const [formData, setFormData] = useState({
     email: '',
@@ -91,7 +93,13 @@ const Auth = () => {
             'mentor': '/space/mentor',
             'disciple': '/space/disciple'
           };
-          const redirectPath = redirectPaths[userRole] || location.state?.from?.pathname || '/home';
+          let redirectPath = redirectPaths[userRole] || location.state?.from?.pathname || '/home';
+          if (redirectUrl && redirectUrl.startsWith('/')) {
+            try {
+              const decoded = decodeURIComponent(redirectUrl);
+              if (decoded.startsWith('/') && !decoded.startsWith('//')) redirectPath = decoded;
+            } catch (_) {}
+          }
           navigate(redirectPath, { replace: true });
         } else {
           const from = location.state?.from?.pathname || '/home';

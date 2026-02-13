@@ -297,7 +297,7 @@ const SuperviseurDashboard = () => {
       </Helmet>
       
       <div id="superviseur-dashboard-content" className="space-y-6 p-6 bg-gray-50 min-h-screen">
-        <SuperviseurDashboardHeader onBack={() => navigate(-1)} />
+        <SuperviseurDashboardHeader onBack={() => navigate(-1)} onArbre={() => navigate('/arbre-genealogique')} />
 
         <ReportReminderCard
           reportReminder={reportReminder}

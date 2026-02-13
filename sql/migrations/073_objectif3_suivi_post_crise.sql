@@ -58,17 +58,101 @@ CREATE TABLE IF NOT EXISTS historique_guerison (
   updated_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
 
--- Indexes pour améliorer les performances
-CREATE INDEX IF NOT EXISTS idx_suivi_user_id ON suivi_post_crise(user_id);
-CREATE INDEX IF NOT EXISTS idx_suivi_statut ON suivi_post_crise(statut);
-CREATE INDEX IF NOT EXISTS idx_suivi_type_crise ON suivi_post_crise(type_crise);
-CREATE INDEX IF NOT EXISTS idx_suivi_date_debut ON suivi_post_crise(date_debut);
-CREATE INDEX IF NOT EXISTS idx_suivi_prochain_rappel ON suivi_post_crise(prochain_rappel);
-CREATE INDEX IF NOT EXISTS idx_suivi_user_statut ON suivi_post_crise(user_id, statut);
+-- ============================================
+-- Colonnes manquantes (si la table existait déjà avec un ancien schéma)
+-- ============================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'type_crise') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN type_crise TEXT NOT NULL DEFAULT 'autre';
+    ALTER TABLE suivi_post_crise ADD CONSTRAINT suivi_post_crise_type_crise_check
+      CHECK (type_crise IN ('deuil','divorce','maladie','chomage','trauma','depression','addiction','conflit_familial','crise_spirituelle','autre'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'description') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN description TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'gravite') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN gravite INTEGER DEFAULT 5;
+    ALTER TABLE suivi_post_crise ADD CONSTRAINT suivi_post_crise_gravite_check CHECK (gravite >= 1 AND gravite <= 10);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'objectifs') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN objectifs TEXT[];
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'etat_actuel') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN etat_actuel TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'besoins_specifiques') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN besoins_specifiques TEXT[];
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'ressources_utilisees') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN ressources_utilisees TEXT[];
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'prochaine_action') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN prochaine_action TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'date_prochaine_action') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN date_prochaine_action DATE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'rappel_actif') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN rappel_actif BOOLEAN DEFAULT true;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'frequence_rappels') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN frequence_rappels TEXT DEFAULT 'hebdomadaire';
+    ALTER TABLE suivi_post_crise ADD CONSTRAINT suivi_post_crise_frequence_rappels_check CHECK (frequence_rappels IN ('quotidien', 'hebdomadaire', 'bihebdomadaire', 'mensuel'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'dernier_rappel_envoye') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN dernier_rappel_envoye TIMESTAMP;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'prochain_rappel') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN prochain_rappel TIMESTAMP;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'statut') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN statut TEXT DEFAULT 'actif';
+    ALTER TABLE suivi_post_crise ADD CONSTRAINT suivi_post_crise_statut_check CHECK (statut IN ('actif', 'en_amelioration', 'stabilise', 'resolu', 'archive'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'notes') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN notes TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'mentor_id') THEN
+    ALTER TABLE suivi_post_crise ADD COLUMN mentor_id UUID REFERENCES profils(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
-CREATE INDEX IF NOT EXISTS idx_historique_suivi_id ON historique_guerison(suivi_id);
-CREATE INDEX IF NOT EXISTS idx_historique_date_suivi ON historique_guerison(date_suivi);
-CREATE INDEX IF NOT EXISTS idx_historique_suivi_date ON historique_guerison(suivi_id, date_suivi DESC);
+-- Indexes pour améliorer les performances (créés seulement si la colonne existe)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'user_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_user_id ON suivi_post_crise(user_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'statut') THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_statut ON suivi_post_crise(statut);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'type_crise') THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_type_crise ON suivi_post_crise(type_crise);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'date_debut') THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_date_debut ON suivi_post_crise(date_debut);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'prochain_rappel') THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_prochain_rappel ON suivi_post_crise(prochain_rappel);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'user_id') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'suivi_post_crise' AND column_name = 'statut') THEN
+    CREATE INDEX IF NOT EXISTS idx_suivi_user_statut ON suivi_post_crise(user_id, statut);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'historique_guerison' AND column_name = 'suivi_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_historique_suivi_id ON historique_guerison(suivi_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'historique_guerison' AND column_name = 'date_suivi') THEN
+    CREATE INDEX IF NOT EXISTS idx_historique_date_suivi ON historique_guerison(date_suivi);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'historique_guerison' AND column_name = 'suivi_id') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'historique_guerison' AND column_name = 'date_suivi') THEN
+    CREATE INDEX IF NOT EXISTS idx_historique_suivi_date ON historique_guerison(suivi_id, date_suivi DESC);
+  END IF;
+END $$;
 
 -- Triggers pour updated_at
 DROP TRIGGER IF EXISTS update_suivi_post_crise_updated_at ON suivi_post_crise;
@@ -87,38 +171,39 @@ CREATE TRIGGER update_historique_guerison_updated_at BEFORE UPDATE ON historique
 ALTER TABLE suivi_post_crise ENABLE ROW LEVEL SECURITY;
 ALTER TABLE historique_guerison ENABLE ROW LEVEL SECURITY;
 
--- Politiques RLS pour suivi_post_crise
--- Les utilisateurs peuvent voir leur propre suivi
+-- Politiques RLS pour suivi_post_crise (DROP IF EXISTS pour réexécution)
+DROP POLICY IF EXISTS "Users can view their own suivi" ON suivi_post_crise;
 CREATE POLICY "Users can view their own suivi" ON suivi_post_crise
     FOR SELECT USING (user_id = auth.uid());
 
--- Les utilisateurs peuvent créer leur propre suivi
+DROP POLICY IF EXISTS "Users can create their own suivi" ON suivi_post_crise;
 CREATE POLICY "Users can create their own suivi" ON suivi_post_crise
     FOR INSERT WITH CHECK (user_id = auth.uid());
 
--- Les utilisateurs peuvent mettre à jour leur propre suivi
+DROP POLICY IF EXISTS "Users can update their own suivi" ON suivi_post_crise;
 CREATE POLICY "Users can update their own suivi" ON suivi_post_crise
     FOR UPDATE USING (user_id = auth.uid());
 
--- Les utilisateurs peuvent supprimer leur propre suivi
+DROP POLICY IF EXISTS "Users can delete their own suivi" ON suivi_post_crise;
 CREATE POLICY "Users can delete their own suivi" ON suivi_post_crise
     FOR DELETE USING (user_id = auth.uid());
 
--- Les mentors peuvent voir le suivi de leurs disciples
+DROP POLICY IF EXISTS "Mentors can view disciples suivi" ON suivi_post_crise;
 CREATE POLICY "Mentors can view disciples suivi" ON suivi_post_crise
     FOR SELECT USING (
         EXISTS (
-            SELECT 1 FROM profils 
-            WHERE id = auth.uid() 
-            AND (role = 'mentor' OR role = 'superviseur' OR role = 'pasteur' OR role = 'admin')
-            AND (suivi_post_crise.user_id IN (
-                SELECT id FROM cercle_personnes 
-                WHERE user_id = auth.uid()
-            ) OR suivi_post_crise.mentor_id = auth.uid())
+            SELECT 1 FROM profils p
+            WHERE p.id = auth.uid()
+            AND (p.role = 'mentor' OR p.role = 'superviseur' OR p.role = 'pasteur' OR p.role = 'admin')
+            AND (
+                suivi_post_crise.mentor_id = auth.uid()
+                OR suivi_post_crise.user_id IN (SELECT id FROM profils WHERE mentor_id = auth.uid())
+                OR (p.famille_id IS NOT NULL AND suivi_post_crise.user_id IN (SELECT id FROM profils WHERE famille_id = p.famille_id))
+            )
         )
     );
 
--- Les admins peuvent tout voir
+DROP POLICY IF EXISTS "Admins can manage all suivi" ON suivi_post_crise;
 CREATE POLICY "Admins can manage all suivi" ON suivi_post_crise
     FOR ALL USING (
         EXISTS (
@@ -128,7 +213,7 @@ CREATE POLICY "Admins can manage all suivi" ON suivi_post_crise
     );
 
 -- Politiques RLS pour historique_guerison
--- Les utilisateurs peuvent voir l'historique de leur suivi
+DROP POLICY IF EXISTS "Users can view their own historique" ON historique_guerison;
 CREATE POLICY "Users can view their own historique" ON historique_guerison
     FOR SELECT USING (
         EXISTS (
@@ -138,7 +223,7 @@ CREATE POLICY "Users can view their own historique" ON historique_guerison
         )
     );
 
--- Les utilisateurs peuvent créer leur propre historique
+DROP POLICY IF EXISTS "Users can create their own historique" ON historique_guerison;
 CREATE POLICY "Users can create their own historique" ON historique_guerison
     FOR INSERT WITH CHECK (
         EXISTS (
@@ -148,7 +233,7 @@ CREATE POLICY "Users can create their own historique" ON historique_guerison
         )
     );
 
--- Les utilisateurs peuvent mettre à jour leur propre historique
+DROP POLICY IF EXISTS "Users can update their own historique" ON historique_guerison;
 CREATE POLICY "Users can update their own historique" ON historique_guerison
     FOR UPDATE USING (
         EXISTS (
@@ -158,7 +243,7 @@ CREATE POLICY "Users can update their own historique" ON historique_guerison
         )
     );
 
--- Les utilisateurs peuvent supprimer leur propre historique
+DROP POLICY IF EXISTS "Users can delete their own historique" ON historique_guerison;
 CREATE POLICY "Users can delete their own historique" ON historique_guerison
     FOR DELETE USING (
         EXISTS (
@@ -168,25 +253,26 @@ CREATE POLICY "Users can delete their own historique" ON historique_guerison
         )
     );
 
--- Les mentors peuvent voir l'historique de leurs disciples
+DROP POLICY IF EXISTS "Mentors can view disciples historique" ON historique_guerison;
 CREATE POLICY "Mentors can view disciples historique" ON historique_guerison
     FOR SELECT USING (
         EXISTS (
             SELECT 1 FROM suivi_post_crise 
             WHERE id = historique_guerison.suivi_id 
             AND EXISTS (
-                SELECT 1 FROM profils 
-                WHERE id = auth.uid() 
-                AND (role = 'mentor' OR role = 'superviseur' OR role = 'pasteur' OR role = 'admin')
-                AND (suivi_post_crise.user_id IN (
-                    SELECT id FROM cercle_personnes 
-                    WHERE user_id = auth.uid()
-                ) OR suivi_post_crise.mentor_id = auth.uid())
+                SELECT 1 FROM profils p
+                WHERE p.id = auth.uid()
+                AND (p.role = 'mentor' OR p.role = 'superviseur' OR p.role = 'pasteur' OR p.role = 'admin')
+                AND (
+                    suivi_post_crise.mentor_id = auth.uid()
+                    OR suivi_post_crise.user_id IN (SELECT id FROM profils WHERE mentor_id = auth.uid())
+                    OR (p.famille_id IS NOT NULL AND suivi_post_crise.user_id IN (SELECT id FROM profils WHERE famille_id = p.famille_id))
+                )
             )
         )
     );
 
--- Les admins peuvent tout voir
+DROP POLICY IF EXISTS "Admins can manage all historique" ON historique_guerison;
 CREATE POLICY "Admins can manage all historique" ON historique_guerison
     FOR ALL USING (
         EXISTS (

@@ -9,6 +9,7 @@ import Layout from './components/Layout';
 import Auth from './pages/Auth';
 import UpdatePassword from './pages/UpdatePassword';
 import ForgotPassword from './pages/ForgotPassword';
+import InscriptionParToken from './pages/InscriptionParToken';
 import { useToast } from '@/components/ui/use-toast';
 
 // Public Pages (chargées immédiatement)
@@ -63,6 +64,16 @@ const AdminAccessCodeManager = lazy(() => import('./pages/AdminAccessCodeManager
 const AdminActivityLog = lazy(() => import('./pages/AdminActivityLog'));
 const AdminFeedback = lazy(() => import('./pages/AdminFeedback'));
 const PerformanceDashboard = lazy(() => import('./components/PerformanceDashboard'));
+const SuiviPostCrise = lazy(() => import('./pages/SuiviPostCrise'));
+const SuiviPostCriseDetail = lazy(() => import('./pages/SuiviPostCriseDetail'));
+const SuiviPostCriseStats = lazy(() => import('./pages/SuiviPostCriseStats'));
+
+// Onboarding pages
+const WelcomeOnboarding = lazy(() => import('./pages/WelcomeOnboarding'));
+const QuickSignup = lazy(() => import('./pages/onboarding/QuickSignup'));
+const EmailVerification = lazy(() => import('./pages/onboarding/EmailVerification'));
+const CompleteProfile = lazy(() => import('./pages/onboarding/CompleteProfile'));
+const DashboardTour = lazy(() => import('./pages/onboarding/DashboardTour'));
 
 import { Helmet } from 'react-helmet';
 import { Toaster } from "@/components/ui/toaster";
@@ -139,7 +150,7 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* Public Routes */}
+      {/* Public Routes - Page d'accueil = Étape 1 formulaire simplifié */}
       <Route path="/" element={!user ? <HomePage /> : <Navigate to="/home" replace />} />
       <Route path="/auth" element={<Auth />} />
       {/* Formulaire unique d'inscription : une route /signup, rôle pré-rempli via ?role= */}
@@ -150,6 +161,14 @@ function AppRoutes() {
       <Route path="/signup/pasteur" element={<Navigate to="/signup?role=pasteur" replace />} />
       <Route path="/update-password" element={<UpdatePassword />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/inscription/:token" element={<InscriptionParToken />} />
+
+      {/* Onboarding Routes */}
+      <Route path="/onboarding/welcome" element={<Suspense fallback={<PageLoader />}><WelcomeOnboarding /></Suspense>} />
+      <Route path="/onboarding/signup" element={<Suspense fallback={<PageLoader />}><QuickSignup /></Suspense>} />
+      <Route path="/onboarding/verify-email" element={<Suspense fallback={<PageLoader />}><EmailVerification /></Suspense>} />
+      <Route path="/onboarding/complete-profile" element={<Suspense fallback={<PageLoader />}><CompleteProfile /></Suspense>} />
+      <Route path="/onboarding/dashboard-tour" element={<Suspense fallback={<PageLoader />}><DashboardTour /></Suspense>} />
       
       {/* Protected Routes */}
       <Route path="/" element={
@@ -233,6 +252,11 @@ function AppRoutes() {
         <Route path="engagement" element={<Engagement />} />
         <Route path="transformation" element={<Transformation />} />
         <Route path="transformation/:parcoursId" element={<ParcoursDetail />} />
+        
+        {/* Suivi Post-Crise (Objectif 3) */}
+        <Route path="suivi-post-crise" element={<SuiviPostCrise />} />
+        <Route path="suivi-post-crise/:id" element={<SuiviPostCriseDetail />} />
+        <Route path="suivi-post-crise-stats" element={<SuiviPostCriseStats />} />
         
         {/* Admin Routes */}
         <Route path="admin" element={

@@ -363,7 +363,7 @@ const MentorDashboard = () => {
         {/* 2. Action Buttons */}
         <div className="flex flex-wrap gap-3">
           <Button 
-            onClick={() => navigate('/circles')}
+            onClick={() => navigate('/signup?role=disciple&mode=add')}
             className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-6 px-6 rounded-lg transition-all flex items-center gap-2"
           >
             <UserPlus size={20} />
@@ -380,14 +380,13 @@ const MentorDashboard = () => {
         </div>
       </div>
 
-      {/* Arbre généalogique de ma famille */}
-      {famille?.id && (
+      {/* Arbre généalogique : visible en premier dans le dashboard mentor (Corinne TEST, etc.) */}
+      {user?.id && (
         <ArbreGenealogiqueEmbed
-          mode="family"
-          famille={famille}
-          title={`Arbre généalogique - ${famille.nom || 'Ma famille'}`}
-          description="Lignée spirituelle de votre famille (Pasteur → Superviseur → Mentors → Disciples)."
-          compactHeight={380}
+          mode="mentor"
+          title="Mon arbre généalogique"
+          description="Votre lignée spirituelle : vous et vos disciples directs."
+          compactHeight={420}
         />
       )}
 

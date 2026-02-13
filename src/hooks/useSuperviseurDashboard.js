@@ -375,6 +375,32 @@ export function useSuperviseurDashboard(user) {
   const statsComparativesRef = useRef(null);
   const chartsLoadedRef = useRef({ formationVideo: false, statutsSpirituels: false, activiteRecente: false, statsComparatives: false });
 
+  // Garder chartsLoadedRef synchronisé avec chartsLoaded pour éviter que l'IntersectionObserver ne redéclenche en boucle
+  useEffect(() => {
+    chartsLoadedRef.current = chartsLoaded;
+  }, [chartsLoaded]);
+
+  // Charger les stats comparatives une seule fois à la demande (visible) — évite boucle / re-renders en cascade
+  useEffect(() => {
+    if (!statsComparativesRequested || !famille?.id) return;
+    let cancelled = false;
+    setLoadingStatsComparatives(true);
+    (async () => {
+      try {
+        // Chargement minimal : pas de RPC dédiée pour l'instant ; on marque comme chargé pour stopper les re-demandes
+        if (!cancelled) {
+          setStatsComparatives({});
+          setChartsLoaded((prev) => ({ ...prev, statsComparatives: true }));
+          chartsLoadedRef.current = { ...chartsLoadedRef.current, statsComparatives: true };
+          setStatsComparativesRequested(false);
+        }
+      } finally {
+        if (!cancelled) setLoadingStatsComparatives(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [statsComparativesRequested, famille?.id]);
+
   const noop = useCallback(() => {}, []);
   const noopAsync = useCallback(async () => {}, []);
 

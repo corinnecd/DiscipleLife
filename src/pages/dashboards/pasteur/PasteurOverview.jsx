@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Users, Target, UserCheck, Building2, BarChart3, Mail, Loader2, RefreshCw,
-  Church, TrendingUp, GitBranch, Info,
+  Church, TrendingUp, GitBranch, Info, AlertCircle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -109,6 +109,45 @@ const PasteurOverview = ({
           </Card>
         </div>
       </div>
+
+      {/* Alertes : Familles sous objectif */}
+      {(() => {
+        const famillesSousObjectif = (familles || []).filter((f) => f.stats && typeof f.stats.progression === 'number' && f.stats.progression < 100);
+        if (famillesSousObjectif.length === 0) return null;
+        return (
+          <Card className="bg-white border-gray-200 shadow-sm border-amber-200">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-amber-600" />
+                Familles sous objectif ({famillesSousObjectif.length})
+              </CardTitle>
+              <CardDescription>
+                Cliquez sur une famille pour ouvrir sa fiche et voir les détails.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {famillesSousObjectif.slice(0, 10).map((item) => (
+                  <li key={item.famille?.id || item.superviseur_id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFamille(item)}
+                      className="text-left w-full text-sm text-purple-700 hover:text-purple-900 hover:underline font-medium"
+                    >
+                      {item.famille?.nom || 'Famille'} — {Math.round(item.stats?.progression ?? 0)}% ({item.stats?.nombreMembres ?? 0} / {item.stats?.objectif ?? 70})
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {famillesSousObjectif.length > 10 && (
+                <p className="text-xs text-gray-500 mt-2">
+                  et {famillesSousObjectif.length - 10} autre(s) — voir l&apos;onglet Familles ou le graphique ci-dessous.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Graphique phare : Progression vers l'objectif 70 */}
       <Card ref={overviewChartRef} className="bg-white border-gray-200 shadow-sm">

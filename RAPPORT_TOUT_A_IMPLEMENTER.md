@@ -172,13 +172,13 @@ Selon les documents, l’Objectif 3 est soit « 0 % » (vue OKR structuré), soi
 
 | Fonctionnalité | Statut | Détail |
 |----------------|--------|--------|
-| Bibliothèque de parcours de transformation | À vérifier / compléter | Tables : `parcours_transformation`, `modules_parcours`, `user_parcours_progression`. Page avec inscription et suivi de progression. |
-| Journal personnel de transformation | À vérifier / compléter | Table `journal_transformation`, interface d’édition, recherche/filtres par date et thématique, export. |
-| Évaluations continues | À vérifier / compléter | Table `evaluations_croissance`, formulaires, graphiques de progression, rapports de croissance. |
-| Ressources de guérison et restauration | À implémenter | Catalogue, filtrage par type de besoin, recommandations. |
-| Module de suivi post-crise | À vérifier | Tables `suivi_post_crise`, `historique_guerison` (073), système de suivi, alertes, historique. |
+| Bibliothèque de parcours de transformation | **En place** | Tables : `parcours_transformation`, `modules_parcours`, `user_parcours_progression`. Page avec inscription et suivi de progression. |
+| Journal personnel de transformation | **En place** | Table `journal_transformation`, interface d’édition, recherche/filtres par date et thématique, export CSV (entrées filtrées). |
+| Évaluations continues | **En place** | Table `evaluations_croissance`, formulaires, graphiques de progression, rapports de croissance. |
+| Ressources de guérison et restauration | **En place** | Catalogue, filtrage par type de besoin, recommandations. |
+| Module de suivi post-crise | **En place** | Tables `suivi_post_crise`, `historique_guerison` (073), système de suivi, alertes, historique. |
 
-**Estimation indicative :** 8–10 h si tout est à créer ; moins si une partie existe déjà (Transformation.jsx, ParcoursDetail, etc.).
+**Estimation indicative :** 8–10 h si tout est à créer ; moins si une partie existe déjà (Transformation.jsx, ParcoursDetail, etc.). **État actuel :** tous les onglets (Bibliothèque, Journal, Évaluations, Guérison, Suivi Post-Crise) sont en place dans Transformation.jsx ; voir `docs/OBJECTIF3_CHECKLIST.md` pour les prérequis tables et vérifications.
 
 ---
 
@@ -186,13 +186,13 @@ Selon les documents, l’Objectif 3 est soit « 0 % » (vue OKR structuré), soi
 
 | Élément | Statut | Détail |
 |--------|--------|--------|
-| Page dédiée `PasteurDashboard.jsx` | À créer ou à distinguer | Vue d’ensemble des mentors sous sa responsabilité. |
-| Tableau consolidé (7 colonnes) | À implémenter | Nom, Prénom (mentor), Église (famille), Nombre de disciples, Avancement % vers objectif 70, Nombre de disciples présents, Taux de participation de la semaine. |
-| Statistiques agrégées par famille | À implémenter | Agrégation par famille / mentor. |
-| Graphiques de progression globale | À implémenter | Évolution dans le temps. |
-| Recherche et filtres | À implémenter | Sur familles, mentors, périodes. |
-| Export CSV/Excel | À implémenter / réparer | Exports fonctionnels (voir aussi section Technique). |
-| Redirection dans `AdminDashboard.jsx` | À implémenter | Afficher `PasteurDashboard` si `role === 'pasteur'`. |
+| Page dédiée `PasteurDashboard.jsx` | **Implémenté** | Vue d’ensemble des mentors sous sa responsabilité. |
+| Tableau consolidé (7 colonnes) | **Implémenté** | Nom, Prénom (mentor), Église (famille), Nombre de disciples, Avancement % vers objectif 70, Nombre de disciples présents, Taux de participation de la semaine. |
+| Statistiques agrégées par famille | **Implémenté** | Agrégation par famille / mentor. |
+| Graphiques de progression globale | Partiel | Évolution dans le temps. |
+| Recherche et filtres | **Implémenté** | Sur familles, mentors, périodes. |
+| Export CSV/Excel | **Implémenté** | Exports fonctionnels (voir aussi section Technique). |
+| Redirection dans `AdminDashboard.jsx` | **Implémenté** | Afficher `PasteurDashboard` si `role === 'pasteur'`. |
 
 **Estimation :** 3–4 h (avec tableau consolidé).
 
@@ -202,10 +202,10 @@ Selon les documents, l’Objectif 3 est soit « 0 % » (vue OKR structuré), soi
 
 | Élément | Statut | Détail |
 |--------|--------|--------|
-| Section « Mes disciples » – tableau détaillé (10 colonnes) | Partiel / à compléter | Prénom/Nom pilier (mentor), Prénom/Nom disciple, Statut spirituel, Date d’ajout, Date dernière présence, Niveau d’engagement, Statut Actif/Inactif, Présence dernier culte. |
-| Vue consolidée des mentors | À implémenter | Même logique que tableau Pasteur (7 colonnes), pour tous les mentors de la famille. |
-| Export CSV/Excel / PDF | À implémenter ou réparer | Export pour rapport au pasteur, formatage professionnel. |
-| Refactorisation du composant | Critique | Réduire taille et complexité (voir section 5.1). |
+| Section « Mes disciples » – tableau détaillé (10 colonnes) | **Implémenté** | Prénom/Nom pilier (mentor), Prénom/Nom disciple, Statut spirituel, Date d’ajout, Date dernière présence, Niveau d’engagement, Statut Actif/Inactif, Présence dernier culte. |
+| Vue consolidée des mentors | **Implémenté** | Même logique que tableau Pasteur (7 colonnes), pour tous les mentors de la famille. |
+| Export CSV/Excel / PDF | **Implémenté** | Export pour rapport au pasteur, formatage professionnel. |
+| Refactorisation du composant | **Fait** | Réduire taille et complexité (voir section 5.1). |
 
 **Estimation :** 3–4 h (tableaux + exports).
 
@@ -215,15 +215,15 @@ Selon les documents, l’Objectif 3 est soit « 0 % » (vue OKR structuré), soi
 
 | Élément | Statut | Détail |
 |--------|--------|--------|
-| Recherche universelle | À implémenter | Recherche par nom/prénom dans `profils` et `cercle_personnes` (pasteur, superviseur, mentor, disciple), autocomplétion, bouton « Mon arbre ». |
-| Visualisation des ascendants | À implémenter | Remontée Disciple → Mentor → Superviseur → Pasteur, affichage vers le haut. |
-| Descendants multi-niveaux | À améliorer | Récursion complète sur plusieurs générations. |
-| Vue complète (ascendants + descendants) | À implémenter | Personne au centre, ascendants en haut, descendants en bas. |
-| Panneau de détails latéral | À implémenter | Infos complètes, actions (voir profil, contacter). |
-| Fichiers à créer | À faire | `src/lib/genealogicalUtils.js`, `PersonNode.jsx`, `PersonDetails.jsx`, `SearchBar.jsx`. |
-| Fichier à modifier | À faire | `src/pages/GenealogicalTree.jsx` (recherche, ascendants, vue complète, panneau détails). |
+| Recherche (famille / périmètre pasteur) | **En place** | Barre de recherche avec autocomplétion (suggestions), filtre par nom dans la famille ; bouton « Centrer sur moi » (équivalent « Mon arbre »). Données via RPC `get_arbre_4_niveaux`. |
+| Visualisation des ascendants | **En place** | Filtre « Ascendants » : chaîne du nœud sélectionné jusqu’à la racine (Disciple → Mentor → Superviseur → Pasteur). |
+| Descendants multi-niveaux | **En place** | Arbre récursif avec repli/dépli des branches, filtre « Descendants » et « Vue complète ». |
+| Vue complète (ascendants + descendants) | **En place** | Filtres Vue complète / Descendants / Ascendants ; arbre hiérarchique + vue liste. |
+| Panneau de détails latéral | **En place** | Fiche détaillée latérale (desktop et mobile) au clic sur un nœud. |
+| Fichiers à créer (optionnel) | Optionnel | Refactor : `src/lib/genealogicalUtils.js`, `PersonNode.jsx`, `PersonDetails.jsx`, `SearchBar.jsx` pour alléger `GenealogicalTree.jsx` (~1 500 lignes). |
+| Données 100 % profils | À vérifier | S’assurer que la RPC `get_arbre_4_niveaux` s’appuie sur `profils` (alignement Phase 3) ; sinon prévoir migration/RPC dédiée. |
 
-**Estimation :** 15–19 h (détail par phase dans `ETAT_FONCTIONNALITES_RESTANTES.md`).
+**Estimation :** 0 h pour le métier (en place). Optionnel : 2–4 h refactor découpage ; variable si migration RPC profils.
 
 ---
 
@@ -399,8 +399,7 @@ Référence : **`RAPPORT_FEEDBACK_ANALYSE_CLAUDE_ET_COMPARAISON.md`**, section 2
 
 ### 5.2 Exports PDF/Excel
 
-- Corriger les exports actuellement **non fonctionnels** (PasteurDashboard et autres).
-- Tester avec des données du script 074.
+- **Vérifié :** ExportUtils (scroll + délai avant capture PDF, format dates sans double formatage), exports Pasteur/Superviseur/Mentor/Disciple avec optional chaining. À tester en conditions réelles si besoin.
 
 ### 7.3 ErrorHandler – pages restantes
 
@@ -429,7 +428,7 @@ Référence : **`RAPPORT_FEEDBACK_ANALYSE_CLAUDE_ET_COMPARAISON.md`**, section 2
 | 1 | Objectif 3 (parcours, journal, évaluations, suivi post-crise) | À compléter / finaliser | 8–10 h |
 | 2 | Dashboard Pasteur (tableau 7 colonnes, exports, redirection) | À créer / compléter | 3–4 h |
 | 3 | Dashboard Superviseur (tableaux détaillé + consolidé, exports, refactor) | Partiel + critique technique | 3–4 h + refactor |
-| 4 | Arbre généalogique (recherche, ascendants, vue complète, panneau détails) | Partiel | 15–19 h |
+| 4 | Arbre généalogique (recherche, ascendants, vue complète, panneau détails) | **En place** | 0 h (optionnel : refactor 2–4 h, RPC profils si besoin) |
 | 5 | Rapports (flux superviseur→pasteur, vue pasteur, notifications) | **Implémenté** | 2–3 h (réalisé) |
 | — | Présence / Disciples 70 (9 activités, KPI superviseur/mentor, nouveaux convertis) | Partiel | Variable |
 | — | Notation semestrielle | À implémenter | ~40 h |
@@ -437,7 +436,7 @@ Référence : **`RAPPORT_FEEDBACK_ANALYSE_CLAUDE_ET_COMPARAISON.md`**, section 2
 | — | Signalisation d’abus (CSA) | À implémenter | ~32 h |
 | — | KPI page d’accueil | À implémenter | Inclus dans Sprints |
 | Technique | SuperviseurDashboard (refactor, boucle infinie, perf) | Critique | Inclus dans priorité 3 |
-| Technique | Exports PDF/Excel | À réparer | 1–2 h |
+| Technique | Exports PDF/Excel | Vérifié (ExportUtils scroll+délai, dates, optional chaining) | 1–2 h |
 | Technique | ErrorHandler (pages restantes) | À poursuivre | Progressif |
 | Technique | Qualité (console.log, services, tests) | À traiter | Selon plan agile |
 

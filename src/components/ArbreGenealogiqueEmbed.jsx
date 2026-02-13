@@ -1,11 +1,12 @@
 /**
  * ArbreGenealogiqueEmbed – Arbre généalogique embarqué dans les dashboards
- * (Superviseur = famille connectée ; Pasteur = toutes les familles DR mode).
+ * (Mentor = lui + ses disciples ; Superviseur = famille complète ; Pasteur = toutes les familles DR mode).
  */
 import React from 'react';
 import { motion } from 'framer-motion';
 import { GitFork, Users, Loader2, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -81,18 +82,24 @@ const TreeNodeEmbed = ({ node, level = 0 }) => {
 };
 
 export function ArbreGenealogiqueEmbed({ mode, famille, pasteurId, title, description, compactHeight = 420 }) {
+  const { user } = useAuth();
   const { treeData, loading, error } = useGenealogicalTreeData({
     mode,
     famille: mode === 'family' ? famille : undefined,
     pasteurId: mode === 'pasteur' ? pasteurId : undefined,
+    mentorId: mode === 'mentor' ? user?.id : undefined,
   });
 
+  // Mentor : lien vers arbre (page détecte le rôle et affiche l'arbre du mentor)
+  // Superviseur/Pasteur : liens avec paramètres pour leur arbre
   const linkToFullPage =
-    mode === 'family' && famille?.id
-      ? `/arbre-genealogique?family=${famille.id}`
-      : mode === 'pasteur' && pasteurId
-        ? `/arbre-genealogique?pasteur=${pasteurId}`
-        : '/arbre-genealogique';
+    mode === 'mentor'
+      ? '/arbre-genealogique'
+      : mode === 'family' && famille?.id
+        ? `/arbre-genealogique?family=${famille.id}`
+        : mode === 'pasteur' && pasteurId
+          ? `/arbre-genealogique?pasteur=${pasteurId}`
+          : '/arbre-genealogique';
 
   return (
     <Card className="bg-white border-gray-200 shadow-sm">

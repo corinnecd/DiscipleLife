@@ -1024,6 +1024,39 @@ const Transformation = () => {
     return toutesThematiques.sort((a, b) => a.localeCompare(b, 'fr'));
   };
 
+  // Export du journal (entrées filtrées) en CSV
+  const handleExportJournal = () => {
+    const entries = getFilteredJournalEntries();
+    if (!entries.length) {
+      toast({
+        variant: 'destructive',
+        title: 'Aucune entrée à exporter',
+        description: 'Appliquez des filtres ou créez des entrées pour exporter le journal.'
+      });
+      return;
+    }
+    try {
+      const headers = ['Date', 'Titre', 'Thématique', 'Contenu'];
+      const rows = entries.map(e => [
+        format(new Date(e.date_entree), 'dd/MM/yyyy', { locale: fr }),
+        (e.titre || '').replace(/"/g, '""'),
+        (e.thematique || '').replace(/"/g, '""'),
+        (e.contenu || '').replace(/"/g, '""').replace(/\n/g, ' ')
+      ]);
+      const csv = [headers.join(';'), ...rows.map(r => r.map(c => `"${c}"`).join(';'))].join('\n');
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `journal_transformation_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      toast({ title: 'Export réussi', description: `${entries.length} entrée(s) exportée(s).` });
+    } catch (err) {
+      console.error('Export journal:', err);
+      toast({ variant: 'destructive', title: 'Erreur', description: 'Impossible d\'exporter le journal.' });
+    }
+  };
+
   // Fonction de filtrage pour les évaluations
   const getFilteredEvaluations = () => {
     return evaluations.filter(evaluation => {
@@ -3062,30 +3095,41 @@ const Transformation = () => {
 
             {/* Tab Content: Journal */}
             <TabsContent value="journal" className="space-y-6">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center flex-wrap gap-2">
                 <h2 className="text-xl font-semibold text-gray-900">Journal Personnel</h2>
-                <Button
-                  onClick={() => {
-                    setEditingJournalId(null);
-                    setJournalFormData({
-                      date_entree: new Date().toISOString().split('T')[0],
-                      titre: '',
-                      contenu: '',
-                      thematique: '',
-                      emotions: [],
-                      revelations: '',
-                      actions_prises: '',
-                      gratitude: '',
-                      prieres: '',
-                      tags: []
-                    });
-                    setIsJournalDialogOpen(true);
-                  }}
-                  className="bg-purple-600 text-white"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Nouvelle entrée
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleExportJournal}
+                    disabled={!journalEntries.length}
+                    className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    <FileDown className="w-4 h-4 mr-2" />
+                    Exporter le journal
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setEditingJournalId(null);
+                      setJournalFormData({
+                        date_entree: new Date().toISOString().split('T')[0],
+                        titre: '',
+                        contenu: '',
+                        thematique: '',
+                        emotions: [],
+                        revelations: '',
+                        actions_prises: '',
+                        gratitude: '',
+                        prieres: '',
+                        tags: []
+                      });
+                      setIsJournalDialogOpen(true);
+                    }}
+                    className="bg-purple-600 text-white"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Nouvelle entrée
+                  </Button>
+                </div>
               </div>
 
               {/* Filtres du Journal */}

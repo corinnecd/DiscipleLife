@@ -1682,7 +1682,23 @@ const PasteurDashboard = () => {
                   Gérez et suivez la progression de tous vos superviseurs et leurs familles de disciples.
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/signup?mode=add')}
+                  className="bg-white/10 hover:bg-white/20 text-white border border-white/30"
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Ajouter un membre
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/arbre-genealogique')}
+                  className="bg-white/10 hover:bg-white/20 text-white border border-white/30"
+                >
+                  <GitBranch className="h-4 w-4 mr-2" />
+                  Mon arbre
+                </Button>
                 <Button
                   onClick={handleExportPDF}
                   disabled={exporting}

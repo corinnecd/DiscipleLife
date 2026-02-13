@@ -5,6 +5,7 @@ import { ArrowLeft, Mail, Phone, Calendar, MessageSquare, MapPin, Activity, X, F
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
@@ -100,7 +101,32 @@ const DiscipleDetail = () => {
   const [disciplesSuivis, setDisciplesSuivis] = useState([]);
   const [loadingDisciplesSuivis, setLoadingDisciplesSuivis] = useState(false);
   const [suiviParNom, setSuiviParNom] = useState(null);
+  const [savingFonction, setSavingFonction] = useState(false);
   const discipleIdRef = useRef(null);
+
+  const FONCTIONS_OPTIONS = [
+    { value: '', label: 'Non renseigné' },
+    { value: 'Pasteur', label: 'Pasteur' },
+    { value: 'AP', label: 'AP (Assistant Pasteur)' },
+    { value: 'Berger', label: 'Berger' }
+  ];
+
+  const handleFonctionChange = async (value) => {
+    if (!disciple?.id || disciple.is_demo) return;
+    const fonction = value === '__none__' ? null : value;
+    setSavingFonction(true);
+    try {
+      const { error } = await supabase.from('profils').update({ fonction: fonction || null }).eq('id', disciple.id);
+      if (error) throw error;
+      setDisciple({ ...disciple, fonction: fonction || '' });
+      toast({ title: 'Fonction mise à jour', description: fonction ? `Fonction enregistrée : ${FONCTIONS_OPTIONS.find(f => f.value === fonction)?.label || fonction}` : 'Fonction effacée.' });
+    } catch (e) {
+      console.error(e);
+      toast({ variant: 'destructive', title: 'Erreur', description: e.message || 'Impossible de mettre à jour la fonction.' });
+    } finally {
+      setSavingFonction(false);
+    }
+  };
 
   // Modal Form State
   const [prayerRequest, setPrayerRequest] = useState('');
@@ -373,6 +399,7 @@ const DiscipleDetail = () => {
 
   const canUpgradeTutoreToDisciple = disciple?.role === 'tutore' && user?.id === disciple?.mentor_id;
   const canUpgradeMentorToPilierOrBerger = disciple?.role === 'mentor' && user?.id === familySupervisorId;
+  const canEditFonction = user?.id === familySupervisorId || user?.id === disciple?.mentor_id || user?.id === disciple?.id;
 
   const openUpgradeRoleModal = (type) => {
     setUpgradeRoleType(type);
@@ -388,9 +415,9 @@ const DiscipleDetail = () => {
       if (upgradeRoleType === 'tutore_to_disciple') {
         updatePayload = { role: 'disciple' };
       } else if (upgradeRoleType === 'mentor_to_pilier') {
-        updatePayload = { role: 'pilier', titre: 'Pilier' };
+        updatePayload = { role: 'pilier', titre: 'Pilier', pilier_attribue_par_id: user?.id ?? null };
       } else if (upgradeRoleType === 'mentor_to_berger') {
-        updatePayload = { role: 'pilier', titre: 'Berger' };
+        updatePayload = { role: 'pilier', titre: 'Berger', pilier_attribue_par_id: user?.id ?? null };
       }
       const { error } = await supabase.from('profils').update(updatePayload).eq('id', disciple.id);
       if (error) throw error;
@@ -538,6 +565,11 @@ const DiscipleDetail = () => {
                   {disciple.role === 'tutore' ? 'Tutoré' : disciple.titre || (disciple.role === 'pilier' ? 'Pilier' : 'Mentor')}
                 </span>
               )}
+              {disciple.fonction && ['Pasteur', 'AP', 'Berger'].includes(disciple.fonction) && (
+                <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-sm font-medium border border-amber-200" title="Fonction (charge pastorale)">
+                  {disciple.fonction === 'AP' ? 'AP (Assistant Pasteur)' : disciple.fonction}
+                </span>
+              )}
               <span className="text-gray-600 text-sm flex items-center gap-1">
                 <Calendar size={14} /> Ajouté le {new Date(disciple.created_at).toLocaleDateString()}
               </span>
@@ -618,6 +650,35 @@ const DiscipleDetail = () => {
                 <span><span className="font-medium text-gray-900">Suivi par :</span> {suiviParNom}</span>
               </div>
             )}
+            <div className="flex items-center gap-3 text-gray-600">
+              <div className="p-2 bg-gray-100 rounded-lg"><Award size={18} className="text-gray-600" /></div>
+              {canEditFonction ? (
+                <div className="flex-1 flex items-center gap-2">
+                  <span className="font-medium text-gray-900 shrink-0">Fonction (charge pastorale) :</span>
+                  <Select
+                    value={disciple.fonction && ['Pasteur', 'AP', 'Berger'].includes(disciple.fonction) ? disciple.fonction : '__none__'}
+                    onValueChange={handleFonctionChange}
+                    disabled={savingFonction}
+                  >
+                    <SelectTrigger className="w-[180px] bg-white border-gray-200">
+                      <SelectValue placeholder="Optionnel" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FONCTIONS_OPTIONS.map((f) => (
+                        <SelectItem key={f.value || '__none__'} value={f.value || '__none__'}>{f.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <span>
+                  <span className="font-medium text-gray-900">Fonction :</span>{' '}
+                  {disciple.fonction && ['Pasteur', 'AP', 'Berger'].includes(disciple.fonction)
+                    ? (disciple.fonction === 'AP' ? 'AP (Assistant Pasteur)' : disciple.fonction)
+                    : 'Non renseigné'}
+                </span>
+              )}
+            </div>
           </CardContent>
         </Card>
 

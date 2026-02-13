@@ -242,6 +242,7 @@ export default defineConfig({
 	],
 	server: {
 		port: 3000,
+		open: true,
 		cors: true,
 		headers: {
 			// En dev, ne pas imposer COEP pour éviter les blocages en iframe (ex. prévisualisation Cursor)

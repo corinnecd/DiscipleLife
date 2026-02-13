@@ -1,6 +1,6 @@
 /**
  * Hook useGenealogicalTreeData – Récupère les données de l'arbre généalogique
- * pour une famille (superviseur) ou pour toutes les familles d'un pasteur (DR mode).
+ * pour une famille (superviseur), pour un mentor (lui + ses disciples), ou pour un pasteur (DR mode).
  */
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -30,12 +30,13 @@ function buildTreeFromArbreRows(rows) {
 
 /**
  * @param {Object} options
- * @param {'family'|'pasteur'} options.mode - 'family' = arbre d'une famille, 'pasteur' = arbre de toutes les familles du pasteur (DR mode)
+ * @param {'family'|'pasteur'|'mentor'} options.mode - 'family' = arbre complet d'une famille (superviseur), 'pasteur' = arbre de toutes les familles du pasteur, 'mentor' = arbre du mentor uniquement (lui + ses disciples)
  * @param {Object} [options.famille] - Pour mode 'family' : { id, nom, pasteur_id, superviseur_id }
  * @param {string} [options.pasteurId] - Pour mode 'pasteur' : UUID du pasteur
+ * @param {string} [options.mentorId] - Pour mode 'mentor' : UUID du mentor (utilisateur connecté)
  * @returns {{ treeData: object|null, loading: boolean, error: Error|null }}
  */
-export function useGenealogicalTreeData({ mode, famille, pasteurId }) {
+export function useGenealogicalTreeData({ mode, famille, pasteurId, mentorId }) {
   const [treeData, setTreeData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -49,6 +50,49 @@ export function useGenealogicalTreeData({ mode, famille, pasteurId }) {
       setTreeData(null);
 
       try {
+        // Mode mentor : arbre centré sur le mentor (lui + ses disciples uniquement) — pas l'arbre du superviseur
+        if (mode === 'mentor' && mentorId) {
+          const { data: mentorData } = await supabase
+            .from('profils')
+            .select('id, first_name, last_name, prenom, nom, avatar_url, role, famille_id')
+            .eq('id', mentorId)
+            .maybeSingle();
+          if (!mentorData) {
+            if (!cancelled) setTreeData(null);
+            return;
+          }
+          const familleId = mentorData.famille_id;
+          const { data: membresData } = await supabase
+            .from('profils')
+            .select('id, first_name, last_name, prenom, nom, avatar_url, mentor_id, role')
+            .eq('famille_id', familleId);
+          const dataList = membresData || [];
+          const toName = (d) => {
+            const n = d.first_name || d.prenom;
+            const ln = d.last_name || d.nom;
+            return [n, ln].filter(Boolean).join(' ').trim() || 'Sans nom';
+          };
+          const buildHierarchy = (parentId) =>
+            dataList
+              .filter((d) => d.mentor_id === parentId)
+              .map((d) => ({
+                id: d.id,
+                name: toName(d),
+                avatar_url: d.avatar_url,
+                role: d.role || 'Disciple',
+                children: buildHierarchy(d.id),
+              }));
+          const root = {
+            id: mentorData.id,
+            name: toName(mentorData),
+            avatar_url: mentorData.avatar_url,
+            role: mentorData.role || 'Mentor',
+            children: buildHierarchy(mentorId),
+          };
+          if (!cancelled) setTreeData(root);
+          return;
+        }
+
         if (mode === 'pasteur' && pasteurId) {
           const { data: arbreRows, error: rpcError } = await supabase.rpc('get_arbre_4_niveaux', {
             p_pasteur_id: pasteurId,
@@ -128,7 +172,7 @@ export function useGenealogicalTreeData({ mode, famille, pasteurId }) {
 
     fetchTree();
     return () => { cancelled = true; };
-  }, [mode, famille?.id, famille?.nom, famille?.pasteur_id, famille?.superviseur_id, pasteurId]);
+  }, [mode, famille?.id, famille?.nom, famille?.pasteur_id, famille?.superviseur_id, pasteurId, mentorId]);
 
   return { treeData, loading, error };
 }

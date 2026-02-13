@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Activity, TrendingUp, History, GitBranch } from 'lucide-react';
+import { Eye, Activity, TrendingUp, History, GitBranch, UserPlus } from 'lucide-react';
 
 /**
  * Statistiques rapides (3 cartes) + Actions rapides.
@@ -58,6 +58,14 @@ export function StatsRapidesEtActions({ stats, onNavigate, onShowHistory }) {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <Button
+              variant="outline"
+              className="group justify-start bg-white border-gray-200 hover:bg-amber-500 hover:border-amber-500 text-gray-900 hover:text-white transition-colors"
+              onClick={() => onNavigate?.('/signup?mode=add')}
+            >
+              <UserPlus className="h-4 w-4 mr-2 text-purple-600 group-hover:text-white transition-colors" />
+              Ajouter un membre
+            </Button>
             <Button
               variant="outline"
               className="group justify-start bg-white border-gray-200 hover:bg-amber-500 hover:border-amber-500 text-gray-900 hover:text-white transition-colors"

@@ -122,3 +122,5 @@ Pour que les listes « Mes disciples » / « Membres famille » et les KPI paste
 | **087** | `sql/migrations/087_rpc_kpi_disciples_par_pasteur_profils.sql` — KPI disciples par pasteur basé sur profils. |
 
 **Ordre :** 087, 096, 098 (ou selon dépendances existantes). Après exécution, le frontend (déjà branché sur ces RPC) utilisera uniquement `profils` pour les listes et tableaux de bord.
+
+**Option « tout en un » :** exécuter le script **`sql/run_migrations_087_096_098.sql`** — il enchaîne 087, 096 et 098 en une seule fois dans le SQL Editor Supabase.
