@@ -7,6 +7,40 @@
 
 ---
 
+## Synthèse
+
+### 1. Logique de validation hiérarchique
+
+| Rôle | Peut entrer dans la famille seulement si… | Validateur |
+|------|-------------------------------------------|------------|
+| Disciple | Validation par son mentor | Mentor |
+| Mentor | Validation par son superviseur | Superviseur |
+| Superviseur | Autorisation d'un pasteur de tutelle | Pasteur |
+| Pasteur | Création par un admin | Admin |
+
+### 2. Double validation (code + lien)
+
+- Code d'invitation généré par le validateur
+- Lien unique envoyé par email vers le formulaire complet
+- Compte créé uniquement après soumission du formulaire complet
+
+### 3. Flux d'authentification et inscription
+
+1. **Page d'accueil** : Au chargement, l'utilisateur arrive sur la page d'accueil avec les cartes des rôles (Disciple, Mentor, Superviseur). Liens « Se connecter » / « Mot de passe oublié ».
+2. **Étape 1** : Au clic sur un rôle, le 1er formulaire simplifié apparaît (famille ou pasteur, prénom, nom, email, confirmation email).
+3. **Étape 2** : Code d'invitation + lien unique envoyé par email vers le formulaire complet (et optionnellement mot de passe provisoire).
+4. **Étape 3** : Formulaire complet rempli → création du compte uniquement à la soumission → page bienvenue.
+5. **Étape 4** : Accès au dashboard selon le rôle.
+
+### 4. Plan d'implémentation (4 phases)
+
+- **Phase 1** : Fondations (table invitations, envoi d'emails, formulaire avec token)
+- **Phase 2** : Interfaces pour créer des invitations (mentor, superviseur, pasteur)
+- **Phase 3** : Flux complet (création du compte au bon moment)
+- **Phase 4** : Améliorations UX (indicateurs, barre de progression, tour guidé)
+
+---
+
 ## Table des matières
 
 1. [Logique de validation hiérarchique](#1-logique-de-validation-hiérarchique)

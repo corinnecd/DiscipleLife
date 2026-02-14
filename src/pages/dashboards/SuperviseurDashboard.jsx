@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import performanceMonitor from '@/lib/PerformanceMonitor';
 import { 
@@ -35,6 +35,7 @@ import { ChartsSupplementaires } from './superviseur/ChartsSupplementaires';
 import { ArbreGenealogiqueEmbed } from '@/components/ArbreGenealogiqueEmbed';
 import { ReportReminderCard } from './superviseur/ReportReminderCard';
 import { SuperviseurDashboardHeader } from './superviseur/SuperviseurDashboardHeader';
+import { InvitationModal } from '@/components/InvitationModal';
 const PAGE_NAME = 'SuperviseurDashboard';
 
 const SuperviseurDashboard = () => {
@@ -42,6 +43,7 @@ const SuperviseurDashboard = () => {
   const navigate = useNavigate();
   const dashboard = useSuperviseurDashboard(user);
   const hasStartedLoad = useRef(false);
+  const [invitationModalOpen, setInvitationModalOpen] = useState(false);
   const {
     phase1Loading,
     loading,
@@ -346,6 +348,16 @@ const SuperviseurDashboard = () => {
           stats={stats}
           onNavigate={navigate}
           onShowHistory={() => setShowHistory(true)}
+          onInviteMentor={() => setInvitationModalOpen(true)}
+        />
+
+        <InvitationModal
+          open={invitationModalOpen}
+          onOpenChange={setInvitationModalOpen}
+          typeRole="mentor"
+          familles={famille ? [{ id: famille.id, nom: famille.nom }] : []}
+          titre="Inviter un mentor"
+          description="Créez un lien d'invitation pour un nouveau mentor de votre famille. Partagez-le par email ou autre moyen."
         />
 
         {/* Section KPI avec filtres de période */}

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 
 const ROLE_LABELS = {
@@ -23,6 +24,7 @@ const ROLE_LABELS = {
 const InscriptionParToken = () => {
   const { token } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const [invitation, setInvitation] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -36,7 +38,6 @@ const InscriptionParToken = () => {
   });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
 
   // Valider le token au chargement
   useEffect(() => {
@@ -104,23 +105,57 @@ const InscriptionParToken = () => {
     if (!validate()) return;
 
     setSubmitting(true);
+    setErrors({});
 
     try {
-      // Phase 1 : stockage temporaire (Phase 2 enverra l'email avec lien vers formulaire complet)
-      const payload = {
-        token,
+      const p_data = {
+        role: invitation?.type_role,
+        prenom: formData.prenom?.trim(),
+        nom: formData.nom?.trim(),
+        familleId: invitation?.famille_id || null,
         invitationId: invitation?.id,
-        type_role: invitation?.type_role,
-        famille_id: invitation?.famille_id,
-        famille_nom: invitation?.famille_nom,
-        ...formData,
-        submittedAt: new Date().toISOString(),
       };
-      localStorage.setItem('inscription_etape1', JSON.stringify(payload));
 
-      setSuccess(true);
+      const { data: rpcData, error: rpcError } = await supabase.rpc('creer_lien_inscription_step1', {
+        p_email: formData.email.trim().toLowerCase(),
+        p_data,
+      });
+
+      if (rpcError) throw rpcError;
+
+      const row = Array.isArray(rpcData) && rpcData[0] ? rpcData[0] : rpcData;
+      const signupToken = row?.token;
+      const lienFinal = signupToken ? `${window.location.origin}/signup?token=${signupToken}` : `${window.location.origin}/signup`;
+
+      try {
+        await supabase.functions.invoke('send-inscription-email', {
+          body: {
+            email: formData.email.trim(),
+            lien: lienFinal,
+            prenom: formData.prenom,
+            nom: formData.nom,
+          },
+        });
+      } catch (emailErr) {
+        console.warn('Envoi email:', emailErr);
+      }
+
+      sessionStorage.setItem('signup_step1', JSON.stringify({ ...p_data, email: formData.email.trim() }));
+
+      toast({
+        title: 'Étape 1 terminée',
+        description: 'Un email vous a été envoyé. Redirection vers le formulaire complet...',
+      });
+
+      navigate(`/signup?token=${signupToken || ''}`, { replace: true });
     } catch (err) {
-      setErrors({ form: err.message || 'Une erreur est survenue.' });
+      const msg = err.message || 'Une erreur est survenue. Vous pouvez réessayer ou continuer vers le formulaire.';
+      setErrors({ form: msg });
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: msg,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -157,22 +192,6 @@ const InscriptionParToken = () => {
     );
   }
 
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
-        <Card className="max-w-md w-full p-8 text-center">
-          <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">Étape 1 complétée</h2>
-          <p className="text-slate-600 mb-6">
-            Un email vous sera envoyé avec le lien pour compléter votre inscription et créer votre compte.
-            Vérifiez votre boîte de réception (et les spams).
-          </p>
-          <Button onClick={() => navigate('/auth')}>Se connecter</Button>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <motion.div
@@ -182,6 +201,7 @@ const InscriptionParToken = () => {
       >
         <Card className="p-6 sm:p-8 shadow-xl">
           <div className="text-center mb-6">
+            <p className="text-sm font-medium text-fuchsia-600 mb-2">Étape 2/3</p>
             <h1 className="text-2xl font-bold text-slate-900">Inscription</h1>
             <p className="text-slate-600 mt-1">
               Vous avez été invité à rejoindre en tant que <strong>{ROLE_LABELS[invitation?.type_role] || invitation?.type_role}</strong>
@@ -193,9 +213,23 @@ const InscriptionParToken = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {errors.form && (
-              <Alert variant="destructive">
+              <Alert variant="destructive" className="space-y-2">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{errors.form}</AlertDescription>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => {
+                    const payload = { role: invitation?.type_role, prenom: formData.prenom, nom: formData.nom, email: formData.email, familleId: invitation?.famille_id };
+                    sessionStorage.setItem('signup_step1', JSON.stringify(payload));
+                    const params = new URLSearchParams({ role: invitation?.type_role || '', prenom: formData.prenom || '', nom: formData.nom || '', email: formData.email || '', ...(invitation?.famille_id && { familleId: invitation.famille_id }) });
+                    navigate(`/signup?${params.toString()}`);
+                  }}
+                >
+                  Continuer vers le formulaire
+                </Button>
               </Alert>
             )}
 

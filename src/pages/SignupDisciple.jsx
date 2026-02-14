@@ -29,6 +29,7 @@ const SignupDisciple = () => {
     confirmPassword: '',
     familleId: '',
     pasteurId: '',
+    invitationId: null,
     role: 'disciple',
     fonction: '',
     mentorId: '',
@@ -94,6 +95,7 @@ const SignupDisciple = () => {
             ...(data.password && { password: data.password }),
             ...(data.familleId && { familleId: data.familleId }),
             ...(data.pasteurId && { pasteurId: data.pasteurId }),
+            ...(data.invitationId && { invitationId: data.invitationId }),
           };
         } catch (_) {}
       }
@@ -259,15 +261,16 @@ const SignupDisciple = () => {
         e._step1 = 'Données manquantes. Veuillez commencer par la page d\'accueil.';
       } else {
         try {
-          const data = JSON.parse(step1);
-          if (!data.email?.trim()) e._step1 = 'L\'email est requis. Veuillez recommencer depuis la page d\'accueil.';
-          else if (!EMAIL_REGEX.test(data.email)) e._step1 = 'Format d\'email invalide. Veuillez recommencer depuis la page d\'accueil.';
-          else if (!data.password) e._step1 = 'Le mot de passe est requis. Veuillez recommencer depuis la page d\'accueil.';
-          else if (data.password.length < 6) e._step1 = 'Le mot de passe doit contenir au moins 6 caractères. Veuillez recommencer depuis la page d\'accueil.';
+          JSON.parse(step1);
         } catch (_) {
           e._step1 = 'Données invalides. Veuillez recommencer depuis la page d\'accueil.';
         }
       }
+      if (!formData.email?.trim()) e.email = 'L\'email est requis.';
+      else if (!EMAIL_REGEX.test(formData.email)) e.email = 'Format d\'email invalide.';
+      if (!formData.password) e.password = 'Le mot de passe est requis (formulaire complet).';
+      else if (formData.password.length < 6) e.password = 'Le mot de passe doit contenir au moins 6 caractères.';
+      if (formData.password !== formData.confirmPassword) e.confirmPassword = 'Les mots de passe ne correspondent pas.';
     }
     if ((formData.role === 'disciple' || formData.role === 'mentor') && !formData.familleId) e.familleId = 'Veuillez sélectionner votre famille.';
     if (formData.role === 'superviseur' && !formData.pasteurId) e.pasteurId = 'Veuillez sélectionner votre pasteur de tutelle.';
@@ -364,6 +367,10 @@ const SignupDisciple = () => {
           console.error('Erreur lors de la mise à jour de la famille:', updateError);
           // Ne pas bloquer l'inscription si cette mise à jour échoue
         }
+
+        if (formData.invitationId && !isAddMemberMode) {
+          await supabase.rpc('marquer_invitation_utilisee', { p_invitation_id: formData.invitationId });
+        }
       }
       
       sessionStorage.removeItem('signup_step1');
@@ -390,7 +397,7 @@ const SignupDisciple = () => {
 
   return (
     <div className="min-h-screen bg-[#0f0518] flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-[#1a0b2e] border-white/10 text-white">
+      <Card className="w-full max-w-xl bg-[#1a0b2e] border-white/10 text-white">
         <CardHeader>
            <Button variant="ghost" className="w-fit p-0 hover:bg-transparent text-gray-400 hover:text-white mb-2" onClick={() => isAddMemberMode ? navigate(-1) : navigate('/')}>
                <ArrowLeft size={16} className="mr-2" /> {isAddMemberMode ? 'Retour au tableau de bord' : 'Retour'}
@@ -398,6 +405,7 @@ const SignupDisciple = () => {
            <div className="w-12 h-12 bg-teal-500/10 rounded-lg flex items-center justify-center text-teal-400 mb-4">
                <UserPlus size={24} />
            </div>
+           <p className="text-sm font-medium text-fuchsia-500 mb-1">{!isAddMemberMode && 'Étape 3/3'}</p>
            <CardTitle className="text-2xl">{isAddMemberMode ? 'Ajouter un membre' : 'Inscription'}</CardTitle>
            <CardDescription className="text-gray-400">
              {isAddMemberMode
@@ -565,7 +573,7 @@ const SignupDisciple = () => {
              </div>
              <div className="space-y-2">
                 <Label>Formation(s) PCNC réalisées</Label>
-                <div className="flex flex-wrap gap-4 pt-2">
+                <div className="flex flex-wrap gap-3 pt-2">
                   {FORMATIONS_PCNC.map((code) => {
                     const arr = Array.isArray(formData.formationsPcncRealisees) ? formData.formationsPcncRealisees : [];
                     const checked = arr.includes(code);
@@ -683,9 +691,8 @@ const SignupDisciple = () => {
                   </div>
                 )}
              </div>
-             {isAddMemberMode && (
-               <>
-                 <div className="space-y-2">
+             {/* Email et mot de passe : formulaire complet (Add Member ou inscription via étape 1) */}
+             <div className="space-y-2">
                    <Label>Email <span className="text-red-400">*</span></Label>
                    <Input 
                      type="email" 
@@ -745,8 +752,6 @@ const SignupDisciple = () => {
                    </div>
                    {errors.confirmPassword && <p className="text-xs text-red-400">{errors.confirmPassword}</p>}
                  </div>
-               </>
-             )}
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
              <Button 

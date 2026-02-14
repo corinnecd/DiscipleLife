@@ -41,6 +41,7 @@ import PasteurFamilies from '@/pages/dashboards/pasteur/PasteurFamilies';
 import PasteurKpiPeriod from '@/pages/dashboards/pasteur/PasteurKpiPeriod';
 import PasteurMembers from '@/pages/dashboards/pasteur/PasteurMembers';
 import PasteurReports from '@/pages/dashboards/pasteur/PasteurReports';
+import { InvitationModal } from '@/components/InvitationModal';
 
 const devLog = (...args) => { if (import.meta.env.DEV) console.log(...args); };
 const devWarn = (...args) => { if (import.meta.env.DEV) console.warn(...args); };
@@ -78,6 +79,7 @@ const PasteurDashboard = () => {
   const [familleModalDetails, setFamilleModalDetails] = useState({ members: [], reports: [], loading: false });
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  const [invitationModalOpen, setInvitationModalOpen] = useState(false);
   const [superviseursOptions, setSuperviseursOptions] = useState([]);
   const [createForm, setCreateForm] = useState({
     nom: '',
@@ -1685,11 +1687,11 @@ const PasteurDashboard = () => {
               <div className="flex gap-2 flex-wrap">
                 <Button
                   variant="outline"
-                  onClick={() => navigate('/signup?mode=add')}
+                  onClick={() => setInvitationModalOpen(true)}
                   className="bg-white/10 hover:bg-white/20 text-white border border-white/30"
                 >
                   <UserPlus className="h-4 w-4 mr-2" />
-                  Ajouter un membre
+                  Inviter un superviseur
                 </Button>
                 <Button
                   variant="outline"
@@ -1726,6 +1728,15 @@ const PasteurDashboard = () => {
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
         </section>
+
+        <InvitationModal
+          open={invitationModalOpen}
+          onOpenChange={setInvitationModalOpen}
+          typeRole="superviseur"
+          familles={(familles || []).filter(f => f.famille).map(f => ({ id: f.famille.id, nom: f.famille.nom }))}
+          titre="Inviter un superviseur"
+          description="Créez un lien d'invitation pour un nouveau superviseur. Choisissez une famille existante sans superviseur ou « Nouvelle famille » pour en créer une."
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" aria-label="Navigation du dashboard pasteur">
           <TabsList className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 h-auto gap-2 p-2 bg-gray-200 border border-gray-300 rounded-xl" role="tablist" aria-label="Onglets : Vue d'ensemble, KPI et Période, Familles, Membres et Mentors, Rapports">

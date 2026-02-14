@@ -21,6 +21,7 @@ import { exportElementToPDF, exportToExcel } from '@/lib/ExportUtils';
 import { MembersTableCard } from '@/components/MembersTableCard';
 import { useMembersTable } from '@/hooks/useMembersTable';
 import { GitBranch } from 'lucide-react';
+import { InvitationModal } from '@/components/InvitationModal';
 
 const MentorDashboard = () => {
   const { user } = useAuth();
@@ -46,6 +47,7 @@ const MentorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [reportReminder, setReportReminder] = useState(null); // { daysLeft: number, showReminder: boolean }
   const [famille, setFamille] = useState(null); // Famille du mentor (pour arbre généalogique)
+  const [invitationModalOpen, setInvitationModalOpen] = useState(false);
 
   // Hook pour le tableau des disciples (filtres, pagination, sélection)
   const mentorMembersTable = useMembersTable(mentorAllDisciples, {
@@ -363,11 +365,17 @@ const MentorDashboard = () => {
         {/* 2. Action Buttons */}
         <div className="flex flex-wrap gap-3">
           <Button 
-            onClick={() => navigate('/signup?role=disciple&mode=add')}
+            onClick={() => {
+              if (!famille) {
+                toast({ variant: 'destructive', title: 'Chargement', description: 'Votre famille est en cours de chargement. Réessayez dans un instant.' });
+                return;
+              }
+              setInvitationModalOpen(true);
+            }}
             className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-6 px-6 rounded-lg transition-all flex items-center gap-2"
           >
             <UserPlus size={20} />
-            Ajouter un disciple
+            Inviter un disciple
           </Button>
           <Button 
             onClick={() => navigate('/arbre-genealogique')}
@@ -379,6 +387,15 @@ const MentorDashboard = () => {
           </Button>
         </div>
       </div>
+
+      <InvitationModal
+        open={invitationModalOpen}
+        onOpenChange={setInvitationModalOpen}
+        typeRole="disciple"
+        familles={famille ? [{ id: famille.id, nom: famille.nom }] : []}
+        titre="Inviter un disciple"
+        description="Créez un lien d'invitation pour un nouveau disciple de votre groupe. Partagez-le par email ou autre moyen."
+      />
 
       {/* Arbre généalogique : visible en premier dans le dashboard mentor (Corinne TEST, etc.) */}
       {user?.id && (

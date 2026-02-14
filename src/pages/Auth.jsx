@@ -257,7 +257,7 @@ const Auth = () => {
                       <Link to="/forgot-password" className="text-purple-400 hover:underline font-medium">Mot de passe oublié ?</Link>
                     </p>
                     <p className="text-sm text-center text-slate-400">
-                      Pas encore inscrit ? <Link to="/signup" className="text-purple-400 hover:underline font-medium">S'inscrire</Link>
+                      Pas encore inscrit ? <Link to="/" className="text-purple-400 hover:underline font-medium">Page d'accueil</Link> pour choisir votre rôle ou utiliser un lien d'invitation.
                     </p>
                   </CardFooter>
                 </form>
@@ -269,7 +269,9 @@ const Auth = () => {
                 <form onSubmit={handleRegister}>
                   <CardHeader>
                     <CardTitle className="text-xl">Créer un compte</CardTitle>
-                    <CardDescription className="text-slate-400">Rejoignez la communauté DiscipleLife.</CardDescription>
+                    <CardDescription className="text-slate-400">
+                      Pour vous inscrire, commencez par la <Link to="/" className="text-fuchsia-400 hover:underline">page d'accueil</Link> et choisissez votre rôle, ou utilisez le lien d'invitation reçu par email.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -353,7 +355,7 @@ const Auth = () => {
                       {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "S'inscrire gratuitement"}
                     </Button>
                     <p className="text-sm text-center text-slate-400">
-                      Rôle, famille, statut spirituel… <Link to="/signup" className="text-purple-400 hover:underline font-medium">Formulaire complet</Link>
+                      <Link to="/" className="text-purple-400 hover:underline font-medium">Retour à l'accueil</Link> pour choisir votre rôle (Disciple, Mentor, Superviseur) ou saisir votre code d'invitation.
                     </p>
                   </CardFooter>
                 </form>

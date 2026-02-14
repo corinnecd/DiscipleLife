@@ -6,7 +6,7 @@ import { Eye, Activity, TrendingUp, History, GitBranch, UserPlus } from 'lucide-
 /**
  * Statistiques rapides (3 cartes) + Actions rapides.
  */
-export function StatsRapidesEtActions({ stats, onNavigate, onShowHistory }) {
+export function StatsRapidesEtActions({ stats, onNavigate, onShowHistory, onInviteMentor }) {
   const objectif = stats?.objectif ?? 70;
   const nombreMembres = stats?.nombreMembres ?? 0;
   const progression = stats?.progression ?? 0;
@@ -61,10 +61,10 @@ export function StatsRapidesEtActions({ stats, onNavigate, onShowHistory }) {
             <Button
               variant="outline"
               className="group justify-start bg-white border-gray-200 hover:bg-amber-500 hover:border-amber-500 text-gray-900 hover:text-white transition-colors"
-              onClick={() => onNavigate?.('/signup?mode=add')}
+              onClick={() => (onInviteMentor ? onInviteMentor() : onNavigate?.('/signup?mode=add'))}
             >
               <UserPlus className="h-4 w-4 mr-2 text-purple-600 group-hover:text-white transition-colors" />
-              Ajouter un membre
+              {onInviteMentor ? 'Inviter un mentor' : 'Ajouter un membre'}
             </Button>
             <Button
               variant="outline"
