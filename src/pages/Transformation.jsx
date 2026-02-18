@@ -1968,7 +1968,7 @@ const Transformation = () => {
         return;
       }
 
-      const shareText = `📊 Ma progression sur DiscipleLife :
+      const shareText = `📊 Ma progression sur Disciple 70 :
 ✅ ${statsData.parcoursCompletes || 0} parcours complétés
 📚 ${statsData.parcoursEnCours || 0} parcours en cours
 📈 ${statsData.progressionMoyenne || 0}% de progression moyenne
@@ -1981,7 +1981,7 @@ const Transformation = () => {
       if (navigator.share) {
         try {
           await navigator.share({
-            title: 'Ma progression DiscipleLife',
+            title: 'Ma progression Disciple 70',
             text: shareText
           });
           logger.log('✅ Partage réussi via Web Share API');
@@ -2068,7 +2068,7 @@ const Transformation = () => {
       doc.setFontSize(18);
       doc.setTextColor(...textColor);
       doc.setFont(undefined, 'normal');
-      doc.text('de Formation DiscipleLife', pageWidth / 2, 65, { align: 'center' });
+      doc.text('de Formation Disciple 70', pageWidth / 2, 65, { align: 'center' });
 
       // Ligne décorative
       doc.setDrawColor(...secondaryColor);
@@ -2113,7 +2113,7 @@ const Transformation = () => {
       doc.setFontSize(12);
       doc.setTextColor(...textColor);
       doc.setFont(undefined, 'italic');
-      doc.text('DiscipleLife - Transformation', pageWidth / 2, pageHeight - 30, { align: 'center' });
+      doc.text('Disciple 70 - Transformation', pageWidth / 2, pageHeight - 30, { align: 'center' });
 
       // Numéro de certificat (optionnel)
       const certNumber = `CERT-${progressionData.id?.substring(0, 8).toUpperCase() || 'XXXX'}-${format(new Date(), 'yyyyMMdd')}`;
@@ -2580,7 +2580,7 @@ const Transformation = () => {
   return (
     <>
       <Helmet>
-        <title>Transformation | DiscipleLife</title>
+        <title>Transformation | Disciple 70</title>
       </Helmet>
 
       <div className="min-h-screen bg-gray-50 p-6">

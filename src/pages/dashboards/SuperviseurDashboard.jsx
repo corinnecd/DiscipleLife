@@ -295,7 +295,7 @@ const SuperviseurDashboard = () => {
   return (
     <>
       <Helmet>
-        <title>Tableau de bord Superviseur - DiscipleLife</title>
+        <title>Tableau de bord Superviseur - Disciple 70</title>
       </Helmet>
       
       <div id="superviseur-dashboard-content" className="space-y-6 p-6 bg-gray-50 min-h-screen">

@@ -176,7 +176,7 @@ const Auth = () => {
              <div className="w-16 h-16 bg-gradient-to-tr from-purple-600 to-pink-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-purple-900/40 mb-4">
                  <span className="text-white font-bold text-2xl">DL</span>
              </div>
-             <h1 className="text-3xl font-bold text-white tracking-tight">DiscipleLife</h1>
+             <h1 className="text-3xl font-bold text-white tracking-tight">Disciple 70</h1>
              <p className="text-slate-400 mt-2">Votre compagnon de croissance spirituelle</p>
           </div>
 

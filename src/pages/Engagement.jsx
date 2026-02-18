@@ -366,7 +366,7 @@ const Engagement = () => {
   return (
     <>
       <Helmet>
-        <title>Engagement & Fidélisation - Disciple Life</title>
+        <title>Engagement & Fidélisation - Disciple 70</title>
       </Helmet>
       <div className="w-full p-6 pb-20 space-y-6">
         {/* Header */}

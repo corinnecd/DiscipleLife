@@ -974,7 +974,7 @@ const FamillesDisciples = () => {
   return (
     <>
       <Helmet>
-        <title>Familles de Disciples - DiscipleLife</title>
+        <title>Familles de Disciples - Disciple 70</title>
       </Helmet>
 
       <div className="w-full p-6 space-y-6 pb-20">

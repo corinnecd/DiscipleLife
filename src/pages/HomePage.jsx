@@ -214,7 +214,7 @@ const HomePage = () => {
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">Disciples 70</span>
             </h1>
             <p className="text-white/90 mt-6 max-w-2xl mx-auto text-base md:text-lg">
-              Bienvenue sur DiscipleLife. Une plateforme dédiée à votre transformation spirituelle. Apprenez, grandissez et formez d'autres disciples à l'image de Christ.
+              Bienvenue sur Disciple 70. Une plateforme dédiée à votre transformation spirituelle. Apprenez, grandissez et formez d'autres disciples à l'image de Christ.
             </p>
           </div>
 
@@ -239,10 +239,10 @@ const HomePage = () => {
                 </div>
                 <p className="text-white/90">
                   {showInvitationRequired === 'disciple'
-                    ? 'Pour devenir Disciple, vous devez être invité par votre mentor. Utilisez le lien reçu par email, ou saisissez votre code d\'invitation ci-dessous.'
+                    ? 'Pour devenir Disciple, vous devez être invité par votre Mentor. Utilisez le lien reçu par email, ou saisissez votre code d\'invitation ci-dessous.'
                     : showInvitationRequired === 'mentor'
-                    ? 'Pour devenir Mentor, vous devez être invité par un superviseur. Utilisez le lien reçu par email, ou saisissez votre code d\'invitation ci-dessous.'
-                    : 'Pour devenir Superviseur, vous devez être invité par un pasteur. Utilisez le lien reçu par email, ou saisissez votre code d\'invitation ci-dessous.'}
+                    ? 'Pour devenir Mentor, vous devez être invité par un Superviseur. Utilisez le lien reçu par email, ou saisissez votre code d\'invitation ci-dessous.'
+                    : 'Pour devenir Superviseur, vous devez être invité par un Pasteur. Utilisez le lien reçu par email, ou saisissez votre code d\'invitation ci-dessous.'}
                 </p>
                 <div className="space-y-2">
                   <Label className="text-gray-300">Code d'invitation</Label>
@@ -268,7 +268,7 @@ const HomePage = () => {
                   {codeError && <p className="text-sm text-red-400">{codeError}</p>}
                 </div>
                 <p className="text-sm text-white/60">
-                  Vous n'avez pas de code ? Contactez votre {showInvitationRequired === 'disciple' ? 'mentor' : showInvitationRequired === 'mentor' ? 'superviseur' : 'pasteur'} pour obtenir une invitation.
+                  <span className="text-fuchsia-400">Vous n'avez pas de code ?</span> Contactez votre {showInvitationRequired === 'disciple' ? 'Mentor' : showInvitationRequired === 'mentor' ? 'Superviseur' : 'Pasteur'} pour obtenir une invitation.
                 </p>
               </motion.div>
             ) : !showForm ? (
@@ -461,7 +461,7 @@ const HomePage = () => {
       </section>
 
       <footer className="mt-auto bg-[#0f0518]/80 py-6 border-t border-white/10 relative z-10 text-center">
-        <p className="text-gray-500 text-sm">© 2024 DiscipleLife. Tous droits réservés.</p>
+        <p className="text-gray-500 text-sm">© 2024 Disciple 70. Tous droits réservés.</p>
       </footer>
     </div>
   );

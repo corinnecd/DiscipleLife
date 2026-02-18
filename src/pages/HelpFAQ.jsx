@@ -79,7 +79,7 @@ const faqData = [
     id: 9,
     category: 'other',
     question: "L'application est-elle gratuite ?",
-    answer: "Oui, DiscipleLife est entièrement gratuit pour les disciples et les mentors. Notre mission est de faciliter la formation de disciples."
+    answer: "Oui, Disciple 70 est entièrement gratuit pour les disciples et les mentors. Notre mission est de faciliter la formation de disciples."
   }
 ];
 
@@ -155,7 +155,7 @@ const HelpFAQ = () => {
           Comment pouvons-nous vous aider ?
         </h1>
         <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-          Trouvez des réponses rapides, des tutoriels et de l'assistance pour tirer le meilleur parti de DiscipleLife.
+          Trouvez des réponses rapides, des tutoriels et de l'assistance pour tirer le meilleur parti de Disciple 70.
         </p>
 
         {/* Search Bar */}

@@ -142,7 +142,7 @@ const AccessCode = () => {
   return (
     <div className="container max-w-md mx-auto p-4 pt-20">
       <Helmet>
-        <title>Code d'accès | DiscipleLife</title>
+        <title>Code d'accès | Disciple 70</title>
       </Helmet>
 
       <Card className="w-full shadow-lg border-slate-200">

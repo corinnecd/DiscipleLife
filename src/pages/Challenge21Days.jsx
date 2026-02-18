@@ -291,7 +291,7 @@ const Challenge21Days = () => {
   return (
     <>
       <Helmet>
-        <title>Challenge 21 Jours | DiscipleLife</title>
+        <title>Challenge 21 Jours | Disciple 70</title>
       </Helmet>
       
       <div className="w-full max-w-screen-2xl mx-auto space-y-8 pb-12">

@@ -68,7 +68,7 @@ const Menu = () => {
 
       <div className="text-center pt-8">
           <p className="text-gray-500 text-xs">Version 1.0.2</p>
-          <p className="text-gray-600 text-[10px] mt-1">© 2024 DiscipleLife Inc.</p>
+          <p className="text-gray-600 text-[10px] mt-1">© 2024 Disciple 70.</p>
       </div>
     </div>
   );

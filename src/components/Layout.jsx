@@ -32,6 +32,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { getInitials } from '@/lib/utils';
 import { supabase } from '@/lib/customSupabaseClient';
+import { SITE_NAME, SITE_NAME_LOGO } from '@/lib/constants';
 import NotificationBell from './NotificationBell';
 import GlobalSearch from './GlobalSearch';
 
@@ -127,10 +128,10 @@ const Layout = () => {
       {/* Logo Area */}
       <div className="p-6 flex items-center gap-3">
         <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/20">
-          <span className="text-white font-bold text-xl">D</span>
+          <span className="text-white font-bold text-lg">{SITE_NAME_LOGO}</span>
         </div>
         <span className="text-xl font-bold text-gray-800">
-          DiscipleLife
+          {SITE_NAME}
         </span>
       </div>
 
@@ -225,7 +226,7 @@ const Layout = () => {
            <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(true)} aria-label="Ouvrir le menu">
              <Menu className="text-gray-700" />
            </Button>
-           <span className="font-bold text-gray-800">DiscipleLife</span>
+           <span className="font-bold text-gray-800">{SITE_NAME}</span>
         </div>
         <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8" onClick={() => navigate('/profile')}>

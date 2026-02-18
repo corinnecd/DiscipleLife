@@ -32,7 +32,7 @@ const WelcomeModal = () => {
                 <div className="mx-auto w-16 h-16 bg-yellow-400 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-yellow-400/20">
                     <span className="text-black font-bold text-2xl">DL</span>
                 </div>
-                <DialogTitle className="text-2xl font-bold">Bienvenue sur DiscipleLife !</DialogTitle>
+                <DialogTitle className="text-2xl font-bold">Bienvenue sur Disciple 70 !</DialogTitle>
                 <DialogDescription className="text-gray-300 pt-2 text-base">
                     Votre plateforme tout-en-un pour faire des disciples, suivre leur progression et grandir ensemble en Christ.
                 </DialogDescription>
@@ -76,7 +76,7 @@ const WelcomeModal = () => {
                         width="100%" 
                         height="100%" 
                         src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1" 
-                        title="Introduction DiscipleLife" 
+                        title="Introduction Disciple 70" 
                         frameBorder="0" 
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                         allowFullScreen

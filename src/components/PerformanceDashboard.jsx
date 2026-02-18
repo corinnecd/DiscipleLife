@@ -60,7 +60,7 @@ const PerformanceDashboard = () => {
     });
     const filename = `metriques-performance-${new Date().toISOString().split('T')[0]}`;
     exportToExcel(rows, filename, {
-      title: 'Rapport de performance DiscipleLife',
+      title: 'Rapport de performance Disciple 70',
       description: `Généré le ${new Date().toLocaleString('fr-FR')}`,
       additionalInfo: { 'Appels API total': r.global.totalApiCalls, 'Taux cache': r.global.cacheHitRate },
     });

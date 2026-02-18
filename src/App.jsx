@@ -293,7 +293,7 @@ function App() {
         <RoleProvider>
           <ThemeProvider defaultTheme="dark" storageKey="disciple-life-theme">
             <Helmet>
-                <title>DiscipleLife | Vie de Disciple</title>
+                <title>Disciple 70 | Vie de Disciple</title>
                 <meta name="description" content="Plateforme de formation de disciples." />
                 <meta name="theme-color" content="#0f0518" />
             </Helmet>

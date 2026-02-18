@@ -251,7 +251,7 @@ const NotificationCenter = () => {
   return (
     <div className="w-full max-w-5xl mx-auto p-6 space-y-6">
       <Helmet>
-        <title>Notifications | DiscipleLife</title>
+        <title>Notifications | Disciple 70</title>
       </Helmet>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

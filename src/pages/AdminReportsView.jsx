@@ -228,7 +228,7 @@ const AdminReportsView = () => {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <Helmet>
-        <title>{role === 'pasteur' ? 'Rapports reçus' : 'Rapports Superviseurs'} | DiscipleLife</title>
+        <title>{role === 'pasteur' ? 'Rapports reçus' : 'Rapports Superviseurs'} | Disciple 70</title>
       </Helmet>
 
       {/* Bouton retour */}
@@ -489,7 +489,7 @@ const AdminReportsView = () => {
               {/* Printable Header */}
               <div className="hidden print:block mb-8 border-b pb-4">
                  <h1 className="text-2xl font-bold">
-                   Rapport {selectedReport.report_type === 'hebdomadaire' ? 'Hebdomadaire' : selectedReport.report_type === 'trimestriel' ? 'Trimestriel' : 'Mensuel'} - DiscipleLife
+                   Rapport {selectedReport.report_type === 'hebdomadaire' ? 'Hebdomadaire' : selectedReport.report_type === 'trimestriel' ? 'Trimestriel' : 'Mensuel'} - Disciple 70
                  </h1>
                  <p className="text-lg">Superviseur: {selectedReport.profils?.first_name} {selectedReport.profils?.last_name}</p>
                  <p>Période: {

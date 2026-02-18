@@ -1,10 +1,17 @@
 // Edge Function : envoie l'email avec le lien vers le formulaire d'inscription complet
 // Déployer avec : supabase functions deploy send-inscription-email
-// Variables d'environnement : RESEND_API_KEY (ou configurer Supabase Auth > Email templates)
+// Variables d'environnement obligatoires :
+//   - RESEND_API_KEY : clé API Resend (https://resend.com)
+// Variables optionnelles :
+//   - RESEND_FROM_EMAIL : expéditeur personnalisé (ex: noreply@votredomaine.com)
+//     Par défaut : onboarding@resend.dev (domaine Resend pour test, sans vérification)
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
+const DEFAULT_FROM = 'Disciple 70 <onboarding@resend.dev>';
+
+const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
 
 interface ReqBody {
   email: string;
@@ -23,28 +30,30 @@ serve(async (req) => {
     if (!email || !lien) {
       return new Response(
         JSON.stringify({ error: 'email et lien requis' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const resendKey = Deno.env.get('RESEND_API_KEY');
     if (!resendKey) {
-      console.error('RESEND_API_KEY non configurée');
+      console.error('RESEND_API_KEY non configurée. Supabase Dashboard > Edge Functions > send-inscription-email > Secrets');
       return new Response(
-        JSON.stringify({ error: 'Service email non configuré' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Service email non configuré. Ajoutez RESEND_API_KEY dans les Secrets.' }),
+        { status: 500, headers: corsHeaders }
       );
     }
 
+    const fromEmail = Deno.env.get('RESEND_FROM_EMAIL') || DEFAULT_FROM;
+
     const nomComplet = [prenom, nom].filter(Boolean).join(' ') || 'Utilisateur';
     const html = `
-      <h2>DiscipleLife - Formulaire d'inscription</h2>
+      <h2>Disciple 70 - Formulaire d'inscription</h2>
       <p>Bonjour ${nomComplet},</p>
-      <p>Vous avez commencé votre inscription sur DiscipleLife. Cliquez sur le lien ci-dessous pour accéder au formulaire complet et finaliser votre inscription :</p>
+      <p>Vous avez commencé votre inscription sur Disciple 70. Cliquez sur le lien ci-dessous pour accéder au formulaire complet et finaliser votre inscription :</p>
       <p><a href="${lien}" style="color:#8b5cf6;font-weight:bold">Accéder au formulaire d'inscription</a></p>
       <p>Ce lien est valide 7 jours.</p>
       <p>Si vous n'avez pas demandé cette inscription, vous pouvez ignorer cet email.</p>
-      <p>— L'équipe DiscipleLife</p>
+      <p>— L'équipe Disciple 70</p>
     `;
 
     const res = await fetch(RESEND_API_URL, {
@@ -54,31 +63,31 @@ serve(async (req) => {
         'Authorization': `Bearer ${resendKey}`,
       },
       body: JSON.stringify({
-        from: 'DiscipleLife <noreply@disciplelife.app>',
+        from: fromEmail,
         to: [email],
-        subject: 'DiscipleLife - Complétez votre inscription',
+        subject: 'Disciple 70 - Complétez votre inscription',
         html,
       }),
     });
 
     if (!res.ok) {
       const err = await res.text();
-      console.error('Resend error:', err);
+      console.error('Resend error:', res.status, err);
       return new Response(
         JSON.stringify({ error: 'Échec envoi email', details: err }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        { status: 500, headers: corsHeaders }
       );
     }
 
     return new Response(
       JSON.stringify({ success: true }),
-      { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      { status: 200, headers: corsHeaders }
     );
   } catch (e) {
     console.error(e);
     return new Response(
       JSON.stringify({ error: String(e) }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { status: 500, headers: corsHeaders }
     );
   }
 });

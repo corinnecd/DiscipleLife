@@ -1008,7 +1008,7 @@ const GenealogicalTree = () => {
   return (
     <>
       <Helmet>
-        <title>Arbre Généalogique | DiscipleLife</title>
+        <title>Arbre Généalogique | Disciple 70</title>
       </Helmet>
 
       <div className="w-full h-full flex flex-col p-6 space-y-4">

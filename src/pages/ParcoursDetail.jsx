@@ -594,7 +594,7 @@ const ParcoursDetail = () => {
   return (
     <>
       <Helmet>
-        <title>{parcours.nom} | DiscipleLife</title>
+        <title>{parcours.nom} | Disciple 70</title>
       </Helmet>
 
       <div className="min-h-screen bg-gray-50">

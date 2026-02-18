@@ -153,7 +153,7 @@ const ImpactXLeaderboard = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-20">
       <Helmet>
-        <title>Classement Impact X | DiscipleLife</title>
+        <title>Classement Impact X | Disciple 70</title>
       </Helmet>
 
       {/* Hero Header */}

@@ -9,11 +9,13 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
+import { cn } from '@/lib/utils';
 
 const ROLE_LABELS = {
   disciple: 'Disciple',
   mentor: 'Mentor',
   superviseur: 'Superviseur',
+  pasteur: 'Pasteur',
 };
 
 /**
@@ -127,8 +129,9 @@ const InscriptionParToken = () => {
       const signupToken = row?.token;
       const lienFinal = signupToken ? `${window.location.origin}/signup?token=${signupToken}` : `${window.location.origin}/signup`;
 
+      let emailEnvoye = false;
       try {
-        await supabase.functions.invoke('send-inscription-email', {
+        const { error: emailError } = await supabase.functions.invoke('send-inscription-email', {
           body: {
             email: formData.email.trim(),
             lien: lienFinal,
@@ -136,6 +139,8 @@ const InscriptionParToken = () => {
             nom: formData.nom,
           },
         });
+        emailEnvoye = !emailError;
+        if (emailError) console.warn('Envoi email:', emailError);
       } catch (emailErr) {
         console.warn('Envoi email:', emailErr);
       }
@@ -144,7 +149,9 @@ const InscriptionParToken = () => {
 
       toast({
         title: 'Étape 1 terminée',
-        description: 'Un email vous a été envoyé. Redirection vers le formulaire complet...',
+        description: emailEnvoye
+          ? 'Un email vous a été envoyé. Redirection vers le formulaire complet...'
+          : 'Redirection vers le formulaire. Vous pouvez continuer (l\'email n\'a pas été envoyé).',
       });
 
       navigate(`/signup?token=${signupToken || ''}`, { replace: true });
@@ -193,17 +200,17 @@ const InscriptionParToken = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 p-4">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="max-w-md w-full"
       >
-        <Card className="p-6 sm:p-8 shadow-xl">
+        <Card className="p-6 sm:p-8 shadow-xl bg-gray-50 border-gray-200 text-gray-900">
           <div className="text-center mb-6">
             <p className="text-sm font-medium text-fuchsia-600 mb-2">Étape 2/3</p>
-            <h1 className="text-2xl font-bold text-slate-900">Inscription</h1>
-            <p className="text-slate-600 mt-1">
+            <h1 className="text-2xl font-bold text-gray-900">Formulaire d'inscription</h1>
+            <p className="text-gray-600 mt-1">
               Vous avez été invité à rejoindre en tant que <strong>{ROLE_LABELS[invitation?.type_role] || invitation?.type_role}</strong>
               {invitation?.famille_nom && (
                 <> – Famille <strong>{invitation.famille_nom}</strong></>
@@ -220,7 +227,7 @@ const InscriptionParToken = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="mt-2"
+                  className="mt-2 bg-gray-100 text-gray-900 border-gray-300 hover:bg-gray-200 hover:text-gray-900"
                   onClick={() => {
                     const payload = { role: invitation?.type_role, prenom: formData.prenom, nom: formData.nom, email: formData.email, familleId: invitation?.famille_id };
                     sessionStorage.setItem('signup_step1', JSON.stringify(payload));
@@ -235,34 +242,39 @@ const InscriptionParToken = () => {
 
             {invitation?.famille_nom && (
               <div className="space-y-2">
-                <Label>Famille</Label>
-                <Input value={invitation.famille_nom} disabled className="bg-slate-50" />
+                <Label className="text-gray-900">Famille</Label>
+                <Input
+                  value={invitation.famille_nom}
+                  disabled
+                  readOnly
+                  className="bg-gray-200 text-gray-900 border-gray-300 font-medium placeholder:text-gray-500 disabled:opacity-100"
+                />
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="prenom">Prénom *</Label>
+                <Label htmlFor="prenom" className="text-gray-900">Prénom *</Label>
                 <Input
                   id="prenom"
                   name="prenom"
                   value={formData.prenom}
                   onChange={handleChange}
                   placeholder="Prénom"
-                  className={errors.prenom ? 'border-red-500' : ''}
+                  className={cn(errors.prenom ? 'border-red-500' : 'border-gray-300', 'bg-white text-gray-900')}
                   disabled={submitting}
                 />
                 {errors.prenom && <p className="text-sm text-red-600">{errors.prenom}</p>}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nom">Nom *</Label>
+                <Label htmlFor="nom" className="text-gray-900">Nom *</Label>
                 <Input
                   id="nom"
                   name="nom"
                   value={formData.nom}
                   onChange={handleChange}
                   placeholder="Nom"
-                  className={errors.nom ? 'border-red-500' : ''}
+                  className={cn(errors.nom ? 'border-red-500' : 'border-gray-300', 'bg-white text-gray-900')}
                   disabled={submitting}
                 />
                 {errors.nom && <p className="text-sm text-red-600">{errors.nom}</p>}
@@ -270,7 +282,7 @@ const InscriptionParToken = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
+              <Label htmlFor="email" className="text-gray-900">Email *</Label>
               <Input
                 id="email"
                 name="email"
@@ -278,14 +290,14 @@ const InscriptionParToken = () => {
                 value={formData.email}
                 onChange={handleChange}
                 placeholder="votre@email.com"
-                className={errors.email ? 'border-red-500' : ''}
+                className={cn(errors.email ? 'border-red-500' : 'border-gray-300', 'bg-white text-gray-900')}
                 disabled={submitting}
               />
               {errors.email && <p className="text-sm text-red-600">{errors.email}</p>}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="emailConfirm">Confirmation email *</Label>
+              <Label htmlFor="emailConfirm" className="text-gray-900">Confirmation email *</Label>
               <Input
                 id="emailConfirm"
                 name="emailConfirm"
@@ -293,7 +305,7 @@ const InscriptionParToken = () => {
                 value={formData.emailConfirm}
                 onChange={handleChange}
                 placeholder="Confirmez votre email"
-                className={errors.emailConfirm ? 'border-red-500' : ''}
+                className={cn(errors.emailConfirm ? 'border-red-500' : 'border-gray-300', 'bg-white text-gray-900')}
                 disabled={submitting}
               />
               {errors.emailConfirm && <p className="text-sm text-red-600">{errors.emailConfirm}</p>}
@@ -315,12 +327,12 @@ const InscriptionParToken = () => {
             </Button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-slate-200 space-y-2 text-center text-sm">
+          <div className="mt-6 pt-6 border-t border-gray-200 space-y-2 text-center text-sm">
             <p>
               <button
                 type="button"
                 onClick={() => navigate('/auth')}
-                className="text-primary hover:underline font-medium"
+                className="text-fuchsia-600 hover:underline font-medium"
               >
                 Se connecter
               </button>
@@ -329,7 +341,7 @@ const InscriptionParToken = () => {
               <button
                 type="button"
                 onClick={() => navigate('/forgot-password')}
-                className="text-slate-500 hover:underline"
+                className="text-gray-600 hover:underline"
               >
                 Mot de passe oublié ?
               </button>

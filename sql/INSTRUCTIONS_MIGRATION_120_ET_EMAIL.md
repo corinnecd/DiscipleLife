@@ -17,16 +17,18 @@ Cela crée :
 
 Pour que l'email soit effectivement envoyé après validation du formulaire :
 
-1. **Créer un compte Resend** (https://resend.com) et récupérer une API Key
-2. **Déployer l'Edge Function** :
+1. **Créer un compte Resend** (https://resend.com) – gratuit jusqu'à 3000 emails/mois
+2. **Récupérer l'API Key** : Resend Dashboard → API Keys → Create API Key
+3. **Déployer l'Edge Function** :
    ```bash
    supabase functions deploy send-inscription-email
    ```
-3. **Configurer la variable d'environnement** dans Supabase Dashboard :
-   - Edge Functions → send-inscription-email → Secrets
+4. **Configurer RESEND_API_KEY** dans Supabase Dashboard :
+   - Edge Functions → send-inscription-email → Secrets (ou Settings)
    - Ajouter `RESEND_API_KEY` = votre clé Resend
 
-4. **Personnaliser l'expéditeur** : Dans `supabase/functions/send-inscription-email/index.ts`, modifier la ligne `from` pour utiliser un domaine vérifié chez Resend (ex. `noreply@votredomaine.com`).
+5. **Expéditeur par défaut** : `onboarding@resend.dev` (domaine Resend, fonctionne sans vérification).
+   - Pour la production : ajouter le secret `RESEND_FROM_EMAIL` = `DiscipleLife <noreply@votredomaine.com>` après vérification du domaine chez Resend.
 
 ## 3. Flux utilisateur
 

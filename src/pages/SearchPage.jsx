@@ -182,7 +182,7 @@ const SearchPage = () => {
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-8 min-h-screen">
        <Helmet>
-         <title>Recherche | DiscipleLife</title>
+         <title>Recherche | Disciple 70</title>
        </Helmet>
 
        {/* Search Header */}

@@ -426,7 +426,7 @@ export function useSuperviseurDashboard(user) {
       exportToExcel(exportData, `superviseur_tableau_disciples_${timestamp}`, {
         title: 'Tableau détaillé des disciples – Superviseur',
         description: 'Prénom/Nom pilier (mentor), Prénom/Nom disciple, Statut spirituel, Date d\'ajout, Date dernière présence, Niveau d\'engagement, Statut Actif/Inactif, Présence dernier culte',
-        author: 'DiscipleLife',
+        author: 'Disciple 70',
       });
       toast({ title: 'Export réussi', description: `${exportData.length} disciple(s) exporté(s).` });
     } catch (err) {
@@ -455,7 +455,7 @@ export function useSuperviseurDashboard(user) {
       exportToExcel(exportData, `superviseur_mentors_piliers_${timestamp}`, {
         title: 'Tableau consolidé des mentors (Piliers) – Superviseur',
         description: 'Nom, Prénom, Suivi par, Famille, Nombre de disciples, Avancement %, Disciples présents, Taux participation, Statut',
-        author: 'DiscipleLife',
+        author: 'Disciple 70',
       });
       toast({ title: 'Export réussi', description: `${exportData.length} mentor(s) exporté(s).` });
     } catch (err) {

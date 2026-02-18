@@ -396,18 +396,18 @@ const SignupDisciple = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f0518] flex items-center justify-center p-4">
-      <Card className="w-full max-w-xl bg-[#1a0b2e] border-white/10 text-white">
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+      <Card className="w-full max-w-xl bg-gray-100 border-gray-300 text-gray-900 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15),0_0_60px_rgba(139,92,246,0.4)]">
         <CardHeader>
-           <Button variant="ghost" className="w-fit p-0 hover:bg-transparent text-gray-400 hover:text-white mb-2" onClick={() => isAddMemberMode ? navigate(-1) : navigate('/')}>
+           <Button variant="ghost" className="w-fit p-0 hover:bg-transparent text-gray-600 hover:text-gray-900 mb-2" onClick={() => isAddMemberMode ? navigate(-1) : navigate('/')}>
                <ArrowLeft size={16} className="mr-2" /> {isAddMemberMode ? 'Retour au tableau de bord' : 'Retour'}
            </Button>
-           <div className="w-12 h-12 bg-teal-500/10 rounded-lg flex items-center justify-center text-teal-400 mb-4">
+           <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center text-teal-600 mb-4">
                <UserPlus size={24} />
            </div>
            <p className="text-sm font-medium text-fuchsia-500 mb-1">{!isAddMemberMode && 'Étape 3/3'}</p>
-           <CardTitle className="text-2xl">{isAddMemberMode ? 'Ajouter un membre' : 'Inscription'}</CardTitle>
-           <CardDescription className="text-gray-400">
+           <CardTitle className="text-2xl">{isAddMemberMode ? 'Ajouter un membre' : 'Formulaire d\'inscription'}</CardTitle>
+           <CardDescription className="text-gray-600">
              {isAddMemberMode
                ? "Enregistrez un nouveau membre (compte + fiche). Il pourra se connecter avec l'email et le mot de passe que vous définissez."
                : "Choisissez votre rôle, famille, puis remplissez les champs ci-dessous : suivi par, statut spirituel, formations PCNC, téléphone, ville de résidence, code postal, sexe, baptême."}
@@ -429,7 +429,7 @@ const SignupDisciple = () => {
                       onChange={handleInputChange}
                       onBlur={() => validateSignup()}
                       required 
-                      className={cn("bg-black/20 text-white", errors.firstName ? "border-red-500" : "border-white/10")}
+                      className={cn("bg-white text-gray-900 border-gray-300", errors.firstName ? "border-red-500" : "")}
                     />
                     {errors.firstName && <p className="text-xs text-red-400">{errors.firstName}</p>}
                 </div>
@@ -441,7 +441,7 @@ const SignupDisciple = () => {
                       onChange={handleInputChange}
                       onBlur={() => validateSignup()}
                       required 
-                      className={cn("bg-black/20 text-white", errors.lastName ? "border-red-500" : "border-white/10")}
+                      className={cn("bg-white text-gray-900 border-gray-300", errors.lastName ? "border-red-500" : "")}
                     />
                     {errors.lastName && <p className="text-xs text-red-400">{errors.lastName}</p>}
                 </div>
@@ -454,12 +454,12 @@ const SignupDisciple = () => {
                    onValueChange={(v) => setFormData(prev => ({ ...prev, pasteurId: v }))}
                    required
                  >
-                   <SelectTrigger className={cn("bg-black/20 text-white", errors.pasteurId ? "border-red-500" : "border-white/10")}>
+                   <SelectTrigger className={cn("bg-white text-gray-900 border-gray-300", errors.pasteurId ? "border-red-500" : "")}>
                      <SelectValue placeholder="Sélectionnez votre pasteur de tutelle" />
                    </SelectTrigger>
-                   <SelectContent className="bg-[#1a0b2e] border-white/10">
+                   <SelectContent className="bg-white border-gray-200">
                      {pasteurs.map((p) => (
-                       <SelectItem key={p.id} value={p.id} className="text-white focus:bg-teal-500/20">
+                       <SelectItem key={p.id} value={p.id} className="text-gray-900 focus:bg-gray-100">
                          {[p.first_name, p.last_name].filter(Boolean).join(' ')}
                        </SelectItem>
                      ))}
@@ -473,7 +473,7 @@ const SignupDisciple = () => {
                  {loadingFamilles ? (
                    <div className="flex items-center justify-center py-2">
                      <Loader2 className="h-4 w-4 animate-spin text-teal-400" />
-                     <span className="ml-2 text-sm text-gray-400">Chargement des familles...</span>
+                     <span className="ml-2 text-sm text-gray-600">Chargement des familles...</span>
                    </div>
                  ) : (
                    <Select 
@@ -481,10 +481,10 @@ const SignupDisciple = () => {
                      onValueChange={handleFamilleChange}
                      required
                    >
-                     <SelectTrigger className={cn("bg-black/20 text-white", errors.familleId ? "border-red-500" : "border-white/10")}>
+                     <SelectTrigger className={cn("bg-white text-gray-900 border-gray-300", errors.familleId ? "border-red-500" : "")}>
                        <SelectValue placeholder="Sélectionnez votre famille" />
                      </SelectTrigger>
-                     <SelectContent className="bg-[#1a0b2e] border-white/10">
+                     <SelectContent className="bg-white border-gray-200">
                        {familles.length === 0 ? (
                          <SelectItem value="__none__" disabled>
                            Aucune famille disponible
@@ -494,7 +494,7 @@ const SignupDisciple = () => {
                            <SelectItem 
                              key={famille.id} 
                              value={famille.id}
-                             className="text-white focus:bg-teal-500/20"
+                             className="text-gray-900 focus:bg-gray-100"
                            >
                              {famille.nom} ({famille.identifiant_famille})
                            </SelectItem>
@@ -512,12 +512,12 @@ const SignupDisciple = () => {
              <div className="space-y-2">
                 <Label>Rôle <span className="text-red-400">*</span></Label>
                 <Select value={formData.role} onValueChange={handleRoleChange}>
-                  <SelectTrigger className="bg-black/20 border-white/10 text-white">
+                  <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                     <SelectValue placeholder="Sélectionnez votre rôle" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a0b2e] border-white/10">
+                  <SelectContent className="bg-white border-gray-200">
                     {ROLES.map((r) => (
-                      <SelectItem key={r.value} value={r.value} className="text-white focus:bg-teal-500/20">
+                      <SelectItem key={r.value} value={r.value} className="text-gray-900 focus:bg-gray-100">
                         {r.label}
                       </SelectItem>
                     ))}
@@ -527,12 +527,12 @@ const SignupDisciple = () => {
              <div className="space-y-2">
                 <Label>Fonction (charge pastorale) <span className="text-red-400">*</span></Label>
                 <Select value={formData.fonction || '__none__'} onValueChange={(v) => { setFormData(prev => ({ ...prev, fonction: v === '__none__' ? '' : v })); if (errors.fonction) setErrors(prev => ({ ...prev, fonction: '' })); }}>
-                  <SelectTrigger className={cn("bg-black/20 text-white", errors.fonction ? "border-red-500" : "border-white/10")}>
+                  <SelectTrigger className={cn("bg-white text-gray-900 border-gray-300", errors.fonction ? "border-red-500" : "")}>
                     <SelectValue placeholder="Sélectionnez" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a0b2e] border-white/10">
+                  <SelectContent className="bg-white border-gray-200">
                     {FONCTIONS.map((f) => (
-                      <SelectItem key={f.value || '__none__'} value={f.value || '__none__'} className="text-white focus:bg-teal-500/20">
+                      <SelectItem key={f.value || '__none__'} value={f.value || '__none__'} className="text-gray-900 focus:bg-gray-100">
                         {f.label}
                       </SelectItem>
                     ))}
@@ -543,13 +543,13 @@ const SignupDisciple = () => {
              <div className="space-y-2">
                 <Label>Suivi par (mentor / superviseur)</Label>
                 <Select value={formData.mentorId || '__aucun__'} onValueChange={(v) => setFormData(prev => ({ ...prev, mentorId: v === '__aucun__' ? '' : v }))}>
-                  <SelectTrigger className="bg-black/20 border-white/10 text-white">
+                  <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                     <SelectValue placeholder="Optionnel : sélectionnez qui vous suit" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a0b2e] border-white/10">
-                    <SelectItem value="__aucun__" className="text-white focus:bg-teal-500/20">Aucun</SelectItem>
+                  <SelectContent className="bg-white border-gray-200">
+                    <SelectItem value="__aucun__" className="text-gray-900 focus:bg-gray-100">Aucun</SelectItem>
                     {mentors.map((m) => (
-                      <SelectItem key={m.id} value={m.id} className="text-white focus:bg-teal-500/20">
+                      <SelectItem key={m.id} value={m.id} className="text-gray-900 focus:bg-gray-100">
                         {[m.first_name, m.last_name].filter(Boolean).join(' ')} ({m.role})
                       </SelectItem>
                     ))}
@@ -559,12 +559,12 @@ const SignupDisciple = () => {
              <div className="space-y-2">
                 <Label>Statut spirituel</Label>
                 <Select value={formData.spiritualStage || '__non_renseigne__'} onValueChange={handleSpiritualStageChange}>
-                  <SelectTrigger className="bg-black/20 border-white/10 text-white">
+                  <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                     <SelectValue placeholder="Sélectionnez un statut" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a0b2e] border-white/10">
+                  <SelectContent className="bg-white border-gray-200">
                     {SPIRITUAL_STAGES.map((s) => (
-                      <SelectItem key={s.value} value={s.value} className="text-white focus:bg-teal-500/20">
+                      <SelectItem key={s.value} value={s.value} className="text-gray-900 focus:bg-gray-100">
                         {s.label}
                       </SelectItem>
                     ))}
@@ -582,13 +582,13 @@ const SignupDisciple = () => {
                         key={code}
                         className={cn(
                           "flex items-center gap-2 cursor-pointer rounded-lg px-3 py-2 transition-colors",
-                          checked ? "bg-teal-500/20 text-teal-300" : "hover:bg-white/5 text-gray-400"
+                          checked ? "bg-teal-100 text-teal-700" : "hover:bg-gray-100 text-gray-600"
                         )}
                       >
                         <Checkbox
                           checked={checked}
                           onCheckedChange={() => handleFormationToggle(code)}
-                          className="border-white/30 data-[state=checked]:bg-teal-500 data-[state=checked]:border-teal-500"
+                          className="border-gray-300 data-[state=checked]:bg-teal-500 data-[state=checked]:border-teal-500"
                         />
                         <span>{code}</span>
                       </label>
@@ -605,7 +605,7 @@ const SignupDisciple = () => {
                   onChange={handleInputChange} 
                   min={0}
                   placeholder="0"
-                  className="bg-black/20 border-white/10 text-white" 
+                  className="bg-white border-gray-300 text-gray-900" 
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Pour les mentors : nombre de disciples suivis.
@@ -620,7 +620,7 @@ const SignupDisciple = () => {
                   onChange={handleInputChange}
                   onBlur={() => validateSignup()}
                   placeholder="+33 6 12 34 56 78"
-                  className={cn("bg-black/20 text-white", errors.phone ? "border-red-500" : "border-white/10")}
+                  className={cn("bg-white text-gray-900 border-gray-300", errors.phone ? "border-red-500" : "")}
                 />
                 {errors.phone && <p className="text-xs text-red-400">{errors.phone}</p>}
              </div>
@@ -632,7 +632,7 @@ const SignupDisciple = () => {
                   onChange={handleInputChange}
                   onBlur={() => validateSignup()}
                   placeholder="Ex. Libreville, Port-Gentil..."
-                  className={cn("bg-black/20 text-white", errors.villeResidence ? "border-red-500" : "border-white/10")}
+                  className={cn("bg-white text-gray-900 border-gray-300", errors.villeResidence ? "border-red-500" : "")}
                 />
                 {errors.villeResidence && <p className="text-xs text-red-400">{errors.villeResidence}</p>}
              </div>
@@ -644,20 +644,20 @@ const SignupDisciple = () => {
                   onChange={handleInputChange}
                   onBlur={() => validateSignup()}
                   placeholder="Ex. 75001"
-                  className={cn("bg-black/20 text-white", errors.codePostal ? "border-red-500" : "border-white/10")}
+                  className={cn("bg-white text-gray-900 border-gray-300", errors.codePostal ? "border-red-500" : "")}
                 />
                 {errors.codePostal && <p className="text-xs text-red-400">{errors.codePostal}</p>}
              </div>
              <div className="space-y-2">
                 <Label>Sexe <span className="text-red-400">*</span></Label>
                 <Select value={formData.sexe || '__vide__'} onValueChange={(v) => { setFormData(prev => ({ ...prev, sexe: v === '__vide__' ? '' : v })); if (errors.sexe) setErrors(prev => ({ ...prev, sexe: '' })); }}>
-                  <SelectTrigger className={cn("bg-black/20 text-white", errors.sexe ? "border-red-500" : "border-white/10")}>
+                  <SelectTrigger className={cn("bg-white text-gray-900 border-gray-300", errors.sexe ? "border-red-500" : "")}>
                     <SelectValue placeholder="Sélectionnez" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a0b2e] border-white/10">
-                    <SelectItem value="__vide__" className="text-white focus:bg-teal-500/20">Non renseigné</SelectItem>
-                    <SelectItem value="Homme" className="text-white focus:bg-teal-500/20">Homme</SelectItem>
-                    <SelectItem value="Femme" className="text-white focus:bg-teal-500/20">Femme</SelectItem>
+                  <SelectContent className="bg-white border-gray-200">
+                    <SelectItem value="__vide__" className="text-gray-900 focus:bg-gray-100">Non renseigné</SelectItem>
+                    <SelectItem value="Homme" className="text-gray-900 focus:bg-gray-100">Homme</SelectItem>
+                    <SelectItem value="Femme" className="text-gray-900 focus:bg-gray-100">Femme</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.sexe && <p className="text-xs text-red-400 mt-1">{errors.sexe}</p>}
@@ -668,25 +668,25 @@ const SignupDisciple = () => {
                   value={formData.baptiseImmersion || '__vide__'} 
                   onValueChange={(v) => { setFormData(prev => ({ ...prev, baptiseImmersion: v === '__vide__' ? '' : v, ...(v !== 'oui' ? { dateBapteme: '' } : {}) })); if (errors.baptiseImmersion) setErrors(prev => ({ ...prev, baptiseImmersion: '' })); }}
                 >
-                  <SelectTrigger className={cn("bg-black/20 text-white", errors.baptiseImmersion ? "border-red-500" : "border-white/10")}>
+                  <SelectTrigger className={cn("bg-white text-gray-900 border-gray-300", errors.baptiseImmersion ? "border-red-500" : "")}>
                     <SelectValue placeholder="Sélectionnez" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1a0b2e] border-white/10">
-                    <SelectItem value="__vide__" className="text-white focus:bg-teal-500/20">Non renseigné</SelectItem>
-                    <SelectItem value="oui" className="text-white focus:bg-teal-500/20">Oui</SelectItem>
-                    <SelectItem value="non" className="text-white focus:bg-teal-500/20">Non</SelectItem>
+                  <SelectContent className="bg-white border-gray-200">
+                    <SelectItem value="__vide__" className="text-gray-900 focus:bg-gray-100">Non renseigné</SelectItem>
+                    <SelectItem value="oui" className="text-gray-900 focus:bg-gray-100">Oui</SelectItem>
+                    <SelectItem value="non" className="text-gray-900 focus:bg-gray-100">Non</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.baptiseImmersion && <p className="text-xs text-red-400 mt-1">{errors.baptiseImmersion}</p>}
                 {formData.baptiseImmersion === 'oui' && (
                   <div className="mt-2">
-                    <Label className="text-sm text-gray-400">Si oui, date du baptême</Label>
+                    <Label className="text-sm text-gray-600">Si oui, date du baptême</Label>
                     <Input 
                       type="date" 
                       name="dateBapteme" 
                       value={formData.dateBapteme} 
                       onChange={handleInputChange} 
-                      className="bg-black/20 border-white/10 text-white mt-1" 
+                      className="bg-white border-gray-300 text-gray-900 mt-1" 
                     />
                   </div>
                 )}
@@ -701,7 +701,7 @@ const SignupDisciple = () => {
                      onChange={handleInputChange}
                      onBlur={() => formData.email && validateSignup()}
                      required 
-                     className={cn("bg-black/20 text-white", errors.email ? "border-red-500" : "border-white/10")}
+                     className={cn("bg-white text-gray-900 border-gray-300", errors.email ? "border-red-500" : "")}
                    />
                    {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
                  </div>
@@ -716,12 +716,12 @@ const SignupDisciple = () => {
                        onBlur={() => formData.password && validateSignup()}
                        required 
                        minLength={6}
-                       className={cn("bg-black/20 text-white pr-10", errors.password ? "border-red-500" : "border-white/10")}
+                       className={cn("bg-white text-gray-900 border-gray-300 pr-10", errors.password ? "border-red-500" : "")}
                      />
                      <button
                        type="button"
                        onClick={() => setShowPassword(!showPassword)}
-                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 transition-colors"
                        aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                      >
                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -739,12 +739,12 @@ const SignupDisciple = () => {
                        onChange={handleInputChange}
                        onBlur={() => formData.confirmPassword && validateSignup()}
                        required 
-                       className={cn("bg-black/20 text-white pr-10", errors.confirmPassword ? "border-red-500" : "border-white/10")}
+                       className={cn("bg-white text-gray-900 border-gray-300 pr-10", errors.confirmPassword ? "border-red-500" : "")}
                      />
                      <button
                        type="button"
                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 transition-colors"
                        aria-label={showConfirmPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                      >
                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -769,8 +769,8 @@ const SignupDisciple = () => {
                  )}
              </Button>
              {!isAddMemberMode && (
-               <p className="text-sm text-gray-400 text-center">
-                 Déjà inscrit ? <Link to="/auth" className="text-teal-400 hover:underline">Se connecter</Link>
+               <p className="text-sm text-gray-600 text-center">
+                 Déjà inscrit ? <Link to="/auth" className="text-fuchsia-600 hover:underline">Se connecter</Link>
                </p>
              )}
           </CardFooter>

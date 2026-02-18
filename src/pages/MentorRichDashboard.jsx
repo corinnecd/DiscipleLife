@@ -176,7 +176,7 @@ const MentorRichDashboard = () => {
                      <div className="w-3 h-3 bg-teal-500 rounded-full" />
                  </div>
                  
-                 <DialogTitle className="text-2xl font-bold mb-3">Bienvenue sur DiscipleLife !</DialogTitle>
+                 <DialogTitle className="text-2xl font-bold mb-3">Bienvenue sur Disciple 70 !</DialogTitle>
                  <DialogDescription className="text-slate-500 text-base leading-relaxed mb-8">
                     Cette application est conçue pour vous aider à approfondir votre vie en Christ et à faire des disciples comme il l'a commandé.
                  </DialogDescription>

@@ -16,7 +16,7 @@ export const ExportUtils = {
       const { 
         title = 'Export de données',
         description = '',
-        author = 'DiscipleLife',
+        author = 'Disciple 70',
         additionalInfo = {}
       } = options;
 
@@ -102,7 +102,7 @@ export const ExportUtils = {
       // Footer
       csvLines.push('');
       csvLines.push(`"Total d'enregistrements: ${data.length}"`);
-      csvLines.push(`"Généré par DiscipleLife - ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: fr })}"`);
+      csvLines.push(`"Généré par Disciple 70 - ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: fr })}"`);
 
       const csvContent = csvLines.join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -134,7 +134,7 @@ export const ExportUtils = {
     const {
       title = 'Export de données',
       subtitle = '',
-      author = 'DiscipleLife',
+      author = 'Disciple 70',
       showHeader = true,
       showFooter = true,
       logoUrl = null,
@@ -392,7 +392,7 @@ export const ExportUtils = {
         }
         
         // Right: URL/Info
-        pdf.text('DiscipleLife App', pageWidth - margin - pdf.getTextWidth('DiscipleLife App'), footerY);
+        pdf.text('Disciple 70 App', pageWidth - margin - pdf.getTextWidth('Disciple 70 App'), footerY);
         
         // Reset text color
         pdf.setTextColor(0, 0, 0);

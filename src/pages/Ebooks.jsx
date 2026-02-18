@@ -157,7 +157,7 @@ const Ebooks = () => {
   return (
     <div className="min-h-screen bg-[#0f0518] pb-20">
       <Helmet>
-        <title>Bibliothèque | DiscipleLife</title>
+        <title>Bibliothèque | Disciple 70</title>
       </Helmet>
 
       {/* Header Section */}

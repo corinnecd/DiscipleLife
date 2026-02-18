@@ -227,7 +227,7 @@ const DashboardHome = () => {
           </h2>
           <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4 shadow-sm hover:shadow-md transition-shadow">
             <p className="text-gray-700">
-              DiscipleLife est conçu pour faciliter la <span className="text-gray-900 font-semibold">Grande Commission</span>.
+              Disciple 70 est conçu pour faciliter la <span className="text-gray-900 font-semibold">Grande Commission</span>.
             </p>
             <ul className="space-y-3">
               <li className="flex items-start gap-3 text-gray-600">

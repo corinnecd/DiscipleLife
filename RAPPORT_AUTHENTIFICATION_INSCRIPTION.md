@@ -379,6 +379,23 @@ CREATE TABLE invitations_famille (
 
 ---
 
+## Charte de couleurs (règles à respecter)
+
+**Règle impérative :** Aucun bouton noir. Tous les boutons doivent respecter la charte suivante.
+
+| Élément | Couleurs autorisées |
+|---------|---------------------|
+| Boutons principaux | Violet/pourpre (`bg-purple-600`, `bg-fuchsia-400`), blanc pour le texte |
+| Boutons secondaires / outline | Fond gris clair (`bg-gray-100`), texte noir (`text-gray-900`), bordure grise |
+| Boutons icône (copier, etc.) | Fond gris clair, bordure grise, pas de fond noir |
+| Toasts (succès) | Fond blanc (`bg-white`), texte noir/gris foncé (`text-gray-900`) |
+| Toasts (erreur) | Fond rouge (`bg-red-600`), texte blanc |
+| Champs de formulaire | Fond gris clair (`bg-gray-100`), texte noir |
+
+**À éviter :** fond noir, boutons avec `bg-background` en thème sombre, texte sur fond sombre sans contraste suffisant.
+
+---
+
 **Auteur :** Assistant IA  
 **Date :** 12 février 2026  
 **Références :** RAPPORT_AUTHENTIFICATION_INSCRIPTION.md v1, docs/ONBOARDING_IMPLEMENTATION_RAPPORT.md, modèle discipolat

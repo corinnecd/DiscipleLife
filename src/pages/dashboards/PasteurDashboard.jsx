@@ -80,6 +80,8 @@ const PasteurDashboard = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [invitationModalOpen, setInvitationModalOpen] = useState(false);
+  const [famillesSansSuperviseur, setFamillesSansSuperviseur] = useState([]);
+  const [toutesFamilles, setToutesFamilles] = useState([]);
   const [superviseursOptions, setSuperviseursOptions] = useState([]);
   const [createForm, setCreateForm] = useState({
     nom: '',
@@ -184,6 +186,24 @@ const PasteurDashboard = () => {
     if (activeTab !== TAB_KEYS.KPI || !user?.id) return;
     fetchKpiTabData();
   }, [activeTab, user?.id, superviseurs.length, kpiPeriodType, kpiSelectedYearForPeriod, kpiSelectedQuarter, kpiSelectedMonth, kpiSelectedWeek]);
+
+  // Charger familles sans superviseur + toutes les familles quand le modal d'invitation s'ouvre
+  useEffect(() => {
+    if (!invitationModalOpen || !user?.id) return;
+    (async () => {
+      try {
+        const [sansSup, toutes] = await Promise.all([
+          supabase.from('familles_disciples').select('id, nom').is('superviseur_id', null).order('nom'),
+          supabase.from('familles_disciples').select('id, nom').order('nom'),
+        ]);
+        setFamillesSansSuperviseur((sansSup.data || []).map((f) => ({ id: f.id, nom: f.nom })));
+        setToutesFamilles((toutes.data || []).map((f) => ({ id: f.id, nom: f.nom })));
+      } catch {
+        setFamillesSansSuperviseur([]);
+        setToutesFamilles([]);
+      }
+    })();
+  }, [invitationModalOpen, user?.id]);
 
   // Quand on ouvre l'onglet Familles avec un pasteur sélectionné (clic sur une carte KPI), charger ses familles si ce n'est pas le pasteur connecté
   useEffect(() => {
@@ -1269,7 +1289,7 @@ const PasteurDashboard = () => {
       exportToExcel(exportData, `dashboard_pasteur_familles_${timestamp}`, {
         title: 'Tableau des familles – Dashboard Pasteur',
         description: 'Familles sous la responsabilité du pasteur',
-        author: 'DiscipleLife',
+        author: 'Disciple 70',
       });
       toast({ title: 'Export réussi', description: `${exportData.length} famille(s) exportée(s).` });
     } catch (error) {
@@ -1601,7 +1621,7 @@ const PasteurDashboard = () => {
       exportToExcel(exportData, `dashboard_pasteur_mentors_${timestamp}`, {
         title: 'Tableau consolidé mentors (Piliers) – Dashboard Pasteur',
         description: 'Nom, Prénom, Suivi par, Famille, Nombre de disciples, Avancement %, Nombre de disciples présents, Taux participation semaine, Statut',
-        author: 'DiscipleLife',
+        author: 'Disciple 70',
       });
       toast({ title: 'Export réussi', description: `${exportData.length} mentor(s) exporté(s).` });
     } catch (error) {
@@ -1653,7 +1673,7 @@ const PasteurDashboard = () => {
   return (
     <>
       <Helmet>
-        <title>Dashboard Pasteur - DiscipleLife</title>
+        <title>Dashboard Pasteur - Disciple 70</title>
       </Helmet>
       
       <div id="pasteur-dashboard-content" className="w-full max-w-screen-2xl mx-auto space-y-6 p-6 pb-24 bg-gray-50 dark:bg-gray-50 min-h-screen">
@@ -1691,7 +1711,7 @@ const PasteurDashboard = () => {
                   className="bg-white/10 hover:bg-white/20 text-white border border-white/30"
                 >
                   <UserPlus className="h-4 w-4 mr-2" />
-                  Inviter un superviseur
+                  Créer une invitation
                 </Button>
                 <Button
                   variant="outline"
@@ -1734,8 +1754,12 @@ const PasteurDashboard = () => {
           onOpenChange={setInvitationModalOpen}
           typeRole="superviseur"
           familles={(familles || []).filter(f => f.famille).map(f => ({ id: f.famille.id, nom: f.famille.nom }))}
-          titre="Inviter un superviseur"
-          description="Créez un lien d'invitation pour un nouveau superviseur. Choisissez une famille existante sans superviseur ou « Nouvelle famille » pour en créer une."
+          famillesSansSuperviseur={famillesSansSuperviseur}
+          toutesFamilles={toutesFamilles}
+          allowRoleSelect={role === 'pasteur' || role === 'admin' || role === 'super_admin'}
+          isAdmin={role === 'admin' || role === 'super_admin'}
+          titre="Créer une invitation"
+          description="Choisissez le rôle à inviter (Pasteur, Superviseur, Mentor, Disciple). La famille est obligatoire pour Superviseur, Mentor et Disciple."
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" aria-label="Navigation du dashboard pasteur">

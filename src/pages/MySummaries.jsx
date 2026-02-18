@@ -49,7 +49,7 @@ const MySummaries = () => {
   return (
     <>
       <Helmet>
-        <title>Mes Résumés | DiscipleLife</title>
+        <title>Mes Résumés | Disciple 70</title>
       </Helmet>
 
       <div className="w-full max-w-screen-2xl mx-auto py-8 space-y-8">

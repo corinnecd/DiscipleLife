@@ -12,7 +12,7 @@ const NotFound = () => {
   return (
     <>
       <Helmet>
-        <title>Page Introuvable | DiscipleLife</title>
+        <title>Page Introuvable | Disciple 70</title>
       </Helmet>
 
       <div className="min-h-screen bg-[#0f0518] flex items-center justify-center p-4 overflow-hidden relative">
